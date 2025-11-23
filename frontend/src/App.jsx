@@ -4,23 +4,37 @@ function App() {
   const [rawInput, setRawInput] = useState("");
   const [generatedNote, setGeneratedNote] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleGenerate = async () => {
-    // For now, mock the response instead of calling real AI
     if (!rawInput.trim()) return;
 
     setLoading(true);
+    setErrorMsg("");
+    setGeneratedNote("");
 
-    // Simulate a delay like we called an API
-    const response = await fetch("http://localhost:5000/api/generate-note", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rawInput }),
-    });
+    try {
+      const response = await fetch("http://localhost:5000/api/generate-note", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ rawInput }),
+      });
 
-    const data = await response.json();
-    setGeneratedNote(data.note);
-    setLoading(false);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to generate note");
+      }
+
+      const data = await response.json();
+      setGeneratedNote(data.note);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(err.message || "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -50,6 +64,10 @@ function App() {
       >
         {loading ? "Generating..." : "Generate Note"}
       </button>
+
+      {errorMsg && (
+        <p style={{ color: "red", marginTop: "1rem" }}>{errorMsg}</p>
+      )}
 
       {generatedNote && (
         <div
