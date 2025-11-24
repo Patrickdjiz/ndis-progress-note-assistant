@@ -39,7 +39,7 @@ npm install
 npm run dev
 
 ### Backend (coming soon)
-Instructions will be added after backend setup.
+node server.js
 
 ## 📌 Features (V1)
 
@@ -50,10 +50,7 @@ Instructions will be added after backend setup.
 - Admin dashboard to view/export notes
 
 ## 🧠 Local LLM Use
-
-This project uses (or will use) local models to avoid API cost:
-- Example engines: Ollama / llama.cpp / Mistral models
-- Processing done on-device or on a local server
+ollama pull mistral
 
 ## 📝 Status
 
