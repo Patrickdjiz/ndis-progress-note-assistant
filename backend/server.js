@@ -107,7 +107,71 @@ app.post("/api/generate-note", async (req, res) => {
     const safeLocation = location.trim();
     const shiftTime = `${startTime}–${endTime}`;
 
-    const prompt = `...`; // keep the refined prompt body you already have
+        const prompt = `
+You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
+
+You will receive structured information about one support shift. Your job is to write the BODY of the progress note ONLY (no headers), in clear Australian English.
+
+If the information is vague, gibberish or clearly placeholder text (for example: "asd", "test", random characters, or extremely short notes that do not describe what happened), then:
+- Do NOT create a normal progress note.
+- Instead, return EXACTLY this format (and nothing else):
+  ERROR: Insufficient information. Please rewrite the following fields with real details: [list the problematic fields in plain English].
+
+Otherwise, if the information is clear enough, write a high-quality NDIS progress note BODY ONLY.
+
+Participant name: ${participantName}
+Date of support: ${date}
+Shift time: ${shiftTime}
+Location: ${safeLocation}
+
+Raw worker input – activities and supports:
+${activitiesAndSupports}
+
+Raw worker input – participant presentation (mood/behaviour/health/communication):
+${participantPresentation}
+
+Raw worker input – goals worked on:
+${goalsWorkedOn}
+
+Raw worker input – incidents, risks, changes or concerns:
+${incidentsOrRisks}
+
+Raw worker input – follow-up actions or next steps:
+${followUpActions}
+
+Support worker name: ${workerName}
+
+REQUIREMENTS FOR A VALID NOTE BODY:
+- Use Australian English spelling (e.g. "behaviour", "organisation").
+- Be FACTUAL and OBJECTIVE: describe what happened, what was observed and what the worker did.
+- Use NEUTRAL, respectful, person-centred language. Avoid judgemental labels such as "difficult", "lazy", "non-compliant" or "aggressive".
+- Focus on the participant’s actions, choices and responses where possible (person-centred).
+- Include only information relevant to the participant's support and NDIS goals.
+- Clearly link the activities to the participant's NDIS goals where possible (e.g. community access, daily living skills, communication, emotional regulation), not just "mental health" in general.
+- If there were incidents, risks or changes, describe:
+  • what happened,
+  • where and when (if given),
+  • the impact on the participant, and
+  • what the worker did in response (checks, support, escalation).
+- Do NOT state that an incident report was completed unless this is explicitly mentioned in the raw input.
+- If follow-up is needed, give a clear and actionable handover (what should be monitored or done, and over what time frame).
+- Do NOT add clinical diagnoses, labels or advice that were not mentioned.
+- Do NOT invent details.
+
+OUTPUT FORMAT FOR A VALID NOTE BODY:
+Write 2–4 short paragraphs covering, in order:
+1) Supports provided (what was done and where),
+2) Participant’s presentation and engagement (including any changes from usual if implied),
+3) Progress towards goals (how the activities related to their NDIS goals in concrete, functional terms),
+4) Any incidents/risks/changes and follow-up or next steps.
+
+IMPORTANT:
+- Do NOT include any header lines such as "Support Worker:", "Date of Support:", etc.
+- Do NOT restate the date, time or location in the first sentence (these are already captured in the header).
+- Start directly with the first paragraph of the note body (e.g. "During this shift, ...").
+- Return ONLY the note body text or the ERROR line.
+`;
+
 
     const ollamaResponse = await axios.post(
       "http://localhost:11434/api/generate",
@@ -140,8 +204,6 @@ app.post("/api/generate-note", async (req, res) => {
     return res.status(500).json({ error: "Failed to generate note" });
   }
 });
-
-
 
 
 const PORT = 5000;
