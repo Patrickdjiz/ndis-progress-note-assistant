@@ -39,7 +39,7 @@ app.post("/api/generate-note", async (req, res) => {
       return h * 60 + m;
     };
 
-    // Helper: parse YYYY-MM-DD into a Date at midnight
+    // Helper: parse YYYY-MM-DD into Date at midnight
     const parseYyyyMmDd = (s) => {
       if (!s || typeof s !== "string") return null;
       const [yStr, mStr, dStr] = s.split("-");
@@ -47,7 +47,6 @@ app.post("/api/generate-note", async (req, res) => {
       const m = Number(mStr);
       const d = Number(dStr);
       if ([y, m, d].some((n) => Number.isNaN(n))) return null;
-      // Month is 0-based in JS Date
       return new Date(y, m - 1, d);
     };
 
@@ -82,7 +81,6 @@ app.post("/api/generate-note", async (req, res) => {
       return res.status(400).json({ error: "Invalid date format." });
     }
     const today = new Date();
-    // Normalise both to midnight
     today.setHours(0, 0, 0, 0);
     shiftDate.setHours(0, 0, 0, 0);
 
@@ -173,7 +171,7 @@ Support worker name: ${workerName}
 STYLE AND SAFETY RULES:
 - Use Australian English spelling (e.g. "behaviour", "organisation").
 - Write STRICTLY in THIRD-PERSON. Do NOT use "I", "we", "my", "our" or similar. Refer to "the support worker" and the participant by name.
-- Be FACTUAL and OBJECTIVE: describe what happened, what was observed and what the worker did.
+- Be FACTUAL and OBJECTIVE: describe what happened, what was observed and what the support worker did.
 - Use NEUTRAL, respectful, person-centred language. Avoid judgemental labels such as "difficult", "lazy", "non-compliant" or "aggressive".
 - Focus on the participant’s actions, choices and responses where possible.
 - Include only information relevant to the participant's support and NDIS goals.
@@ -190,7 +188,7 @@ STYLE AND SAFETY RULES:
 - Do NOT invent details.
 
 OUTPUT FORMAT FOR A VALID NOTE BODY:
-- Do NOT introduce the note. Do NOT write phrases like "Here is the body of the note" or "In this note".
+- Do NOT introduce the note. Do NOT write phrases like "Here is the body of the note", "Here is the written progress note", "Below is" or similar.
 - Do NOT include any header lines such as "Support Worker:", "Date of Support:", etc.
 - Do NOT restate the date, time or location in the first sentence (these are already captured in the header).
 - Start directly with the first paragraph of the note body, e.g. "During this shift, the support worker..." or "Throughout this shift, the support worker...".
@@ -211,13 +209,70 @@ OUTPUT FORMAT FOR A VALID NOTE BODY:
       }
     );
 
-    const modelText = (ollamaResponse.data.response || "").trim();
+    let modelText = (ollamaResponse.data.response || "").trim();
 
     if (modelText.startsWith("ERROR:")) {
       return res.status(400).json({ error: modelText });
     }
 
-    // 6. Prepend standard header
+    // 6. SELF-CLEAN THE BODY (Option C)
+
+    let noteBody = modelText;
+
+    // a) Strip any intro lines like "Here is the written progress note BODY:"
+    const lines = noteBody.split("\n");
+    const cleanedLines = lines.filter((line, index) => {
+      const trimmed = line.trim().toLowerCase();
+      if (index === 0 && trimmed.startsWith("here is") && trimmed.includes("body")) {
+        return false; // drop first intro line
+      }
+      if (trimmed.startsWith("here is the written progress note")) return false;
+      if (trimmed.startsWith("here is the body of the note")) return false;
+      if (trimmed.startsWith("below is")) return false;
+      return true;
+    });
+    noteBody = cleanedLines.join("\n").trim();
+
+    // b) Replace any explicit use of the worker's name in the body with "the support worker"
+    const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const workerNameRegex = new RegExp(escapeRegExp(workerName), "g");
+    noteBody = noteBody.replace(workerNameRegex, "the support worker");
+
+    // c) Clean up heavy mental-health labels if not in raw input
+    const rawCombined =
+      (
+        activitiesAndSupports +
+        " " +
+        participantPresentation +
+        " " +
+        goalsWorkedOn +
+        " " +
+        incidentsOrRisks +
+        " " +
+        followUpActions
+      ).toLowerCase();
+
+    const sensitiveTerms = [
+      "anxiety",
+      "anxious",
+      "depression",
+      "depressed",
+      "suicidal",
+      "psychosis",
+      "psychotic",
+      "ptsd",
+      "panic attack",
+    ];
+
+    sensitiveTerms.forEach((term) => {
+      if (noteBody.toLowerCase().includes(term) && !rawCombined.includes(term)) {
+        const termRegex = new RegExp(`\\b${term}\\b`, "gi");
+        // Replace with more neutral phrase
+        noteBody = noteBody.replace(termRegex, "emotional wellbeing");
+      }
+    });
+
+    // 7. Prepend standard header
     const header = [
       `Support Worker: ${workerName}`,
       `Date of Support: ${date}`,
@@ -226,7 +281,7 @@ OUTPUT FORMAT FOR A VALID NOTE BODY:
       `Participant: ${participantName}`,
     ].join("\n");
 
-    const fullNote = `${header}\n\n${modelText}`;
+    const fullNote = `${header}\n\n${noteBody}`;
 
     return res.json({ note: fullNote });
   } catch (error) {
@@ -234,6 +289,7 @@ OUTPUT FORMAT FOR A VALID NOTE BODY:
     return res.status(500).json({ error: "Failed to generate note" });
   }
 });
+
 
 
 
