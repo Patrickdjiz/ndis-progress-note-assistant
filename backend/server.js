@@ -137,9 +137,13 @@ app.post("/api/generate-note", async (req, res) => {
     const prompt = `
 You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
 
-You will receive structured information about ONE support shift. Your task is to write the BODY of an NDIS-style progress note ONLY (no headers).
+You have ALREADY received all structured information about ONE support shift below.
+Your task is to write the BODY of an NDIS-style progress note ONLY (no headers).
+DO NOT ask for more input. Either:
+- return a valid progress note body, OR
+- return a single line starting with "ERROR:" as described below.
 
-If the information is vague, gibberish, placeholder text (e.g., “asd”, “test”, “n/a”, or extremely short responses that do not describe what happened), then:
+If the information is vague, gibberish, placeholder text (e.g., "asd", "test", "n/a", or extremely short responses that do not describe what happened), then:
 - Do NOT generate a normal note.
 - Instead, return exactly:
   ERROR: Insufficient information. Please rewrite the following fields with real details: [list fields].
@@ -147,50 +151,53 @@ If the information is vague, gibberish, placeholder text (e.g., “asd”, “te
 If the information is valid, generate a high-quality progress note BODY ONLY.
 
 DATA PROVIDED:
-Participant: {{participantName}}
-Date of Support: {{date}}
-Shift Time: {{shiftTime}}
-Location: {{location}}
+Participant: ${participantName}
+Date of Support: ${date}
+Shift Time: ${shiftTime}
+Location: ${safeLocation}
 
 Raw input – Activities & Supports:
-{{activitiesAndSupports}}
+${activitiesAndSupports}
 
 Raw input – Participant Presentation (mood/behaviour/health/communication):
-{{participantPresentation}}
+${participantPresentation}
 
 Raw input – Goals Worked On:
-{{goalsWorkedOn}}
+${goalsWorkedOn}
 
 Raw input – Incidents, Risks, Changes:
-{{incidentsOrRisks}}
+${incidentsOrRisks}
 
 Raw input – Follow-up / Next Steps:
-{{followUpActions}}
+${followUpActions}
 
-Support worker: {{workerName}}
+Support worker: ${workerName}
 
 -----------------------------------------------------------
 STYLE, FORMAT & SAFETY RULES
 -----------------------------------------------------------
 
-1) **Write STRICTLY in third-person.**
-   - Use “the support worker”, “the participant”, or their name.
-   - NEVER use “I”, “we”, “my”, “our”.
+1) Write STRICTLY in third-person.
+   - Use "the support worker", "the participant", or their name.
+   - NEVER use "I", "we", "my", "our".
 
-2) **Be FACTUAL and OBSERVABLE.**
+2) Be FACTUAL and OBSERVABLE.
    - Describe what occurred, what was observed, and what the support worker did.
    - Do NOT describe internal feelings or thoughts unless explicitly stated in the input.
 
-3) **NO invented emotional states.**
+3) NO invented emotional states.
    - ONLY use mood/affect words that appear in the raw input.
-   - Do NOT add terms like “anxious”, “calm”, “distressed”, “comfortable”, “supported”, “relaxed”, “overwhelmed”, “well-being”, etc., unless written in the input.
-   - If the input says “stressed”, you may say “the participant appeared stressed”. Do NOT expand into “anxious”, “emotionally dysregulated”, etc.
+   - Do NOT add terms like "anxious", "calm", "distressed", "comfortable", "supported", "relaxed",
+     "overwhelmed", "well-being", etc., unless written in the input.
+   - If the input says "stressed", you may say "the participant appeared stressed". Do NOT expand into
+     "anxious", "emotionally dysregulated", etc.
 
-4) **NO emotional-effect statements.**
-   - Banned examples: “helped him feel calm”, “allowed him to feel supported”, “promoted well-being”, “improved his mood”.
+4) NO emotional-effect statements.
+   - Banned examples: "helped him feel calm", "allowed him to feel supported", "promoted well-being",
+     "improved his mood".
    - Only describe OBSERVABLE changes already listed by the worker.
 
-5) **NDIS goal linkage must be FUNCTIONAL.**
+5) NDIS goal linkage must be FUNCTIONAL.
    Allowed examples (functional):
    - community access
    - daily living skills
@@ -198,32 +205,31 @@ STYLE, FORMAT & SAFETY RULES
    - communication
    - participation
    - emotional regulation (ONLY if stated)
-   
-   Do NOT generalise goals to “overall well-being” or “health improvement”.
 
-6) **Incident documentation must be clear and neutral.**
+   Do NOT generalise goals to "overall wellbeing" or "health improvement".
+
+6) Incident documentation must be clear and neutral.
    When an incident occurs, describe:
    - what happened
    - immediate impact (if any)
    - what the support worker did in response (check, assist, offer support)
-   - participant’s ability to continue activities
-   
+   - the participant’s ability to continue activities
+
    NEVER write that an incident report was completed unless explicitly stated.
 
-7) **ALWAYS include a follow-up / next-shift paragraph at the end.**
-   Even if minimal.
-   Example: “For the next shift, staff should continue to monitor…”
+7) ALWAYS include a follow-up / next-shift paragraph at the end.
+   Even if minimal (e.g. what to monitor next shift).
 
-8) **ABSOLUTELY NO INTRODUCTORY SENTENCES.**
+8) ABSOLUTELY NO INTRODUCTORY SENTENCES.
    Do NOT write:
-   - “Here is the note”
-   - “Below is the summary”
-   - “This progress note describes…”
+   - "Here is the note"
+   - "Below is the summary"
+   - "This progress note describes..."
 
    Start directly with the first paragraph:
-   “During this shift, the support worker…”
+   "During this shift, the support worker..."
 
-9) **Do NOT restate date, location or shift time inside the body.**
+9) Do NOT restate date, location or shift time inside the body.
    These appear in the header.
 
 -----------------------------------------------------------
@@ -232,18 +238,10 @@ REQUIRED OUTPUT STRUCTURE
 
 Write 2–4 paragraphs in this order:
 
-1) **Supports Provided**
-   Describe the activities completed and where they occurred.
-
-2) **Participant Presentation**
-   Include mood/behaviour/engagement EXACTLY as stated — no expansions.
-
-3) **Goals**
-   Link activities to NDIS functional goals without adding new intentions or emotional interpretations.
-
-4) **Incidents + Follow-up**
-   If an incident occurred: factual summary + worker response.
-   ALWAYS end with a follow-up/handover paragraph.
+1) Supports Provided – describe the activities completed and where they occurred.
+2) Participant Presentation – mood/behaviour/engagement EXACTLY as stated (no expansions).
+3) Goals – link activities to NDIS functional goals without adding new intentions or emotional interpretations.
+4) Incidents + Follow-up – factual summary + worker response, and ALWAYS end with follow-up / handover.
 
 -----------------------------------------------------------
 
@@ -252,6 +250,7 @@ NO HEADERS.
 NO TITLES.
 NO INTRO LINES.
 `;
+
 
     const ollamaResponse = await axios.post(
       "http://localhost:11434/api/generate",
