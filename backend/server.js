@@ -137,67 +137,120 @@ app.post("/api/generate-note", async (req, res) => {
     const prompt = `
 You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
 
-You will receive structured information about ONE support shift. Your job is to write the BODY of the progress note ONLY (no headers), in clear Australian English.
+You will receive structured information about ONE support shift. Your task is to write the BODY of an NDIS-style progress note ONLY (no headers).
 
-If the information is vague, gibberish or clearly placeholder text (for example: "asd", "test", random characters, or extremely short notes that do not describe what happened), then:
-- Do NOT create a normal progress note.
-- Instead, return EXACTLY this format (and nothing else):
-  ERROR: Insufficient information. Please rewrite the following fields with real details: [list the problematic fields in plain English].
+If the information is vague, gibberish, placeholder text (e.g., “asd”, “test”, “n/a”, or extremely short responses that do not describe what happened), then:
+- Do NOT generate a normal note.
+- Instead, return exactly:
+  ERROR: Insufficient information. Please rewrite the following fields with real details: [list fields].
 
-Otherwise, if the information is clear enough, write a high-quality NDIS progress note BODY ONLY.
+If the information is valid, generate a high-quality progress note BODY ONLY.
 
-Participant name: ${participantName}
-Date of support: ${date}
-Shift time: ${shiftTime}
-Location: ${safeLocation}
+DATA PROVIDED:
+Participant: {{participantName}}
+Date of Support: {{date}}
+Shift Time: {{shiftTime}}
+Location: {{location}}
 
-Raw worker input – activities and supports:
-${activitiesAndSupports}
+Raw input – Activities & Supports:
+{{activitiesAndSupports}}
 
-Raw worker input – participant presentation (mood/behaviour/health/communication):
-${participantPresentation}
+Raw input – Participant Presentation (mood/behaviour/health/communication):
+{{participantPresentation}}
 
-Raw worker input – goals worked on:
-${goalsWorkedOn}
+Raw input – Goals Worked On:
+{{goalsWorkedOn}}
 
-Raw worker input – incidents, risks, changes or concerns:
-${incidentsOrRisks}
+Raw input – Incidents, Risks, Changes:
+{{incidentsOrRisks}}
 
-Raw worker input – follow-up actions or next steps:
-${followUpActions}
+Raw input – Follow-up / Next Steps:
+{{followUpActions}}
 
-Support worker name: ${workerName}
+Support worker: {{workerName}}
 
-STYLE AND SAFETY RULES:
-- Use Australian English spelling (e.g. "behaviour", "organisation").
-- Write STRICTLY in THIRD-PERSON. Do NOT use "I", "we", "my", "our" or similar. Refer to "the support worker" and the participant by name.
-- Be FACTUAL and OBJECTIVE: describe what happened, what was observed and what the support worker did.
-- Use NEUTRAL, respectful, person-centred language. Avoid judgemental labels such as "difficult", "lazy", "non-compliant" or "aggressive".
-- Focus on the participant’s actions, choices and responses where possible.
-- Include only information relevant to the participant's support and NDIS goals.
-- ONLY describe mood, behaviour, stress, mental health or emotional state if this is clearly implied or stated in the raw worker input. Do NOT invent new symptoms or problems.
-- Clearly link the activities to the participant's NDIS goals where possible (e.g. community access, daily living skills, communication, emotional regulation), not just "mental health" in general.
-- If there were incidents, risks or changes, describe:
-  • what happened,
-  • where and when (if given),
-  • the impact on the participant, and
-  • what the support worker did in response (checks, support, escalation).
-- Do NOT state that an incident report was completed unless this is explicitly mentioned in the raw input.
-- ALWAYS include a brief follow-up / handover paragraph at the end, even if it is simple (e.g. what to monitor next shift).
-- Do NOT add clinical diagnoses, labels or advice that were not mentioned.
-- Do NOT invent details.
+-----------------------------------------------------------
+STYLE, FORMAT & SAFETY RULES
+-----------------------------------------------------------
 
-OUTPUT FORMAT FOR A VALID NOTE BODY:
-- Do NOT introduce the note. Do NOT write phrases like "Here is the body of the note", "Here is the written progress note", "Below is" or similar.
-- Do NOT include any header lines such as "Support Worker:", "Date of Support:", etc.
-- Do NOT restate the date, time or location in the first sentence (these are already captured in the header).
-- Start directly with the first paragraph of the note body, e.g. "During this shift, the support worker..." or "Throughout this shift, the support worker...".
-- Write 2–4 short paragraphs covering, in order:
-  1) Supports provided (what was done and where),
-  2) Participant’s presentation and engagement (including any changes from usual if implied),
-  3) Progress towards goals (how the activities related to their NDIS goals in concrete, functional terms),
-  4) A final paragraph with any incidents/risks/changes AND clear follow-up or next steps (handover).
-- Return ONLY the note body text or the ERROR line.
+1) **Write STRICTLY in third-person.**
+   - Use “the support worker”, “the participant”, or their name.
+   - NEVER use “I”, “we”, “my”, “our”.
+
+2) **Be FACTUAL and OBSERVABLE.**
+   - Describe what occurred, what was observed, and what the support worker did.
+   - Do NOT describe internal feelings or thoughts unless explicitly stated in the input.
+
+3) **NO invented emotional states.**
+   - ONLY use mood/affect words that appear in the raw input.
+   - Do NOT add terms like “anxious”, “calm”, “distressed”, “comfortable”, “supported”, “relaxed”, “overwhelmed”, “well-being”, etc., unless written in the input.
+   - If the input says “stressed”, you may say “the participant appeared stressed”. Do NOT expand into “anxious”, “emotionally dysregulated”, etc.
+
+4) **NO emotional-effect statements.**
+   - Banned examples: “helped him feel calm”, “allowed him to feel supported”, “promoted well-being”, “improved his mood”.
+   - Only describe OBSERVABLE changes already listed by the worker.
+
+5) **NDIS goal linkage must be FUNCTIONAL.**
+   Allowed examples (functional):
+   - community access
+   - daily living skills
+   - engagement
+   - communication
+   - participation
+   - emotional regulation (ONLY if stated)
+   
+   Do NOT generalise goals to “overall well-being” or “health improvement”.
+
+6) **Incident documentation must be clear and neutral.**
+   When an incident occurs, describe:
+   - what happened
+   - immediate impact (if any)
+   - what the support worker did in response (check, assist, offer support)
+   - participant’s ability to continue activities
+   
+   NEVER write that an incident report was completed unless explicitly stated.
+
+7) **ALWAYS include a follow-up / next-shift paragraph at the end.**
+   Even if minimal.
+   Example: “For the next shift, staff should continue to monitor…”
+
+8) **ABSOLUTELY NO INTRODUCTORY SENTENCES.**
+   Do NOT write:
+   - “Here is the note”
+   - “Below is the summary”
+   - “This progress note describes…”
+
+   Start directly with the first paragraph:
+   “During this shift, the support worker…”
+
+9) **Do NOT restate date, location or shift time inside the body.**
+   These appear in the header.
+
+-----------------------------------------------------------
+REQUIRED OUTPUT STRUCTURE
+-----------------------------------------------------------
+
+Write 2–4 paragraphs in this order:
+
+1) **Supports Provided**
+   Describe the activities completed and where they occurred.
+
+2) **Participant Presentation**
+   Include mood/behaviour/engagement EXACTLY as stated — no expansions.
+
+3) **Goals**
+   Link activities to NDIS functional goals without adding new intentions or emotional interpretations.
+
+4) **Incidents + Follow-up**
+   If an incident occurred: factual summary + worker response.
+   ALWAYS end with a follow-up/handover paragraph.
+
+-----------------------------------------------------------
+
+OUTPUT ONLY THE BODY TEXT.
+NO HEADERS.
+NO TITLES.
+NO INTRO LINES.
 `;
 
     const ollamaResponse = await axios.post(
@@ -271,6 +324,43 @@ OUTPUT FORMAT FOR A VALID NOTE BODY:
         noteBody = noteBody.replace(termRegex, "emotional wellbeing");
       }
     });
+
+    // d) Remove emotional-effect phrases not supported by input
+    const emotionalEffects = [
+    "allowed him to feel",
+    "allowed her to feel",
+    "allowed them to feel",
+    "helped him feel",
+    "helped her feel",
+    "helped them feel",
+    "promoted well-being",
+    "promoted wellbeing",
+    "promotes well-being",
+    "supports well-being",
+    "supported his well-being",
+    "supported her well-being",
+    "overall well-being",
+    "overall wellbeing",
+    "feel comfortable",
+    "felt comfortable",
+    "feel supported",
+    "felt supported",
+    "calm and structured environment",
+    "enabling him to feel",
+    "enabling her to feel",
+    "enabling them to feel",
+    ];
+
+    emotionalEffects.forEach((phrase) => {
+    const regex = new RegExp(phrase, "gi");
+    if (noteBody.toLowerCase().includes(phrase.toLowerCase())) {
+        noteBody = noteBody.replace(regex, "supported routine engagement");
+    }
+    });
+
+// e) Remove worker name if AI reintroduces it
+noteBody = noteBody.replace(workerNameRegex, "the support worker");
+
 
     // 7. Prepend standard header
     const header = [
