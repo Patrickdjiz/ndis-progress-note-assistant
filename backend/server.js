@@ -360,6 +360,37 @@ NO INTRO LINES.
 // e) Remove worker name if AI reintroduces it
 noteBody = noteBody.replace(workerNameRegex, "the support worker");
 
+// f) Remove duplicated "the support worker the support worker"
+noteBody = noteBody.replace(/the support worker the support worker/gi, "the support worker");
+noteBody = noteBody.replace(/the support worker\s*,?\s*the support worker/gi, "the support worker");
+
+// g) Remove emotional interpretation phrases
+const interpretationReplacements = [
+  { find: /improve his mood/gi, replace: "support his engagement" },
+  { find: /improve her mood/gi, replace: "support her engagement" },
+  { find: /improve their mood/gi, replace: "support their engagement" },
+
+  { find: /positive impact on his behaviour/gi, replace: "he participated well" },
+  { find: /positive impact on her behaviour/gi, replace: "she participated well" },
+  { find: /positive impact on their behaviour/gi, replace: "they participated well" },
+
+  { find: /relaxed environment/gi, replace: "predictable routine environment" },
+  { find: /calm environment/gi, replace: "structured routine environment" },
+
+  { find: /aimed to improve .* mood/gi, replace: "supported engagement in preferred activities" },
+
+  { find: /promote emotional regulation/gi, replace: "support engagement in routine tasks" },
+  { find: /emotional regulation/gi, replace: "engagement in routine tasks" }
+];
+
+interpretationReplacements.forEach(({ find, replace }) => {
+  noteBody = noteBody.replace(find, replace);
+});
+
+// h) Remove template-like sentences
+noteBody = noteBody.replace(/The activity provided was .*?location\./gi, "");
+
+
 
     // 7. Prepend standard header
     const header = [
