@@ -1,8 +1,12 @@
 import { useState } from "react";
 
 function App() {
+  const todayIso = new Date().toISOString().slice(0, 10);
+
   const [participantName, setParticipantName] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(todayIso);
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [location, setLocation] = useState("");
   const [activitiesAndSupports, setActivitiesAndSupports] = useState("");
   const [participantPresentation, setParticipantPresentation] = useState("");
@@ -16,8 +20,27 @@ function App() {
   const [errorMsg, setErrorMsg] = useState("");
 
   const handleGenerate = async () => {
-    if (!participantName.trim() || !activitiesAndSupports.trim()) {
-      setErrorMsg("Please enter at least the participant name and what you did in the shift.");
+    // quick front-end validation
+    const fields = {
+      participantName,
+      date,
+      startTime,
+      endTime,
+      location,
+      activitiesAndSupports,
+      participantPresentation,
+      goalsWorkedOn,
+      incidentsOrRisks,
+      followUpActions,
+      workerName,
+    };
+
+    const missing = Object.entries(fields)
+      .filter(([, value]) => !value || !value.toString().trim())
+      .map(([key]) => key);
+
+    if (missing.length > 0) {
+      setErrorMsg("Please complete all fields before generating a note.");
       return;
     }
 
@@ -32,6 +55,8 @@ function App() {
         body: JSON.stringify({
           participantName,
           date,
+          startTime,
+          endTime,
           location,
           activitiesAndSupports,
           participantPresentation,
@@ -42,12 +67,12 @@ function App() {
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to generate note");
+        throw new Error(data.error || "Failed to generate note");
       }
 
-      const data = await response.json();
       setGeneratedNote(data.note);
     } catch (err) {
       console.error(err);
@@ -58,9 +83,19 @@ function App() {
   };
 
   return (
-    <div style={{ maxWidth: "900px", margin: "0 auto", padding: "1.5rem", fontFamily: "sans-serif" }}>
+    <div
+      style={{
+        maxWidth: "900px",
+        margin: "0 auto",
+        padding: "1.5rem",
+        fontFamily: "sans-serif",
+      }}
+    >
       <h1>NDIS AI Progress Notes Assistant</h1>
-      <p>Fill in the key details from your shift and we&apos;ll generate a professional NDIS-style progress note.</p>
+      <p>
+        Fill in the key details from your shift and we&apos;ll generate a professional,
+        NDIS-style progress note.
+      </p>
 
       <div style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}>
         {/* Row 1: Participant + date */}
@@ -69,6 +104,7 @@ function App() {
             <label>Participant name*</label>
             <input
               type="text"
+              required
               value={participantName}
               onChange={(e) => setParticipantName(e.target.value)}
               style={{ width: "100%", padding: "0.4rem" }}
@@ -79,6 +115,7 @@ function App() {
             <label>Date of support*</label>
             <input
               type="date"
+              required
               value={date}
               onChange={(e) => setDate(e.target.value)}
               style={{ padding: "0.4rem" }}
@@ -86,12 +123,37 @@ function App() {
           </div>
         </div>
 
-        {/* Row 2: Location + worker */}
+        {/* Row 2: Times */}
+        <div style={{ display: "flex", gap: "1rem" }}>
+          <div>
+            <label>Start time*</label>
+            <input
+              type="time"
+              required
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              style={{ padding: "0.4rem" }}
+            />
+          </div>
+          <div>
+            <label>End time*</label>
+            <input
+              type="time"
+              required
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              style={{ padding: "0.4rem" }}
+            />
+          </div>
+        </div>
+
+        {/* Row 3: Location + worker */}
         <div style={{ display: "flex", gap: "1rem" }}>
           <div style={{ flex: 1 }}>
-            <label>Location</label>
+            <label>Location*</label>
             <input
               type="text"
+              required
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               style={{ width: "100%", padding: "0.4rem" }}
@@ -99,9 +161,10 @@ function App() {
             />
           </div>
           <div style={{ flex: 1 }}>
-            <label>Support worker name</label>
+            <label>Support worker name*</label>
             <input
               type="text"
+              required
               value={workerName}
               onChange={(e) => setWorkerName(e.target.value)}
               style={{ width: "100%", padding: "0.4rem" }}
@@ -114,59 +177,66 @@ function App() {
         <div>
           <label>Activities and supports provided* (what you did)</label>
           <textarea
+            required
             rows={4}
             value={activitiesAndSupports}
             onChange={(e) => setActivitiesAndSupports(e.target.value)}
             style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
-            placeholder="Describe what you supported the participant with, where, and how."
+            placeholder="Describe what you supported the participant with, where, and how. Include any prompts used and level of assistance."
           />
         </div>
 
         {/* Presentation */}
         <div>
-          <label>Participant presentation (mood, behaviour, health, communication)</label>
+          <label>
+            Participant presentation* (mood, behaviour, health, communication)
+          </label>
           <textarea
+            required
             rows={3}
             value={participantPresentation}
             onChange={(e) => setParticipantPresentation(e.target.value)}
             style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
-            placeholder="How did the participant engage? Any changes from usual?"
+            placeholder="How did the participant engage? Any changes from usual? Be factual and specific."
           />
         </div>
 
         {/* Goals */}
         <div>
-          <label>Goals worked on</label>
+          <label>Goals worked on* (link to NDIS goals)</label>
           <textarea
+            required
             rows={2}
             value={goalsWorkedOn}
             onChange={(e) => setGoalsWorkedOn(e.target.value)}
             style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
-            placeholder="Which NDIS goals did this shift support?"
+            placeholder="Which NDIS goals did this shift support, and how?"
           />
         </div>
 
         {/* Incidents / Risks */}
         <div>
-          <label>Incidents, risks, changes or concerns</label>
+          <label>Incidents, risks, changes or concerns* </label>
           <textarea
+            required
             rows={2}
             value={incidentsOrRisks}
             onChange={(e) => setIncidentsOrRisks(e.target.value)}
             style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
-            placeholder="Any incidents, risks, changes in behaviour, health or environment?"
+            placeholder='If none, write "No incidents or concerns". Otherwise, describe what happened factually.'
           />
         </div>
 
         {/* Follow up */}
         <div>
-          <label>Follow-up actions / next steps</label>
+          <label>Follow-up actions / next steps* </label>
           <textarea
+            required
             rows={2}
             value={followUpActions}
             onChange={(e) => setFollowUpActions(e.target.value)}
             style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
-            placeholder="Anything the next worker or coordinator should know or do?"
+            placeholder='E.g. "Monitor mood over next 2 shifts and report any changes to coordinator."'
           />
         </div>
       </div>
@@ -184,7 +254,9 @@ function App() {
       </button>
 
       {errorMsg && (
-        <p style={{ color: "red", marginTop: "0.8rem" }}>{errorMsg}</p>
+        <p style={{ color: "red", marginTop: "0.8rem", whiteSpace: "pre-wrap" }}>
+          {errorMsg}
+        </p>
       )}
 
       {generatedNote && (
