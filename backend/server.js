@@ -112,7 +112,7 @@ app.post("/api/generate-note", async (req, res) => {
     const ollamaResponse = await axios.post(
       "http://localhost:11434/api/generate",
       {
-        model: "mistral",
+        model: "llama3",
         prompt,
         stream: false,
       }
