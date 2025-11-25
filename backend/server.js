@@ -29,7 +29,7 @@ app.post("/api/generate-note", async (req, res) => {
       workerName,
     } = req.body;
 
-    // Helper lives inside route so we know we're using it
+    // Helper: time to minutes since midnight
     const timeToMinutes = (t) => {
       if (!t || typeof t !== "string") return null;
       const [hStr, mStr] = t.split(":");
@@ -37,6 +37,18 @@ app.post("/api/generate-note", async (req, res) => {
       const m = Number(mStr);
       if (Number.isNaN(h) || Number.isNaN(m)) return null;
       return h * 60 + m;
+    };
+
+    // Helper: parse YYYY-MM-DD into a Date at midnight
+    const parseYyyyMmDd = (s) => {
+      if (!s || typeof s !== "string") return null;
+      const [yStr, mStr, dStr] = s.split("-");
+      const y = Number(yStr);
+      const m = Number(mStr);
+      const d = Number(dStr);
+      if ([y, m, d].some((n) => Number.isNaN(n))) return null;
+      // Month is 0-based in JS Date
+      return new Date(y, m - 1, d);
     };
 
     // 1. Required field checks
@@ -64,7 +76,23 @@ app.post("/api/generate-note", async (req, res) => {
       });
     }
 
-    // 2. Basic time sanity check (same-day shift)
+    // 2. Date sanity check (no future dates)
+    const shiftDate = parseYyyyMmDd(date);
+    if (!shiftDate) {
+      return res.status(400).json({ error: "Invalid date format." });
+    }
+    const today = new Date();
+    // Normalise both to midnight
+    today.setHours(0, 0, 0, 0);
+    shiftDate.setHours(0, 0, 0, 0);
+
+    if (shiftDate > today) {
+      return res.status(400).json({
+        error: "Date of support cannot be in the future.",
+      });
+    }
+
+    // 3. Basic time sanity check (same-day, non-overnight)
     const startMins = timeToMinutes(startTime);
     const endMins = timeToMinutes(endTime);
 
@@ -82,7 +110,7 @@ app.post("/api/generate-note", async (req, res) => {
       });
     }
 
-    // 3. Junk detection
+    // 4. Simple junk detection
     const looksLikeJunk = (text) => {
       const t = text.trim();
       if (t.length < 10) return true;
@@ -107,10 +135,11 @@ app.post("/api/generate-note", async (req, res) => {
     const safeLocation = location.trim();
     const shiftTime = `${startTime}–${endTime}`;
 
-        const prompt = `
+    // 5. Prompt for Llama 3 – BODY ONLY
+    const prompt = `
 You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
 
-You will receive structured information about one support shift. Your job is to write the BODY of the progress note ONLY (no headers), in clear Australian English.
+You will receive structured information about ONE support shift. Your job is to write the BODY of the progress note ONLY (no headers), in clear Australian English.
 
 If the information is vague, gibberish or clearly placeholder text (for example: "asd", "test", random characters, or extremely short notes that do not describe what happened), then:
 - Do NOT create a normal progress note.
@@ -141,37 +170,37 @@ ${followUpActions}
 
 Support worker name: ${workerName}
 
-REQUIREMENTS FOR A VALID NOTE BODY:
+STYLE AND SAFETY RULES:
 - Use Australian English spelling (e.g. "behaviour", "organisation").
+- Write STRICTLY in THIRD-PERSON. Do NOT use "I", "we", "my", "our" or similar. Refer to "the support worker" and the participant by name.
 - Be FACTUAL and OBJECTIVE: describe what happened, what was observed and what the worker did.
 - Use NEUTRAL, respectful, person-centred language. Avoid judgemental labels such as "difficult", "lazy", "non-compliant" or "aggressive".
-- Focus on the participant’s actions, choices and responses where possible (person-centred).
+- Focus on the participant’s actions, choices and responses where possible.
 - Include only information relevant to the participant's support and NDIS goals.
+- ONLY describe mood, behaviour, stress, mental health or emotional state if this is clearly implied or stated in the raw worker input. Do NOT invent new symptoms or problems.
 - Clearly link the activities to the participant's NDIS goals where possible (e.g. community access, daily living skills, communication, emotional regulation), not just "mental health" in general.
 - If there were incidents, risks or changes, describe:
   • what happened,
   • where and when (if given),
   • the impact on the participant, and
-  • what the worker did in response (checks, support, escalation).
+  • what the support worker did in response (checks, support, escalation).
 - Do NOT state that an incident report was completed unless this is explicitly mentioned in the raw input.
-- If follow-up is needed, give a clear and actionable handover (what should be monitored or done, and over what time frame).
+- ALWAYS include a brief follow-up / handover paragraph at the end, even if it is simple (e.g. what to monitor next shift).
 - Do NOT add clinical diagnoses, labels or advice that were not mentioned.
 - Do NOT invent details.
 
 OUTPUT FORMAT FOR A VALID NOTE BODY:
-Write 2–4 short paragraphs covering, in order:
-1) Supports provided (what was done and where),
-2) Participant’s presentation and engagement (including any changes from usual if implied),
-3) Progress towards goals (how the activities related to their NDIS goals in concrete, functional terms),
-4) Any incidents/risks/changes and follow-up or next steps.
-
-IMPORTANT:
+- Do NOT introduce the note. Do NOT write phrases like "Here is the body of the note" or "In this note".
 - Do NOT include any header lines such as "Support Worker:", "Date of Support:", etc.
 - Do NOT restate the date, time or location in the first sentence (these are already captured in the header).
-- Start directly with the first paragraph of the note body (e.g. "During this shift, ...").
+- Start directly with the first paragraph of the note body, e.g. "During this shift, the support worker..." or "Throughout this shift, the support worker...".
+- Write 2–4 short paragraphs covering, in order:
+  1) Supports provided (what was done and where),
+  2) Participant’s presentation and engagement (including any changes from usual if implied),
+  3) Progress towards goals (how the activities related to their NDIS goals in concrete, functional terms),
+  4) A final paragraph with any incidents/risks/changes AND clear follow-up or next steps (handover).
 - Return ONLY the note body text or the ERROR line.
 `;
-
 
     const ollamaResponse = await axios.post(
       "http://localhost:11434/api/generate",
@@ -188,6 +217,7 @@ IMPORTANT:
       return res.status(400).json({ error: modelText });
     }
 
+    // 6. Prepend standard header
     const header = [
       `Support Worker: ${workerName}`,
       `Date of Support: ${date}`,
@@ -204,6 +234,7 @@ IMPORTANT:
     return res.status(500).json({ error: "Failed to generate note" });
   }
 });
+
 
 
 const PORT = 5000;
