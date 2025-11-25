@@ -12,6 +12,124 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "Backend running" });
 });
 
+// Helper: time to minutes since midnight
+const timeToMinutes = (t) => {
+  if (!t || typeof t !== "string") return null;
+  const [hStr, mStr] = t.split(":");
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+};
+
+// Helper: parse YYYY-MM-DD into Date at midnight
+const parseYyyyMmDd = (s) => {
+  if (!s || typeof s !== "string") return null;
+  const [yStr, mStr, dStr] = s.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const d = Number(dStr);
+  if ([y, m, d].some((n) => Number.isNaN(n))) return null;
+  return new Date(y, m - 1, d);
+};
+
+// Simple junk detection
+const looksLikeJunk = (text) => {
+  const t = (text || "").trim();
+  if (t.length < 10) return true;
+  if (!t.includes(" ") && t.length < 20) return true;
+  if (/^([a-zA-Z0-9]{1,3})\1{2,}$/i.test(t)) return true;
+  return false;
+};
+
+// Escape helper for regex
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// ---- Compliance filter (hybrid layer) ----
+function applyComplianceFilter(noteBody, rawCombined, workerName) {
+  let body = (noteBody || "").trim();
+
+  // 1) Drop obvious intro lines
+  const lines = body.split("\n").filter((line, idx) => {
+    const t = line.trim().toLowerCase();
+    if (idx === 0 && t.startsWith("here is")) return false;
+    if (t.startsWith("here is the written progress note")) return false;
+    if (t.startsWith("here is the body")) return false;
+    if (t.startsWith("below is")) return false;
+    if (t.startsWith("i'm ready to assist")) return false;
+    return true;
+  });
+  body = lines.join("\n").trim();
+
+  // 2) Replace worker name with "the support worker"
+  if (workerName && workerName.trim()) {
+    const workerNameRegex = new RegExp(escapeRegExp(workerName), "gi");
+    body = body.replace(workerNameRegex, "the support worker");
+  }
+
+  // 3) Fix duplicated "the support worker the support worker"
+  body = body.replace(/the support worker\s+the support worker/gi, "the support worker");
+
+  // 4) Remove / neutralise very subjective or therapeutic phrasings
+  // (We keep this list small and generic)
+  const replacements = [
+    {
+      // e.g. "with persistence and patience, Ali ..."
+      regex: /\bwith persistence and patience[^.]*\./gi,
+      replace: "After some time, the participant began to engage in the activity."
+    },
+    {
+      // causal mood / wellbeing statements
+      // e.g. "which had a positive impact on his mood"
+      regex: /\b(had|has|having|made|caused)\b[^.]*\b(positive impact|impact on (his|her|their) mood|improved (his|her|their) mood|helped (him|her|them) feel better)\b[^.]*/gi,
+      replace: ""
+    },
+    {
+      // overly therapeutic environment description
+      regex: /\b(calming|therapeutic)\s+environment[^.]*/gi,
+      replace: "environment"
+    },
+    {
+      // very broad emotional wellbeing phrase
+      regex: /\bemotional well[- ]?being\b/gi,
+      replace: "presentation"
+    },
+    {
+      // generic wellbeing
+      regex: /\boverall well[- ]?being\b/gi,
+      replace: "overall presentation"
+    }
+  ];
+
+  replacements.forEach(({ regex, replace }) => {
+    body = body.replace(regex, replace);
+  });
+
+  // 5) First-person pronouns -> third-person (simple mapping)
+  // This covers cases like "I am concerned about Ali's low mood..."
+  const pronounRules = [
+    { regex: /\bI am\b/gi, replace: "The support worker is" },
+    { regex: /\bI'm\b/gi, replace: "The support worker is" },
+    { regex: /\bI\b/gi, replace: "the support worker" },
+    { regex: /\bmy\b/gi, replace: "the support worker's" },
+    { regex: /\bwe\b/gi, replace: "the support worker and the participant" },
+    { regex: /\bour\b/gi, replace: "the support worker and the participant's" },
+    { regex: /\bus\b/gi, replace: "the support worker and the participant" }
+  ];
+  pronounRules.forEach(({ regex, replace }) => {
+    body = body.replace(regex, replace);
+  });
+
+  // 6) Optional: remove completely empty lines + tidy spaces
+  body = body
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .join("\n\n");
+
+  return body.trim();
+}
+
 // Generate note using Ollama
 app.post("/api/generate-note", async (req, res) => {
   try {
@@ -28,27 +146,6 @@ app.post("/api/generate-note", async (req, res) => {
       followUpActions,
       workerName,
     } = req.body;
-
-    // Helper: time to minutes since midnight
-    const timeToMinutes = (t) => {
-      if (!t || typeof t !== "string") return null;
-      const [hStr, mStr] = t.split(":");
-      const h = Number(hStr);
-      const m = Number(mStr);
-      if (Number.isNaN(h) || Number.isNaN(m)) return null;
-      return h * 60 + m;
-    };
-
-    // Helper: parse YYYY-MM-DD into Date at midnight
-    const parseYyyyMmDd = (s) => {
-      if (!s || typeof s !== "string") return null;
-      const [yStr, mStr, dStr] = s.split("-");
-      const y = Number(yStr);
-      const m = Number(mStr);
-      const d = Number(dStr);
-      if ([y, m, d].some((n) => Number.isNaN(n))) return null;
-      return new Date(y, m - 1, d);
-    };
 
     // 1. Required field checks
     const requiredFields = {
@@ -108,15 +205,7 @@ app.post("/api/generate-note", async (req, res) => {
       });
     }
 
-    // 4. Simple junk detection
-    const looksLikeJunk = (text) => {
-      const t = text.trim();
-      if (t.length < 10) return true;
-      if (!t.includes(" ") && t.length < 20) return true;
-      if (/^([a-zA-Z0-9]{1,3})\1{2,}$/i.test(t)) return true;
-      return false;
-    };
-
+    // 4. Junk detection on key description fields
     const junkFields = [];
     if (looksLikeJunk(activitiesAndSupports)) junkFields.push("activitiesAndSupports");
     if (looksLikeJunk(participantPresentation)) junkFields.push("participantPresentation");
@@ -133,22 +222,29 @@ app.post("/api/generate-note", async (req, res) => {
     const safeLocation = location.trim();
     const shiftTime = `${startTime}–${endTime}`;
 
+    const rawCombined =
+      (activitiesAndSupports || "") +
+      " " +
+      (participantPresentation || "") +
+      " " +
+      (goalsWorkedOn || "") +
+      " " +
+      (incidentsOrRisks || "") +
+      " " +
+      (followUpActions || "");
+
     // 5. Prompt for Llama 3 – BODY ONLY
     const prompt = `
 You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
 
-You have ALREADY received all structured information about ONE support shift below.
-Your task is to write the BODY of an NDIS-style progress note ONLY (no headers).
-DO NOT ask for more input. Either:
-- return a valid progress note body, OR
-- return a single line starting with "ERROR:" as described below.
+You will receive structured information about ONE support shift. Your task is to write the BODY of an NDIS-style progress note ONLY (no headers).
 
-If the information is vague, gibberish, placeholder text (e.g., "asd", "test", "n/a", or extremely short responses that do not describe what happened), then:
+If the information is vague, gibberish, placeholder text (e.g., “asd”, “test”, “n/a”, or extremely short responses that do not describe what happened), then:
 - Do NOT generate a normal note.
 - Instead, return exactly:
-  ERROR: Insufficient information. Please rewrite the following fields with real details: [list fields].
+  ERROR: Insufficient information. Please rewrite the following fields with real details.
 
-If the information is valid, generate a high-quality progress note BODY ONLY.
+Otherwise, generate a high-quality progress note BODY ONLY.
 
 DATA PROVIDED:
 Participant: ${participantName}
@@ -178,59 +274,32 @@ STYLE, FORMAT & SAFETY RULES
 -----------------------------------------------------------
 
 1) Write STRICTLY in third-person.
-   - Use "the support worker", "the participant", or their name.
-   - NEVER use "I", "we", "my", "our".
+   - Use “the support worker”, “the participant”, or their name.
+   - NEVER use “I”, “we”, “my”, “our”.
 
 2) Be FACTUAL and OBSERVABLE.
    - Describe what occurred, what was observed, and what the support worker did.
-   - Do NOT describe internal feelings or thoughts unless explicitly stated in the input.
+   - Do NOT describe internal thoughts or feelings unless explicitly stated in the input.
 
-3) NO invented emotional states.
-   - ONLY use mood/affect words that appear in the raw input.
-   - Do NOT add terms like "anxious", "calm", "distressed", "comfortable", "supported", "relaxed",
-     "overwhelmed", "well-being", etc., unless written in the input.
-   - If the input says "stressed", you may say "the participant appeared stressed". Do NOT expand into
-     "anxious", "emotionally dysregulated", etc.
+3) ONLY use mood/affect words that appear in the raw input.
+   - Do NOT add new emotional labels (e.g., anxious, calm, distressed, comfortable, supported) unless written in the input.
 
-4) NO emotional-effect statements.
-   - Banned examples: "helped him feel calm", "allowed him to feel supported", "promoted well-being",
-     "improved his mood".
-   - Only describe OBSERVABLE changes already listed by the worker.
+4) NDIS goal linkage must be FUNCTIONAL.
+   - Focus on things like community access, daily living skills, participation, communication, engagement.
 
-5) NDIS goal linkage must be FUNCTIONAL.
-   Allowed examples (functional):
-   - community access
-   - daily living skills
-   - engagement
-   - communication
-   - participation
-   - emotional regulation (ONLY if stated)
+5) Incident documentation must be clear and neutral.
+   - What happened, immediate impact, what the support worker did, whether the participant continued the activity.
+   - Do NOT say an incident report was completed unless stated in the input.
 
-   Do NOT generalise goals to "overall wellbeing" or "health improvement".
+6) ALWAYS include a follow-up / next-shift paragraph at the end.
+   - Even if minimal. e.g., “For the next shift, staff should…”
 
-6) Incident documentation must be clear and neutral.
-   When an incident occurs, describe:
-   - what happened
-   - immediate impact (if any)
-   - what the support worker did in response (check, assist, offer support)
-   - the participant’s ability to continue activities
+7) Do NOT write any introductory phrases like:
+   - “Here is the note”
+   - “This progress note describes…”
+   Start directly with the first paragraph.
 
-   NEVER write that an incident report was completed unless explicitly stated.
-
-7) ALWAYS include a follow-up / next-shift paragraph at the end.
-   Even if minimal (e.g. what to monitor next shift).
-
-8) ABSOLUTELY NO INTRODUCTORY SENTENCES.
-   Do NOT write:
-   - "Here is the note"
-   - "Below is the summary"
-   - "This progress note describes..."
-
-   Start directly with the first paragraph:
-   "During this shift, the support worker..."
-
-9) Do NOT restate date, location or shift time inside the body.
-   These appear in the header.
+8) Do NOT restate date, location or shift time inside the body; they are already in the header.
 
 -----------------------------------------------------------
 REQUIRED OUTPUT STRUCTURE
@@ -238,19 +307,16 @@ REQUIRED OUTPUT STRUCTURE
 
 Write 2–4 paragraphs in this order:
 
-1) Supports Provided – describe the activities completed and where they occurred.
-2) Participant Presentation – mood/behaviour/engagement EXACTLY as stated (no expansions).
-3) Goals – link activities to NDIS functional goals without adding new intentions or emotional interpretations.
-4) Incidents + Follow-up – factual summary + worker response, and ALWAYS end with follow-up / handover.
-
------------------------------------------------------------
+1) Supports Provided – activities completed and where they occurred.
+2) Participant Presentation – mood/behaviour/engagement as described in the input.
+3) Goals – link activities to NDIS functional goals.
+4) Incidents + Follow-up – any incidents/risks + clear follow-up actions or monitoring.
 
 OUTPUT ONLY THE BODY TEXT.
 NO HEADERS.
 NO TITLES.
 NO INTRO LINES.
 `;
-
 
     const ollamaResponse = await axios.post(
       "http://localhost:11434/api/generate",
@@ -263,136 +329,15 @@ NO INTRO LINES.
 
     let modelText = (ollamaResponse.data.response || "").trim();
 
+    // If model followed the "ERROR:" contract
     if (modelText.startsWith("ERROR:")) {
       return res.status(400).json({ error: modelText });
     }
 
-    // 6. SELF-CLEAN THE BODY (Option C)
+    // Apply hybrid compliance filter
+    const filteredBody = applyComplianceFilter(modelText, rawCombined, workerName);
 
-    let noteBody = modelText;
-
-    // a) Strip any intro lines like "Here is the written progress note BODY:"
-    const lines = noteBody.split("\n");
-    const cleanedLines = lines.filter((line, index) => {
-      const trimmed = line.trim().toLowerCase();
-      if (index === 0 && trimmed.startsWith("here is") && trimmed.includes("body")) {
-        return false; // drop first intro line
-      }
-      if (trimmed.startsWith("here is the written progress note")) return false;
-      if (trimmed.startsWith("here is the body of the note")) return false;
-      if (trimmed.startsWith("below is")) return false;
-      return true;
-    });
-    noteBody = cleanedLines.join("\n").trim();
-
-    // b) Replace any explicit use of the worker's name in the body with "the support worker"
-    const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const workerNameRegex = new RegExp(escapeRegExp(workerName), "g");
-    noteBody = noteBody.replace(workerNameRegex, "the support worker");
-
-    // c) Clean up heavy mental-health labels if not in raw input
-    const rawCombined =
-      (
-        activitiesAndSupports +
-        " " +
-        participantPresentation +
-        " " +
-        goalsWorkedOn +
-        " " +
-        incidentsOrRisks +
-        " " +
-        followUpActions
-      ).toLowerCase();
-
-    const sensitiveTerms = [
-      "anxiety",
-      "anxious",
-      "depression",
-      "depressed",
-      "suicidal",
-      "psychosis",
-      "psychotic",
-      "ptsd",
-      "panic attack",
-    ];
-
-    sensitiveTerms.forEach((term) => {
-      if (noteBody.toLowerCase().includes(term) && !rawCombined.includes(term)) {
-        const termRegex = new RegExp(`\\b${term}\\b`, "gi");
-        // Replace with more neutral phrase
-        noteBody = noteBody.replace(termRegex, "emotional wellbeing");
-      }
-    });
-
-    // d) Remove emotional-effect phrases not supported by input
-    const emotionalEffects = [
-    "allowed him to feel",
-    "allowed her to feel",
-    "allowed them to feel",
-    "helped him feel",
-    "helped her feel",
-    "helped them feel",
-    "promoted well-being",
-    "promoted wellbeing",
-    "promotes well-being",
-    "supports well-being",
-    "supported his well-being",
-    "supported her well-being",
-    "overall well-being",
-    "overall wellbeing",
-    "feel comfortable",
-    "felt comfortable",
-    "feel supported",
-    "felt supported",
-    "calm and structured environment",
-    "enabling him to feel",
-    "enabling her to feel",
-    "enabling them to feel",
-    ];
-
-    emotionalEffects.forEach((phrase) => {
-    const regex = new RegExp(phrase, "gi");
-    if (noteBody.toLowerCase().includes(phrase.toLowerCase())) {
-        noteBody = noteBody.replace(regex, "supported routine engagement");
-    }
-    });
-
-// e) Remove worker name if AI reintroduces it
-noteBody = noteBody.replace(workerNameRegex, "the support worker");
-
-// f) Remove duplicated "the support worker the support worker"
-noteBody = noteBody.replace(/the support worker the support worker/gi, "the support worker");
-noteBody = noteBody.replace(/the support worker\s*,?\s*the support worker/gi, "the support worker");
-
-// g) Remove emotional interpretation phrases
-const interpretationReplacements = [
-  { find: /improve his mood/gi, replace: "support his engagement" },
-  { find: /improve her mood/gi, replace: "support her engagement" },
-  { find: /improve their mood/gi, replace: "support their engagement" },
-
-  { find: /positive impact on his behaviour/gi, replace: "he participated well" },
-  { find: /positive impact on her behaviour/gi, replace: "she participated well" },
-  { find: /positive impact on their behaviour/gi, replace: "they participated well" },
-
-  { find: /relaxed environment/gi, replace: "predictable routine environment" },
-  { find: /calm environment/gi, replace: "structured routine environment" },
-
-  { find: /aimed to improve .* mood/gi, replace: "supported engagement in preferred activities" },
-
-  { find: /promote emotional regulation/gi, replace: "support engagement in routine tasks" },
-  { find: /emotional regulation/gi, replace: "engagement in routine tasks" }
-];
-
-interpretationReplacements.forEach(({ find, replace }) => {
-  noteBody = noteBody.replace(find, replace);
-});
-
-// h) Remove template-like sentences
-noteBody = noteBody.replace(/The activity provided was .*?location\./gi, "");
-
-
-
-    // 7. Prepend standard header
+    // Header (non-AI)
     const header = [
       `Support Worker: ${workerName}`,
       `Date of Support: ${date}`,
@@ -401,7 +346,7 @@ noteBody = noteBody.replace(/The activity provided was .*?location\./gi, "");
       `Participant: ${participantName}`,
     ].join("\n");
 
-    const fullNote = `${header}\n\n${noteBody}`;
+    const fullNote = `${header}\n\n${filteredBody}`;
 
     return res.json({ note: fullNote });
   } catch (error) {
@@ -409,9 +354,6 @@ noteBody = noteBody.replace(/The activity provided was .*?location\./gi, "");
     return res.status(500).json({ error: "Failed to generate note" });
   }
 });
-
-
-
 
 const PORT = 5000;
 app.listen(PORT, () => {
