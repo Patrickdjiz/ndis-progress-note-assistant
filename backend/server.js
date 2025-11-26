@@ -65,13 +65,11 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
   if (workerName && workerName.trim()) {
     const workerNameRegex = new RegExp(escapeRegExp(workerName), "gi");
     body = body.replace(workerNameRegex, "the support worker");
+    // Fix duplicated "the support worker the support worker"
+    body = body.replace(/the support worker\s+the support worker/gi, "the support worker");
   }
 
-  // 3) Fix duplicated "the support worker the support worker"
-  body = body.replace(/the support worker\s+the support worker/gi, "the support worker");
-
-  // 4) Remove / neutralise very subjective or therapeutic phrasings
-  // (We keep this list small and generic)
+  // 3) Remove / neutralise subjective, therapeutic or organisational-process phrases
   const replacements = [
     {
       // e.g. "with persistence and patience, Ali ..."
@@ -98,6 +96,21 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
       // generic wellbeing
       regex: /\boverall well[- ]?being\b/gi,
       replace: "overall presentation"
+    },
+    {
+      // internal process / records – remove the whole sentence fragment
+      regex: /\b(this|the incident)\s+(will|has been)\s+documented in (the )?service records[^.]*/gi,
+      replace: ""
+    },
+    {
+      // "an incident report was/will be completed"
+      regex: /\ban incident report (?:was|will be) completed[^.]*/gi,
+      replace: ""
+    },
+    {
+      // soften behavioural comparison
+      regex: /distinct from his usual presentation/gi,
+      replace: "different from how he usually presents"
     }
   ];
 
@@ -105,8 +118,7 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
     body = body.replace(regex, replace);
   });
 
-  // 5) First-person pronouns -> third-person (simple mapping)
-  // This covers cases like "I am concerned about Ali's low mood..."
+  // 4) First-person pronouns -> third-person (simple mapping)
   const pronounRules = [
     { regex: /\bI am\b/gi, replace: "The support worker is" },
     { regex: /\bI'm\b/gi, replace: "The support worker is" },
@@ -120,7 +132,7 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
     body = body.replace(regex, replace);
   });
 
-  // 6) Optional: remove completely empty lines + tidy spaces
+  // 5) Remove extra blank lines + tidy spaces
   body = body
     .split("\n")
     .map((l) => l.trim())
