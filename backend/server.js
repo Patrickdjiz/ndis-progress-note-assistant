@@ -66,7 +66,7 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
     const workerNameRegex = new RegExp(escapeRegExp(workerName), "gi");
     body = body.replace(workerNameRegex, "the support worker");
     // Fix duplicated "the support worker the support worker"
-    body = body.replace(/the support worker\s+the support worker/gi, "the support worker");
+    body = body.replace(/the support worker[\s,]+the support worker/gi, "the support worker");
   }
 
   // 3) Remove / neutralise subjective, therapeutic or organisational-process phrases
