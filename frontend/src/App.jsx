@@ -655,6 +655,7 @@ function App() {
                 borderBottom: "1px solid #e5e7eb",
                 background: "#f9fafb",
                 fontWeight: 600,
+                color: "#000000ff",
               }}
             >
               Recent notes (max 50)
@@ -674,6 +675,7 @@ function App() {
                         textAlign: "left",
                         padding: "0.4rem 0.6rem",
                         borderBottom: "1px solid #e5e7eb",
+                        color: "#ffffffff",
                       }}
                     >
                       Date
@@ -683,6 +685,7 @@ function App() {
                         textAlign: "left",
                         padding: "0.4rem 0.6rem",
                         borderBottom: "1px solid #e5e7eb",
+                        color: "#ffffffff",
                       }}
                     >
                       Participant
@@ -692,6 +695,7 @@ function App() {
                         textAlign: "left",
                         padding: "0.4rem 0.6rem",
                         borderBottom: "1px solid #e5e7eb",
+                        color: "#ffffffff",
                       }}
                     >
                       Worker
@@ -701,6 +705,7 @@ function App() {
                         textAlign: "left",
                         padding: "0.4rem 0.6rem",
                         borderBottom: "1px solid #e5e7eb",
+                        color: "#ffffffff",
                       }}
                     >
                       Location
@@ -710,6 +715,7 @@ function App() {
                         textAlign: "left",
                         padding: "0.4rem 0.6rem",
                         borderBottom: "1px solid #e5e7eb",
+                        color: "#ffffffff",
                       }}
                     >
                       Incident?
@@ -737,6 +743,7 @@ function App() {
                       onClick={() => handleSelectNote(n.id)}
                       style={{
                         cursor: "pointer",
+                        color: "#000000ff",
                         background:
                           selectedNote && selectedNote.id === n.id
                             ? "#eff6ff"

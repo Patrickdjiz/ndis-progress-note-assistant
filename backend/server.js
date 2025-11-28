@@ -424,7 +424,13 @@ STYLE, FORMAT & SAFETY RULES
    - “This progress note describes…”
    Start directly with the first paragraph.
 
-8) Do NOT restate date, location or shift time inside the body; they are already in the header.
+8) Do NOT restate date, location or shift time inside the body.
+   - Do NOT write sentences like:
+     - "The support worker accompanied [name] on a shift from 10:00 to 13:00 at [location] on [date]."
+     - "The shift took place at [location] on [date]."
+   - You can mention places (e.g., "at home", "at the shopping centre") when describing activities,
+     but do NOT repeat the exact shift time or date from the header.
+
 
 -----------------------------------------------------------
 REQUIRED OUTPUT STRUCTURE
