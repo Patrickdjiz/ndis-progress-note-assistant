@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 function App() {
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -17,13 +17,83 @@ function App() {
 
   // Incident UI flags
   const [incidentOccurred, setIncidentOccurred] = useState(false); // checkbox
-  const [noteHasIncident, setNoteHasIncident] = useState(false);  // what the note actually says
+  const [noteHasIncident, setNoteHasIncident] = useState(false); // what the note actually says
 
   // Output + UI state
   const [generatedNote, setGeneratedNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [copied, setCopied] = useState(false);
+
+  // Dashboard state
+  const [notes, setNotes] = useState([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesError, setNotesError] = useState("");
+  const [selectedNote, setSelectedNote] = useState(null);
+  const [filterParticipant, setFilterParticipant] = useState("");
+  const [filterIncident, setFilterIncident] = useState("all"); // "all" | "true" | "false"
+
+  // Fetch notes from backend with current filters
+  const fetchNotes = async () => {
+    try {
+      setNotesLoading(true);
+      setNotesError("");
+
+      const params = new URLSearchParams();
+      if (filterParticipant.trim()) {
+        params.append("participant", filterParticipant.trim());
+      }
+      if (filterIncident !== "all") {
+        params.append("hasIncident", filterIncident);
+      }
+
+      const url =
+        "http://localhost:5000/api/notes" +
+        (params.toString() ? `?${params.toString()}` : "");
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to load notes");
+      }
+
+      setNotes(Array.isArray(data.notes) ? data.notes : []);
+      // If filters change, clear selected note so we don't show stale data
+      setSelectedNote(null);
+    } catch (err) {
+      console.error("Error loading notes:", err);
+      setNotesError(err?.message || "Failed to load notes");
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  // Fetch a single note by ID
+  const handleSelectNote = async (id) => {
+    try {
+      setNotesError("");
+      setSelectedNote(null);
+
+      const response = await fetch(`http://localhost:5000/api/notes/${id}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch note");
+      }
+
+      setSelectedNote(data.note);
+    } catch (err) {
+      console.error("Error fetching note:", err);
+      setNotesError(err?.message || "Failed to fetch note");
+    }
+  };
+
+  // Initial load of recent notes on page load
+  useEffect(() => {
+    fetchNotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleGenerate = async () => {
     // quick front-end validation
@@ -72,7 +142,6 @@ function App() {
           incidentsOrRisks,
           followUpActions,
           workerName,
-          // This extra flag is just for future-proofing; backend will ignore it for now
           incidentOccurred,
         }),
       });
@@ -85,9 +154,7 @@ function App() {
 
       setGeneratedNote(data.note);
 
-      // If the worker says "yes, incident" AND they wrote something non-trivial
-      // in the incidents box and it's not a "no incidents" style phrase,
-      // we nudge them with the incident banner.
+      // Check if this shift includes an incident for the banner
       const incText = (incidentsOrRisks || "").trim();
       const looksLikeNoIncident =
         /^no incidents?|^no incident|^no concerns?/i.test(incText);
@@ -97,6 +164,9 @@ function App() {
           incText.length > 0 &&
           !looksLikeNoIncident
       );
+
+      // Refresh notes list after a successful save
+      fetchNotes();
     } catch (err) {
       console.error(err);
       setErrorMsg(err?.message || "Something went wrong");
@@ -142,7 +212,7 @@ function App() {
   return (
     <div
       style={{
-        maxWidth: "900px",
+        maxWidth: "1100px",
         margin: "0 auto",
         padding: "1.5rem",
         fontFamily: "sans-serif",
@@ -155,6 +225,7 @@ function App() {
         service records.
       </p>
 
+      {/* ====== GENERATOR FORM ====== */}
       <div style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}>
         {/* Row 1: Participant + date */}
         <div style={{ display: "flex", gap: "1rem" }}>
@@ -310,7 +381,9 @@ function App() {
             padding: "0.6rem",
           }}
         >
-          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <label
+            style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}
+          >
             <input
               type="checkbox"
               checked={incidentOccurred}
@@ -325,9 +398,9 @@ function App() {
               color: "#555",
             }}
           >
-            If you tick this, you&apos;ll still write the incident summary below,
-            and your organisation&apos;s usual incident report process still
-            applies.
+            If you tick this, you&apos;ll still write the incident summary
+            below, and your organisation&apos;s usual incident report process
+            still applies.
           </p>
 
           <textarea
@@ -496,6 +569,284 @@ function App() {
           </p>
         </div>
       )}
+
+      {/* ====== SAVED NOTES / DASHBOARD ====== */}
+      <hr style={{ margin: "2rem 0" }} />
+
+      <section>
+        <h2>Saved notes dashboard</h2>
+        <p style={{ fontSize: "0.9rem", color: "#4b5563" }}>
+          These notes are stored locally in your prototype database
+          (SQLite). For production use with real NDIS data, you&apos;ll need
+          secure, Australian-hosted infrastructure, authentication and
+          formal policies in place.
+        </p>
+
+        {/* Filters + refresh */}
+        <div
+          style={{
+            marginTop: "1rem",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.75rem",
+            alignItems: "flex-end",
+          }}
+        >
+          <div style={{ minWidth: "200px" }}>
+            <label style={{ display: "block" }}>Filter by participant</label>
+            <input
+              type="text"
+              value={filterParticipant}
+              onChange={(e) => setFilterParticipant(e.target.value)}
+              style={{ width: "100%", padding: "0.4rem" }}
+              placeholder="e.g. Ali"
+            />
+          </div>
+
+          <div>
+            <label style={{ display: "block" }}>Incident filter</label>
+            <select
+              value={filterIncident}
+              onChange={(e) => setFilterIncident(e.target.value)}
+              style={{ padding: "0.4rem" }}
+            >
+              <option value="all">All notes</option>
+              <option value="true">Incident notes only</option>
+              <option value="false">Notes without incidents</option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={fetchNotes}
+            disabled={notesLoading}
+            style={{
+              padding: "0.6rem 1.2rem",
+              cursor: notesLoading ? "wait" : "pointer",
+            }}
+          >
+            {notesLoading ? "Loading notes..." : "Refresh"}
+          </button>
+        </div>
+
+        {notesError && (
+          <p style={{ color: "red", marginTop: "0.75rem" }}>{notesError}</p>
+        )}
+
+        <div
+          style={{
+            marginTop: "1rem",
+            display: "grid",
+            gridTemplateColumns: "1.2fr 1fr",
+            gap: "1rem",
+          }}
+        >
+          {/* Notes table */}
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: "8px",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "0.6rem 0.8rem",
+                borderBottom: "1px solid #e5e7eb",
+                background: "#f9fafb",
+                fontWeight: 600,
+              }}
+            >
+              Recent notes (max 50)
+            </div>
+            <div style={{ maxHeight: "350px", overflowY: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: "0.9rem",
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: "0.4rem 0.6rem",
+                        borderBottom: "1px solid #e5e7eb",
+                      }}
+                    >
+                      Date
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: "0.4rem 0.6rem",
+                        borderBottom: "1px solid #e5e7eb",
+                      }}
+                    >
+                      Participant
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: "0.4rem 0.6rem",
+                        borderBottom: "1px solid #e5e7eb",
+                      }}
+                    >
+                      Worker
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: "0.4rem 0.6rem",
+                        borderBottom: "1px solid #e5e7eb",
+                      }}
+                    >
+                      Location
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: "0.4rem 0.6rem",
+                        borderBottom: "1px solid #e5e7eb",
+                      }}
+                    >
+                      Incident?
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {notes.length === 0 && !notesLoading && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        style={{
+                          padding: "0.7rem",
+                          textAlign: "center",
+                          color: "#6b7280",
+                        }}
+                      >
+                        No notes found. Generate a note and click Refresh.
+                      </td>
+                    </tr>
+                  )}
+                  {notes.map((n) => (
+                    <tr
+                      key={n.id}
+                      onClick={() => handleSelectNote(n.id)}
+                      style={{
+                        cursor: "pointer",
+                        background:
+                          selectedNote && selectedNote.id === n.id
+                            ? "#eff6ff"
+                            : "white",
+                      }}
+                    >
+                      <td
+                        style={{
+                          padding: "0.4rem 0.6rem",
+                          borderBottom: "1px solid #f3f4f6",
+                        }}
+                      >
+                        {n.date}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.6rem",
+                          borderBottom: "1px solid #f3f4f6",
+                        }}
+                      >
+                        {n.participantName}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.6rem",
+                          borderBottom: "1px solid #f3f4f6",
+                        }}
+                      >
+                        {n.workerName}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.6rem",
+                          borderBottom: "1px solid #f3f4f6",
+                        }}
+                      >
+                        {n.location}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.6rem",
+                          borderBottom: "1px solid #f3f4f6",
+                          color: n.incidentFlag ? "#b91c1c" : "#047857",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {n.incidentFlag ? "Yes" : "No"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Selected note view */}
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: "8px",
+              padding: "0.8rem",
+              minHeight: "200px",
+              background: "#f9fafb",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Note details</h3>
+            {!selectedNote && (
+              <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
+                Click a row in the table to view the full note body here.
+              </p>
+            )}
+            {selectedNote && (
+              <>
+                <p
+                  style={{
+                    fontSize: "0.9rem",
+                    marginBottom: "0.4rem",
+                    color: "#374151",
+                  }}
+                >
+                  <strong>Participant:</strong> {selectedNote.participantName}
+                  <br />
+                  <strong>Worker:</strong> {selectedNote.workerName}
+                  <br />
+                  <strong>Date:</strong> {selectedNote.date}{" "}
+                  {selectedNote.startTime && selectedNote.endTime
+                    ? `(${selectedNote.startTime}–${selectedNote.endTime})`
+                    : ""}
+                  <br />
+                  <strong>Location:</strong> {selectedNote.location}
+                  <br />
+                  <strong>Incident:</strong>{" "}
+                  {selectedNote.incidentFlag ? "Yes" : "No"}
+                </p>
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    fontFamily: "inherit",
+                    fontSize: "0.9rem",
+                    marginTop: "0.6rem",
+                    color: "#111827",
+                  }}
+                >
+                  {selectedNote.noteText}
+                </pre>
+              </>
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
