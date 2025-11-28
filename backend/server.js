@@ -12,6 +12,108 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "Backend running" });
 });
 
+// List recent notes for dashboard
+app.get("/api/notes", (req, res) => {
+  try {
+    const { participant, hasIncident } = req.query;
+
+    let baseQuery = `
+      SELECT
+        id,
+        participantName,
+        workerName,
+        date,
+        startTime,
+        endTime,
+        location,
+        incidentFlag,
+        createdAt
+      FROM progress_notes
+    `;
+    const where = [];
+    const params = [];
+
+    if (participant && participant.trim()) {
+      where.push("participantName LIKE ?");
+      params.push(`%${participant.trim()}%`);
+    }
+
+    if (hasIncident === "true") {
+      where.push("incidentFlag = 1");
+    } else if (hasIncident === "false") {
+      where.push("incidentFlag = 0");
+    }
+
+    if (where.length > 0) {
+      baseQuery += " WHERE " + where.join(" AND ");
+    }
+
+    baseQuery += " ORDER BY createdAt DESC LIMIT 50";
+
+    const stmt = db.prepare(baseQuery);
+    const rows = stmt.all(...params);
+
+    return res.json({ notes: rows });
+  } catch (err) {
+    console.error("Error listing notes:", err.message);
+    return res.status(500).json({ error: "Failed to list notes" });
+  }
+});
+
+// Fetch a single note (for full view in dashboard)
+app.get("/api/notes/:id", (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: "Invalid note id" });
+    }
+
+    const stmt = db.prepare(`
+      SELECT *
+      FROM progress_notes
+      WHERE id = ?
+    `);
+    const row = stmt.get(id);
+
+    if (!row) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    return res.json({ note: row });
+  } catch (err) {
+    console.error("Error fetching note:", err.message);
+    return res.status(500).json({ error: "Failed to fetch note" });
+  }
+});
+
+
+const Database = require("better-sqlite3");
+
+// open or create local DB file
+const db = new Database("notes.db");
+
+// create table if not exists
+db.exec(`
+  CREATE TABLE IF NOT EXISTS progress_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    participantName TEXT NOT NULL,
+    workerName TEXT NOT NULL,
+    date TEXT NOT NULL,
+    startTime TEXT NOT NULL,
+    endTime TEXT NOT NULL,
+    location TEXT NOT NULL,
+    activitiesAndSupports TEXT NOT NULL,
+    participantPresentation TEXT NOT NULL,
+    goalsWorkedOn TEXT NOT NULL,
+    incidentsOrRisks TEXT NOT NULL,
+    followUpActions TEXT NOT NULL,
+    noteText TEXT NOT NULL,
+    incidentFlag INTEGER NOT NULL DEFAULT 0,
+    createdAt TEXT NOT NULL
+  );
+`);
+
+
 // Helper: time to minutes since midnight
 const timeToMinutes = (t) => {
   if (!t || typeof t !== "string") return null;
@@ -370,6 +472,51 @@ NO INTRO LINES.
     ].join("\n");
 
     const fullNote = `${header}\n\n${filteredBody}`;
+
+    // naïve incident flag: true if worker didn't literally say "no incidents" etc.
+    const incidentText = (incidentsOrRisks || "").toLowerCase();
+    const incidentFlag =
+    incidentText.trim().length > 0 &&
+    !incidentText.includes("no incident") &&
+    !incidentText.includes("no incidents") &&
+    !incidentText.includes("no concerns");
+
+    const insertStmt = db.prepare(`
+    INSERT INTO progress_notes (
+        participantName,
+        workerName,
+        date,
+        startTime,
+        endTime,
+        location,
+        activitiesAndSupports,
+        participantPresentation,
+        goalsWorkedOn,
+        incidentsOrRisks,
+        followUpActions,
+        noteText,
+        incidentFlag,
+        createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insertStmt.run(
+    participantName,
+    workerName,
+    date,
+    startTime,
+    endTime,
+    safeLocation,
+    activitiesAndSupports,
+    participantPresentation,
+    goalsWorkedOn,
+    incidentsOrRisks,
+    followUpActions,
+    fullNote,
+    incidentFlag ? 1 : 0,
+    new Date().toISOString()
+    );
+
 
     return res.json({ note: fullNote });
   } catch (error) {
