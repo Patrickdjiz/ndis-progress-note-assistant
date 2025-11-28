@@ -411,9 +411,15 @@ STYLE, FORMAT & SAFETY RULES
    - Use “the support worker”, “the participant”, or their name.
    - NEVER use “I”, “we”, “my”, “our”.
 
-1a) The first paragraph MUST focus on actions taken by the support worker.
-    - Begin with “The support worker…” or “The worker…”
-    - Do NOT begin the note body with “The participant…”
+1a) The first sentence of the first paragraph MUST literally begin with:
+    "The support worker..."
+
+    For example:
+    - "The support worker assisted [participant] with..."
+    - "The support worker supported the participant to..."
+
+    Do NOT begin the first sentence with "The participant", "This", "These activities",
+    "During the shift", or similar phrases.
 
 
 2) Be FACTUAL and OBSERVABLE.
