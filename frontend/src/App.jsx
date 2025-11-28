@@ -425,6 +425,7 @@ function App() {
             border: "1px solid #ccc",
             borderRadius: "8px",
             background: "#f9f9f9",
+            color: "#000000ff",
           }}
         >
           <h2>Generated Progress Note</h2>
@@ -472,6 +473,7 @@ function App() {
                 borderLeft: "4px solid #d97706",
                 background: "#fff7ed",
                 fontSize: "0.9rem",
+                color: "#000000ff",
               }}
             >
               <strong>Incident reminder:</strong> This note includes an
