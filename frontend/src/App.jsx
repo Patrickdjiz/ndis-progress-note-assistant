@@ -15,9 +15,15 @@ function App() {
   const [followUpActions, setFollowUpActions] = useState("");
   const [workerName, setWorkerName] = useState("");
 
+  // Incident UI flags
+  const [incidentOccurred, setIncidentOccurred] = useState(false); // checkbox
+  const [noteHasIncident, setNoteHasIncident] = useState(false);  // what the note actually says
+
+  // Output + UI state
   const [generatedNote, setGeneratedNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const handleGenerate = async () => {
     // quick front-end validation
@@ -47,6 +53,8 @@ function App() {
     setLoading(true);
     setErrorMsg("");
     setGeneratedNote("");
+    setCopied(false);
+    setNoteHasIncident(false);
 
     try {
       const response = await fetch("http://localhost:5000/api/generate-note", {
@@ -64,6 +72,8 @@ function App() {
           incidentsOrRisks,
           followUpActions,
           workerName,
+          // This extra flag is just for future-proofing; backend will ignore it for now
+          incidentOccurred,
         }),
       });
 
@@ -74,12 +84,59 @@ function App() {
       }
 
       setGeneratedNote(data.note);
+
+      // If the worker says "yes, incident" AND they wrote something non-trivial
+      // in the incidents box and it's not a "no incidents" style phrase,
+      // we nudge them with the incident banner.
+      const incText = (incidentsOrRisks || "").trim();
+      const looksLikeNoIncident =
+        /^no incidents?|^no incident|^no concerns?/i.test(incText);
+
+      setNoteHasIncident(
+        incidentOccurred === true &&
+          incText.length > 0 &&
+          !looksLikeNoIncident
+      );
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || "Something went wrong");
+      setErrorMsg(err?.message || "Something went wrong");
+      setNoteHasIncident(false);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCopyNote = async () => {
+    if (!generatedNote) return;
+    try {
+      await navigator.clipboard.writeText(generatedNote);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error("Clipboard error:", e);
+      setErrorMsg("Could not copy to clipboard. You can copy manually.");
+    }
+  };
+
+  const handleClearForm = () => {
+    setParticipantName("");
+    setDate(todayIso);
+    setStartTime("");
+    setEndTime("");
+    setLocation("");
+    setActivitiesAndSupports("");
+    setParticipantPresentation("");
+    setGoalsWorkedOn("");
+    setIncidentsOrRisks("");
+    setFollowUpActions("");
+    setWorkerName("");
+
+    setIncidentOccurred(false);
+    setNoteHasIncident(false);
+
+    setGeneratedNote("");
+    setErrorMsg("");
+    setCopied(false);
   };
 
   return (
@@ -93,8 +150,9 @@ function App() {
     >
       <h1>NDIS AI Progress Notes Assistant</h1>
       <p>
-        Fill in the key details from your shift and we&apos;ll generate a professional,
-        NDIS-style progress note.
+        Fill in the key details from your shift and we&apos;ll generate a
+        professional, NDIS-style progress note. Review it before saving to your
+        service records.
       </p>
 
       <div style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}>
@@ -184,6 +242,16 @@ function App() {
             style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
             placeholder="Describe what you supported the participant with, where, and how. Include any prompts used and level of assistance."
           />
+          <div
+            style={{
+              textAlign: "right",
+              fontSize: "0.75rem",
+              color: "#666",
+              marginTop: "0.15rem",
+            }}
+          >
+            {activitiesAndSupports.length} characters
+          </div>
         </div>
 
         {/* Presentation */}
@@ -199,6 +267,16 @@ function App() {
             style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
             placeholder="How did the participant engage? Any changes from usual? Be factual and specific."
           />
+          <div
+            style={{
+              textAlign: "right",
+              fontSize: "0.75rem",
+              color: "#666",
+              marginTop: "0.15rem",
+            }}
+          >
+            {participantPresentation.length} characters
+          </div>
         </div>
 
         {/* Goals */}
@@ -212,19 +290,68 @@ function App() {
             style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
             placeholder="Which NDIS goals did this shift support, and how?"
           />
+          <div
+            style={{
+              textAlign: "right",
+              fontSize: "0.75rem",
+              color: "#666",
+              marginTop: "0.15rem",
+            }}
+          >
+            {goalsWorkedOn.length} characters
+          </div>
         </div>
 
-        {/* Incidents / Risks */}
-        <div>
-          <label>Incidents, risks, changes or concerns* </label>
+        {/* Incident toggle + text */}
+        <div
+          style={{
+            border: "1px solid #ddd",
+            borderRadius: "6px",
+            padding: "0.6rem",
+          }}
+        >
+          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            <input
+              type="checkbox"
+              checked={incidentOccurred}
+              onChange={(e) => setIncidentOccurred(e.target.checked)}
+            />
+            <span>Incident, risk, change or concern occurred this shift</span>
+          </label>
+          <p
+            style={{
+              margin: "0.4rem 0 0.3rem",
+              fontSize: "0.8rem",
+              color: "#555",
+            }}
+          >
+            If you tick this, you&apos;ll still write the incident summary below,
+            and your organisation&apos;s usual incident report process still
+            applies.
+          </p>
+
           <textarea
             required
             rows={2}
             value={incidentsOrRisks}
             onChange={(e) => setIncidentsOrRisks(e.target.value)}
             style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
-            placeholder='If none, write "No incidents or concerns". Otherwise, describe what happened factually.'
+            placeholder={
+              incidentOccurred
+                ? "Briefly describe what happened, impact on the participant, and any immediate response."
+                : 'If none, write "No incidents or concerns".'
+            }
           />
+          <div
+            style={{
+              textAlign: "right",
+              fontSize: "0.75rem",
+              color: "#666",
+              marginTop: "0.15rem",
+            }}
+          >
+            {incidentsOrRisks.length} characters
+          </div>
         </div>
 
         {/* Follow up */}
@@ -238,23 +365,54 @@ function App() {
             style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
             placeholder='E.g. "Monitor mood over next 2 shifts and report any changes to coordinator."'
           />
+          <div
+            style={{
+              textAlign: "right",
+              fontSize: "0.75rem",
+              color: "#666",
+              marginTop: "0.15rem",
+            }}
+          >
+            {followUpActions.length} characters
+          </div>
         </div>
       </div>
 
-      <button
-        onClick={handleGenerate}
-        disabled={loading}
-        style={{
-          marginTop: "1.2rem",
-          padding: "0.7rem 1.4rem",
-          cursor: loading ? "wait" : "pointer",
-        }}
-      >
-        {loading ? "Generating note..." : "Generate note"}
-      </button>
+      {/* Actions */}
+      <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.2rem" }}>
+        <button
+          onClick={handleGenerate}
+          disabled={loading}
+          style={{
+            padding: "0.7rem 1.4rem",
+            cursor: loading ? "wait" : "pointer",
+          }}
+        >
+          {loading ? "Generating note..." : "Generate note"}
+        </button>
+        <button
+          type="button"
+          onClick={handleClearForm}
+          disabled={loading}
+          style={{
+            padding: "0.7rem 1.4rem",
+            background: "#f3f4f6",
+            border: "1px solid #d1d5db",
+            cursor: loading ? "not-allowed" : "pointer",
+          }}
+        >
+          New shift / Clear form
+        </button>
+      </div>
 
       {errorMsg && (
-        <p style={{ color: "red", marginTop: "0.8rem", whiteSpace: "pre-wrap" }}>
+        <p
+          style={{
+            color: "red",
+            marginTop: "0.8rem",
+            whiteSpace: "pre-wrap",
+          }}
+        >
           {errorMsg}
         </p>
       )}
@@ -266,12 +424,74 @@ function App() {
             padding: "1rem",
             border: "1px solid #ccc",
             borderRadius: "8px",
-            whiteSpace: "pre-wrap",
             background: "#f9f9f9",
           }}
         >
           <h2>Generated Progress Note</h2>
-          <p>{generatedNote}</p>
+          <pre
+            style={{
+              whiteSpace: "pre-wrap",
+              marginTop: "0.5rem",
+              fontFamily: "inherit",
+            }}
+          >
+            {generatedNote}
+          </pre>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "0.75rem",
+              marginTop: "0.75rem",
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleCopyNote}
+              style={{
+                padding: "0.5rem 1.1rem",
+                cursor: "pointer",
+              }}
+            >
+              Copy note to clipboard
+            </button>
+            {copied && (
+              <span style={{ fontSize: "0.85rem", color: "green" }}>
+                Copied!
+              </span>
+            )}
+          </div>
+
+          {noteHasIncident && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "0.75rem",
+                borderLeft: "4px solid #d97706",
+                background: "#fff7ed",
+                fontSize: "0.9rem",
+              }}
+            >
+              <strong>Incident reminder:</strong> This note includes an
+              incident. Make sure you also follow your organisation&apos;s
+              incident management and reporting procedures (including any NDIS
+              reportable incident requirements that apply).
+            </div>
+          )}
+
+          <p
+            style={{
+              marginTop: "1rem",
+              fontSize: "0.75rem",
+              color: "#6b7280",
+            }}
+          >
+            This AI tool supports progress note drafting. Final responsibility
+            for accuracy, NDIS compliance and incident reporting remains with
+            the provider.
+          </p>
         </div>
       )}
     </div>

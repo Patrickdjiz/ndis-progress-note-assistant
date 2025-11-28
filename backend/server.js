@@ -72,6 +72,11 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
   // 3) Remove / neutralise subjective, therapeutic or organisational-process phrases
   const replacements = [
     {
+        // Remove sentences that restate date, time, or shift framing
+        regex: /\b(the support worker|the participant)[^.]*\b(from\s+\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}|on\s+[A-Za-z]+\s+\d{1,2},\s*\d{4}|on\s+\d{4}-\d{2}-\d{2}|at\s+(his|her|their)\s+(home|residence)|at\s+\b(home|residence))[^.]*\./gi,
+        replace: ""
+    },
+    {
       // e.g. "with persistence and patience, Ali ..."
       regex: /\bwith persistence and patience[^.]*\./gi,
       replace: "After some time, the participant began to engage in the activity."
@@ -157,6 +162,7 @@ app.post("/api/generate-note", async (req, res) => {
       incidentsOrRisks,
       followUpActions,
       workerName,
+      incidentOccurred,
     } = req.body;
 
     // 1. Required field checks
@@ -219,17 +225,22 @@ app.post("/api/generate-note", async (req, res) => {
 
     // 4. Junk detection on key description fields
     const junkFields = [];
-    if (looksLikeJunk(activitiesAndSupports)) junkFields.push("activitiesAndSupports");
-    if (looksLikeJunk(participantPresentation)) junkFields.push("participantPresentation");
-    if (looksLikeJunk(goalsWorkedOn)) junkFields.push("goalsWorkedOn");
+        if (looksLikeJunk(activitiesAndSupports)) junkFields.push("activitiesAndSupports");
+        if (looksLikeJunk(participantPresentation)) junkFields.push("participantPresentation");
+        if (looksLikeJunk(goalsWorkedOn)) junkFields.push("goalsWorkedOn");
 
-    if (junkFields.length > 0) {
-      return res.status(400).json({
-        error:
-          "Some fields do not look like meaningful descriptions. Please rewrite: " +
-          junkFields.join(", "),
-      });
-    }
+        // ✅ Only enforce “not junk” for incidents if worker says an incident occurred
+        if (incidentOccurred === true && looksLikeJunk(incidentsOrRisks)) {
+        junkFields.push("incidentsOrRisks");
+        }
+
+        if (junkFields.length > 0) {
+        return res.status(400).json({
+            error:
+            "Some fields do not look like meaningful descriptions. Please rewrite: " +
+            junkFields.join(", "),
+        });
+        }
 
     const safeLocation = location.trim();
     const shiftTime = `${startTime}–${endTime}`;
