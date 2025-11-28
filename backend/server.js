@@ -151,6 +151,13 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function applyComplianceFilter(noteBody, rawCombined, workerName) {
   let body = (noteBody || "").trim();
 
+    // Remove sentences that restate date/time explicitly
+    body = body.replace(
+        /\b(on\s+\d{4}-\d{2}-\d{2}|on\s+[A-Z][a-z]+\s+\d{1,2},\s*\d{4}|from\s+\d{1,2}:\d{2}\s*(?:–|-)\s*\d{1,2}:\d{2})[^.]*\./gi,
+        ""
+    );
+
+
   // 1) Drop obvious intro lines
   const lines = body.split("\n").filter((line, idx) => {
     const t = line.trim().toLowerCase();
@@ -247,6 +254,8 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
     .join("\n\n");
 
   return body.trim();
+
+  
 }
 
 // Generate note using Ollama
@@ -402,6 +411,11 @@ STYLE, FORMAT & SAFETY RULES
    - Use “the support worker”, “the participant”, or their name.
    - NEVER use “I”, “we”, “my”, “our”.
 
+1a) The first paragraph MUST focus on actions taken by the support worker.
+    - Begin with “The support worker…” or “The worker…”
+    - Do NOT begin the note body with “The participant…”
+
+
 2) Be FACTUAL and OBSERVABLE.
    - Describe what occurred, what was observed, and what the support worker did.
    - Do NOT describe internal thoughts or feelings unless explicitly stated in the input.
@@ -416,6 +430,11 @@ STYLE, FORMAT & SAFETY RULES
    - What happened, immediate impact, what the support worker did, whether the participant continued the activity.
    - Do NOT say an incident report was completed unless stated in the input.
 
+5a) If an incident occurred:
+    - Briefly note escalation or change in presentation in paragraph 2 only.
+    - Write the FULL incident narrative ONLY in paragraph 4.
+    - Avoid repeating detailed incident descriptions across multiple paragraphs.
+
 6) ALWAYS include a follow-up / next-shift paragraph at the end.
    - Even if minimal. e.g., “For the next shift, staff should…”
 
@@ -424,12 +443,22 @@ STYLE, FORMAT & SAFETY RULES
    - “This progress note describes…”
    Start directly with the first paragraph.
 
-8) Do NOT restate date, location or shift time inside the body.
-   - Do NOT write sentences like:
-     - "The support worker accompanied [name] on a shift from 10:00 to 13:00 at [location] on [date]."
-     - "The shift took place at [location] on [date]."
-   - You can mention places (e.g., "at home", "at the shopping centre") when describing activities,
-     but do NOT repeat the exact shift time or date from the header.
+8) NEVER restate date, shift time, or full location references inside the body.
+
+    - DO NOT write sentences such as:
+    • “The support worker accompanied [Name] on [date] from [time] to [time].”
+    • “The shift took place at [location] on [date].”
+    • “During the shift from 09:00–12:00…”
+
+    - The header already contains this information.
+
+    - You MAY mention places only when describing activities, e.g.:
+    • “at home”
+    • “at the shopping centre”
+    • “at the local park”
+
+    - If you include a sentence that restates date or shift time, the output is incorrect.
+
 
 
 -----------------------------------------------------------
