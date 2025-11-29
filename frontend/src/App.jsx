@@ -74,31 +74,24 @@ function App() {
   };
 
   // Fetch a single note by ID
-const handleSelectNote = async (id) => {
-  try {
-    setNotesError("");
-    setSelectedNote(null);
+  const handleSelectNote = async (id) => {
+    try {
+      setNotesError("");
+      setSelectedNote(null);
 
-    const response = await fetch(`http://localhost:5000/api/notes/${id}`);
-    const data = await response.json();
+      const response = await fetch(`http://localhost:5000/api/notes/${id}`);
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.error || "Failed to fetch note");
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch note");
+      }
+
+      setSelectedNote(data.note);
+    } catch (err) {
+      console.error("Error fetching note:", err);
+      setNotesError(err?.message || "Failed to fetch note");
     }
-
-    const note = data.note;
-    setSelectedNote(note);
-
-    // 🔑 NEW: make this the note we are editing/finalising
-    setLatestNoteId(note.id);
-    setFinalNoteText(note.finalNoteText || note.noteText || "");
-    setFinalSaveMsg("");
-  } catch (err) {
-    console.error("Error fetching note:", err);
-    setNotesError(err?.message || "Failed to fetch note");
-  }
-};
-
+  };
 
   // Initial load of recent notes on page load
   useEffect(() => {
