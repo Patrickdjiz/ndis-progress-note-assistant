@@ -209,12 +209,18 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function applyComplianceFilter(noteBody, rawCombined, workerName) {
   let body = (noteBody || "").trim();
 
-    // Remove sentences that restate date/time explicitly
-    body = body.replace(
-        /\b(on\s+\d{4}-\d{2}-\d{2}|on\s+[A-Z][a-z]+\s+\d{1,2},\s*\d{4}|from\s+\d{1,2}:\d{2}\s*(?:–|-)\s*\d{1,2}:\d{2})[^.]*\./gi,
-        ""
-    );
+  // A) Remove full sentences that restate date/time explicitly
+  body = body.replace(
+    /\b(on\s+\d{4}-\d{2}-\d{2}|on\s+[A-Z][a-z]+\s+\d{1,2},\s*\d{4}|from\s+\d{1,2}:\d{2}\s*(?:–|-)\s*\d{1,2}:\d{2})[^.]*\./gi,
+    ""
+  );
 
+  // B) Strip any remaining bare time/date fragments inside sentences
+  body = body.replace(
+    /\bfrom\s+\d{1,2}:\d{2}\s*(?:–|-)\s*\d{1,2}:\d{2}\b/gi,
+    ""
+  );
+  body = body.replace(/\bon\s+\d{4}-\d{2}-\d{2}\b/gi, "");
 
   // 1) Drop obvious intro lines
   const lines = body.split("\n").filter((line, idx) => {
@@ -233,24 +239,27 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
     const workerNameRegex = new RegExp(escapeRegExp(workerName), "gi");
     body = body.replace(workerNameRegex, "the support worker");
     // Fix duplicated "the support worker the support worker"
-    body = body.replace(/the support worker[\s,]+the support worker/gi, "the support worker");
+    body = body.replace(
+      /the support worker[\s,]+the support worker/gi,
+      "the support worker"
+    );
   }
 
   // 3) Remove / neutralise subjective, therapeutic or organisational-process phrases
   const replacements = [
     {
-        // Remove sentences that restate date, time, or shift framing
-        regex: /\b(the support worker|the participant)[^.]*\b(from\s+\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}|on\s+[A-Za-z]+\s+\d{1,2},\s*\d{4}|on\s+\d{4}-\d{2}-\d{2}|at\s+(his|her|their)\s+(home|residence)|at\s+\b(home|residence))[^.]*\./gi,
-        replace: ""
+      // Remove sentences that restate date, time, or shift framing
+      regex: /\b(the support worker|the participant)[^.]*\b(from\s+\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}|on\s+[A-Za-z]+\s+\d{1,2},\s*\d{4}|on\s+\d{4}-\d{2}-\d{2}|at\s+(his|her|their)\s+(home|residence)|at\s+\b(home|residence))[^.]*\./gi,
+      replace: ""
     },
     {
       // e.g. "with persistence and patience, Ali ..."
       regex: /\bwith persistence and patience[^.]*\./gi,
-      replace: "After some time, the participant began to engage in the activity."
+      replace:
+        "After some time, the participant began to engage in the activity."
     },
     {
       // causal mood / wellbeing statements
-      // e.g. "which had a positive impact on his mood"
       regex: /\b(had|has|having|made|caused)\b[^.]*\b(positive impact|impact on (his|her|their) mood|improved (his|her|their) mood|helped (him|her|them) feel better)\b[^.]*/gi,
       replace: ""
     },
@@ -297,8 +306,14 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
     { regex: /\bI\b/gi, replace: "the support worker" },
     { regex: /\bmy\b/gi, replace: "the support worker's" },
     { regex: /\bwe\b/gi, replace: "the support worker and the participant" },
-    { regex: /\bour\b/gi, replace: "the support worker and the participant's" },
-    { regex: /\bus\b/gi, replace: "the support worker and the participant" }
+    {
+      regex: /\bour\b/gi,
+      replace: "the support worker and the participant's"
+    },
+    {
+      regex: /\bus\b/gi,
+      replace: "the support worker and the participant"
+    }
   ];
   pronounRules.forEach(({ regex, replace }) => {
     body = body.replace(regex, replace);
@@ -312,9 +327,8 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
     .join("\n\n");
 
   return body.trim();
-
-  
 }
+
 
 // Generate note using Ollama
 app.post("/api/generate-note", async (req, res) => {
@@ -500,7 +514,13 @@ STYLE, FORMAT & SAFETY RULES
     - Avoid repeating detailed incident descriptions across multiple paragraphs.
 
 6) ALWAYS include a follow-up / next-shift paragraph at the end.
-   - Even if minimal. e.g., “For the next shift, staff should…”
+
+   The FINAL paragraph must:
+   - Begin with either "For future shifts, staff should" OR "For the next shift, staff should".
+   - Clearly state what staff should MONITOR (e.g., mood, engagement, safety, specific skills).
+   - State what supports should CONTINUE or be ADJUSTED (e.g., level of prompting, environment, structure).
+   - Briefly note WHEN to ESCALATE (e.g., inform family, coordinator, or health professionals) if changes continue or risks increase.
+
 
 7) Do NOT write any introductory phrases like:
    - “Here is the note”
@@ -600,33 +620,30 @@ NO INTRO LINES.
     `);
 
     const info = insertStmt.run(
-        participantName,
-        workerName,
-        date,
-        startTime,
-        endTime,
-        safeLocation,
-        activitiesAndSupports,
-        participantPresentation,
-        goalsWorkedOn,
-        incidentsOrRisks,
-        followUpActions,
-        fullNote,
-        incidentFlag ? 1 : 0,
-        new Date().toISOString()
+      participantName,
+      workerName,
+      date,
+      startTime,
+      endTime,
+      safeLocation,
+      activitiesAndSupports,
+      participantPresentation,
+      goalsWorkedOn,
+      incidentsOrRisks,
+      followUpActions,
+      fullNote,
+      incidentFlag ? 1 : 0,
+      new Date().toISOString()
     );
 
-// info.lastInsertRowid is the new note's ID
-return res.json({ note: fullNote, id: info.lastInsertRowid });
-
-
-
-    return res.json({ note: fullNote });
+    // info.lastInsertRowid is the new note's ID
+    return res.json({ note: fullNote, id: info.lastInsertRowid });
   } catch (error) {
     console.error("Error generating note:", error.message);
     return res.status(500).json({ error: "Failed to generate note" });
   }
 });
+
 
 const PORT = 5000;
 app.listen(PORT, () => {
