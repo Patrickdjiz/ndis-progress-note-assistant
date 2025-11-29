@@ -249,30 +249,45 @@ function App() {
     }
   };
 
+  const handleCopyFinalNote = async () => {
+  if (!finalNoteText) return;
+  try {
+    await navigator.clipboard.writeText(finalNoteText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  } catch (e) {
+    console.error("Clipboard error (final note):", e);
+    setErrorMsg("Could not copy final note. You can copy manually.");
+  }
+};
+
   const handleClearForm = () => {
-    setParticipantName("");
-    setDate(todayIso);
-    setStartTime("");
-    setEndTime("");
-    setLocation("");
-    setActivitiesAndSupports("");
-    setParticipantPresentation("");
-    setGoalsWorkedOn("");
-    setIncidentsOrRisks("");
-    setFollowUpActions("");
-    setWorkerName("");
+  setParticipantName("");
+  setDate(todayIso);
+  setStartTime("");
+  setEndTime("");
+  setLocation("");
+  setActivitiesAndSupports("");
+  setParticipantPresentation("");
+  setGoalsWorkedOn("");
+  setIncidentsOrRisks("");
+  setFollowUpActions("");
+  setWorkerName("");
 
-    setIncidentOccurred(false);
-    setNoteHasIncident(false);
+  setIncidentOccurred(false);
+  setNoteHasIncident(false);
 
-    setGeneratedNote("");
-    setErrorMsg("");
-    setCopied(false);
+  // Clear generated + error state
+  setGeneratedNote("");
+  setErrorMsg("");
+  setCopied(false);
 
-    setLatestNoteId(null);
-    setFinalNoteText("");
-    setFinalSaveMsg("");
-  };
+  // 🔹 Clear final-note state as well
+  setLatestNoteId(null);
+  setFinalNoteText("");
+  setFinalSaveMsg("");
+};
+
 
   return (
     <div
@@ -627,30 +642,48 @@ function App() {
         }}
       />
       <div
-        style={{
-          display: "flex",
-          gap: "0.75rem",
-          marginTop: "0.75rem",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <button
-          type="button"
-          onClick={handleSaveFinalNote}
-          style={{
-            padding: "0.5rem 1.1rem",
-            cursor: "pointer",
-          }}
-        >
-          Save final note
-        </button>
-        {finalSaveMsg && (
-          <span style={{ fontSize: "0.85rem", color: "#047857" }}>
-            {finalSaveMsg}
-          </span>
-        )}
-      </div>
+  style={{
+    display: "flex",
+    gap: "0.75rem",
+    marginTop: "0.75rem",
+    alignItems: "center",
+    flexWrap: "wrap",
+  }}
+>
+  <button
+    type="button"
+    onClick={handleSaveFinalNote}
+    style={{
+      padding: "0.5rem 1.1rem",
+      cursor: "pointer",
+    }}
+  >
+    Save final note
+  </button>
+
+  <button
+    type="button"
+    onClick={handleCopyFinalNote}
+    style={{
+      padding: "0.5rem 1.1rem",
+      cursor: "pointer",
+    }}
+  >
+    Copy final note to clipboard
+  </button>
+
+  {finalSaveMsg && (
+    <span style={{ fontSize: "0.85rem", color: "#047857" }}>
+      {finalSaveMsg}
+    </span>
+  )}
+  {copied && (
+    <span style={{ fontSize: "0.85rem", color: "green" }}>
+      Copied!
+    </span>
+  )}
+</div>
+
 
       {noteHasIncident && (
         <div
