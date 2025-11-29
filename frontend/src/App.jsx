@@ -505,8 +505,14 @@ const handleToggleReviewed = async () => {
             rows={4}
             value={activitiesAndSupports}
             onChange={(e) => setActivitiesAndSupports(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
-            placeholder="Describe what you supported the participant with, where, and how. Include any prompts used and level of assistance."
+            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit", minHeight: "80px" }}
+            placeholder={
+              "Briefly describe what you did, where, and how.\n\n" +
+              "Example:\n" +
+              "At home, the support worker prompted [Name] to shower, dress and prepare breakfast, " +
+              "providing verbal prompts and supervision. Later, they supported [Name] to walk to " +
+              "the local park, practise safe road crossing and choose a bench for a short rest."
+            }
           />
           <div
             style={{
@@ -530,8 +536,15 @@ const handleToggleReviewed = async () => {
             rows={3}
             value={participantPresentation}
             onChange={(e) => setParticipantPresentation(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
-            placeholder="How did the participant engage? Any changes from usual? Be factual and specific."
+            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit", minHeight: "80px" }}
+            placeholder={
+              "How did the participant present compared to usual? Focus on observable behaviour, " +
+              "communication and engagement.\n\n" +
+              "Example:\n" +
+              "[Name] appeared more tired than usual after school, speaking in shorter sentences " +
+              "and needing extra time to respond. After a snack and drawing break, [Name] became " +
+              "more talkative and followed prompts with some repetition required."
+            }
           />
           <div
             style={{
@@ -553,8 +566,15 @@ const handleToggleReviewed = async () => {
             rows={2}
             value={goalsWorkedOn}
             onChange={(e) => setGoalsWorkedOn(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
-            placeholder="Which NDIS goals did this shift support, and how?"
+            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit", minHeight: "80px" }}
+            placeholder={
+              "Link your activities to NDIS goals (community access, daily living, social skills, " +
+              "communication, etc.).\n\n" +
+              "Example:\n" +
+              "This shift supported [Name]'s goals around increasing independence with personal " +
+              "care and safe participation in community activities by practising showering, dressing " +
+              "and road safety with graded prompts."
+            }
           />
           <div
             style={{
@@ -603,11 +623,15 @@ const handleToggleReviewed = async () => {
             rows={2}
             value={incidentsOrRisks}
             onChange={(e) => setIncidentsOrRisks(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
+            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit", minHeight: "80px" }}
             placeholder={
               incidentOccurred
-                ? "Briefly describe what happened, impact on the participant, and any immediate response."
-                : 'If none, write "No incidents or concerns".'
+                ? "Describe what happened, the immediate impact, and your response.\n\nExample:\n" +
+                  "While walking through the park, an off-leash dog ran towards [Name]. " +
+                  "[Name] raised their voice and moved quickly towards the edge of the path. " +
+                  "The support worker stepped between [Name] and the road, prompted them to step " +
+                  "back to the bench and used calm reassurance. No physical contact occurred."
+                : 'If none, write "No incidents or concerns."'
             }
           />
           <div
@@ -630,8 +654,14 @@ const handleToggleReviewed = async () => {
             rows={2}
             value={followUpActions}
             onChange={(e) => setFollowUpActions(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit" }}
-            placeholder='E.g. "Monitor mood over next 2 shifts and report any changes to coordinator."'
+            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit", minHeight: "80px" }}
+            placeholder={
+              "What should staff monitor or continue next time? Include when to escalate.\n\n" +
+              "Example:\n" +
+              "For the next 2–3 shifts, monitor [Name]'s response to dogs in the park and note any " +
+              "further incidents. If [Name] continues to show strong reactions, inform the coordinator " +
+              "so behaviour support strategies can be reviewed with the family."
+            }
           />
           <div
             style={{
@@ -667,6 +697,7 @@ const handleToggleReviewed = async () => {
             background: "#f3f4f6",
             border: "1px solid #d1d5db",
             cursor: loading ? "not-allowed" : "pointer",
+            color: "#000000ff",
           }}
         >
           New shift / Clear form
@@ -743,19 +774,20 @@ const handleToggleReviewed = async () => {
       <h3 style={{ marginTop: "1.2rem", marginBottom: "0.25rem" }}>
         Final note (edit before saving)
       </h3>
-      <textarea
-        rows={8}
-        value={finalNoteText}
-        onChange={(e) => setFinalNoteText(e.target.value)}
-        style={{
-          width: "100%",
-          padding: "0.6rem",
-          fontFamily: "inherit",
-          borderRadius: "4px",
-          border: "1px solid #d1d5db",
-          resize: "vertical",
-        }}
-      />
+        <textarea
+          rows={14}               // more lines by default
+          value={finalNoteText}
+          onChange={(e) => setFinalNoteText(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "0.6rem",
+            fontFamily: "inherit",
+            borderRadius: "4px",
+            border: "1px solid #d1d5db",
+            resize: "vertical",
+            minHeight: "260px",   // ensures a decent starting height
+          }}
+        />
       <div
   style={{
     display: "flex",
@@ -1100,7 +1132,7 @@ const handleToggleReviewed = async () => {
               background: "#f9fafb",
             }}
           >
-            <h3 style={{ marginTop: 0 }}>Note details</h3>
+            <h3 style={{ marginTop: 0, color: "#000000ff" }}>Note details</h3>
 
             {!selectedNote && (
               <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
@@ -1161,7 +1193,7 @@ const handleToggleReviewed = async () => {
                       checked={!!selectedNote.reviewedFlag}
                       onChange={handleToggleReviewed}
                     />
-                    <span style={{ fontSize: "0.85rem" }}>
+                    <span style={{ fontSize: "0.85rem", color: "#000000ff" }}>
                       Mark note as reviewed by provider
                     </span>
                   </label>
@@ -1173,11 +1205,11 @@ const handleToggleReviewed = async () => {
                 )}
 
                 {/* Editable final note text */}
-                <h4 style={{ marginTop: "0.8rem", marginBottom: "0.2rem" }}>
+                <h4 style={{ marginTop: "0.8rem", marginBottom: "0.2rem", color: "#000000ff" }}>
                   Final note for this shift (editable)
                 </h4>
                 <textarea
-                  rows={10}
+                  rows={14}
                   value={dashboardEditText}
                   onChange={(e) => setDashboardEditText(e.target.value)}
                   style={{
@@ -1187,9 +1219,9 @@ const handleToggleReviewed = async () => {
                     borderRadius: "4px",
                     border: "1px solid #d1d5db",
                     resize: "vertical",
+                    minHeight: "300px",
                   }}
                 />
-
                 <div
                   style={{
                     display: "flex",
@@ -1217,7 +1249,7 @@ const handleToggleReviewed = async () => {
                 </div>
 
                 {/* Show AI draft underneath for reference */}
-                <h4 style={{ marginTop: "1rem", marginBottom: "0.2rem" }}>
+                <h4 style={{ marginTop: "1rem", marginBottom: "0.2rem", color: "#000000ff" }}>
                   AI draft (original)
                 </h4>
                 <pre
