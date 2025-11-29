@@ -944,7 +944,7 @@ function App() {
               background: "#f9fafb",
             }}
           >
-            <h3 style={{ marginTop: 0 }}>Note details</h3>
+            <h3 style={{ marginTop: 0, color: "#000000ff"}}>Note details</h3>
             {!selectedNote && (
               <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
                 Click a row in the table to view the full note body here.
@@ -985,7 +985,7 @@ function App() {
 
               {selectedNote.finalNoteText ? (
                 <>
-                  <h4 style={{ marginTop: "0.5rem", marginBottom: "0.2rem" }}>
+                  <h4 style={{ marginTop: "0.5rem", marginBottom: "0.2rem", color: "#000000ff" }}>
                     Final note
                   </h4>
                   <pre
@@ -1000,7 +1000,7 @@ function App() {
                     {selectedNote.finalNoteText}
                   </pre>
 
-                  <h4 style={{ marginTop: "0.7rem", marginBottom: "0.2rem" }}>
+                  <h4 style={{ marginTop: "0.7rem", marginBottom: "0.2rem", color: "#000000ff" }}>
                     AI draft (original)
                   </h4>
                   <pre
