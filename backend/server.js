@@ -18,18 +18,20 @@ app.get("/api/notes", (req, res) => {
     const { participant, hasIncident } = req.query;
 
     let baseQuery = `
-      SELECT
-        id,
-        participantName,
-        workerName,
-        date,
-        startTime,
-        endTime,
-        location,
-        incidentFlag,
-        createdAt
-      FROM progress_notes
+        SELECT
+            id,
+            participantName,
+            workerName,
+            date,
+            startTime,
+            endTime,
+            location,
+            incidentFlag,
+            createdAt,
+            finalisedAt
+        FROM progress_notes
     `;
+
     const where = [];
     const params = [];
 
@@ -86,6 +88,57 @@ app.get("/api/notes/:id", (req, res) => {
   }
 });
 
+// Finalise a note (save worker-edited final note)
+app.post("/api/notes/:id/finalise", (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: "Invalid note id" });
+    }
+
+    const { finalNoteText, finalisedBy } = req.body;
+
+    if (!finalNoteText || !finalNoteText.toString().trim()) {
+      return res
+        .status(400)
+        .json({ error: "Final note text is required" });
+    }
+
+    const stmtCheck = db.prepare(`
+      SELECT id FROM progress_notes WHERE id = ?
+    `);
+    const existing = stmtCheck.get(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    const nowIso = new Date().toISOString();
+
+    const stmtUpdate = db.prepare(`
+      UPDATE progress_notes
+      SET finalNoteText = ?,
+          finalisedAt = ?,
+          finalisedBy = ?
+      WHERE id = ?
+    `);
+
+    stmtUpdate.run(
+      finalNoteText.toString().trim(),
+      nowIso,
+      (finalisedBy || "").toString().trim(),
+      id
+    );
+
+    return res.json({
+      ok: true,
+      finalisedAt: nowIso,
+    });
+  } catch (err) {
+    console.error("Error finalising note:", err.message);
+    return res.status(500).json({ error: "Failed to finalise note" });
+  }
+});
+
 
 const Database = require("better-sqlite3");
 
@@ -109,7 +162,12 @@ db.exec(`
     followUpActions TEXT NOT NULL,
     noteText TEXT NOT NULL,
     incidentFlag INTEGER NOT NULL DEFAULT 0,
-    createdAt TEXT NOT NULL
+    createdAt TEXT NOT NULL,
+
+    -- NEW: final note fields
+    finalNoteText TEXT,
+    finalisedAt TEXT,
+    finalisedBy TEXT
   );
 `);
 
@@ -523,40 +581,44 @@ NO INTRO LINES.
     !incidentText.includes("no concerns");
 
     const insertStmt = db.prepare(`
-    INSERT INTO progress_notes (
+        INSERT INTO progress_notes (
+            participantName,
+            workerName,
+            date,
+            startTime,
+            endTime,
+            location,
+            activitiesAndSupports,
+            participantPresentation,
+            goalsWorkedOn,
+            incidentsOrRisks,
+            followUpActions,
+            noteText,
+            incidentFlag,
+            createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const info = insertStmt.run(
         participantName,
         workerName,
         date,
         startTime,
         endTime,
-        location,
+        safeLocation,
         activitiesAndSupports,
         participantPresentation,
         goalsWorkedOn,
         incidentsOrRisks,
         followUpActions,
-        noteText,
-        incidentFlag,
-        createdAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    insertStmt.run(
-    participantName,
-    workerName,
-    date,
-    startTime,
-    endTime,
-    safeLocation,
-    activitiesAndSupports,
-    participantPresentation,
-    goalsWorkedOn,
-    incidentsOrRisks,
-    followUpActions,
-    fullNote,
-    incidentFlag ? 1 : 0,
-    new Date().toISOString()
+        fullNote,
+        incidentFlag ? 1 : 0,
+        new Date().toISOString()
     );
+
+// info.lastInsertRowid is the new note's ID
+return res.json({ note: fullNote, id: info.lastInsertRowid });
+
 
 
     return res.json({ note: fullNote });

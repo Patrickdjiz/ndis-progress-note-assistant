@@ -33,6 +33,10 @@ function App() {
   const [filterParticipant, setFilterParticipant] = useState("");
   const [filterIncident, setFilterIncident] = useState("all"); // "all" | "true" | "false"
 
+  const [latestNoteId, setLatestNoteId] = useState(null);
+  const [finalNoteText, setFinalNoteText] = useState("");
+  const [finalSaveMsg, setFinalSaveMsg] = useState("");
+
   // Fetch notes from backend with current filters
   const fetchNotes = async () => {
     try {
@@ -146,13 +150,19 @@ function App() {
         }),
       });
 
-      const data = await response.json();
+    const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to generate note");
       }
 
+      // AI draft
       setGeneratedNote(data.note);
+
+      // Set up final note editable copy
+      setFinalNoteText(data.note || "");
+      setLatestNoteId(data.id || null);
+      setFinalSaveMsg("");
 
       // Check if this shift includes an incident for the banner
       const incText = (incidentsOrRisks || "").trim();
@@ -165,16 +175,67 @@ function App() {
           !looksLikeNoIncident
       );
 
-      // Refresh notes list after a successful save
-      fetchNotes();
+    // Refresh notes list after a successful save
+    fetchNotes();
+
     } catch (err) {
       console.error(err);
       setErrorMsg(err?.message || "Something went wrong");
       setNoteHasIncident(false);
+      setLatestNoteId(null);
+      setFinalNoteText("");
+      setFinalSaveMsg("");
     } finally {
       setLoading(false);
     }
   };
+
+  const handleSaveFinalNote = async () => {
+  try {
+    setFinalSaveMsg("");
+    setErrorMsg("");
+
+    if (!latestNoteId) {
+      setErrorMsg(
+        "No generated note to save. Please generate a note first."
+      );
+      return;
+    }
+
+    if (!finalNoteText || !finalNoteText.toString().trim()) {
+      setErrorMsg("Final note text cannot be empty.");
+      return;
+    }
+
+    const response = await fetch(
+      `http://localhost:5000/api/notes/${latestNoteId}/finalise`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          finalNoteText,
+          // In a real system this would be the logged-in user,
+          // for now we use the workerName as a simple stand-in.
+          finalisedBy: workerName,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to save final note");
+    }
+
+    setFinalSaveMsg("Final note saved.");
+    // Refresh dashboard so status updates
+    fetchNotes();
+  } catch (err) {
+    console.error("Error saving final note:", err);
+    setErrorMsg(err?.message || "Failed to save final note");
+  }
+};
+
 
   const handleCopyNote = async () => {
     if (!generatedNote) return;
@@ -207,6 +268,10 @@ function App() {
     setGeneratedNote("");
     setErrorMsg("");
     setCopied(false);
+
+    setLatestNoteId(null);
+    setFinalNoteText("");
+    setFinalSaveMsg("");
   };
 
   return (
@@ -491,84 +556,134 @@ function App() {
       )}
 
       {generatedNote && (
+    <div
+      style={{
+        marginTop: "2rem",
+        padding: "1rem",
+        border: "1px solid #ccc",
+        borderRadius: "8px",
+        background: "#f9f9f9",
+        color: "#000000ff",
+      }}
+    >
+      <h2>Generated Progress Note</h2>
+
+      {/* AI draft (read-only) */}
+      <h3 style={{ marginTop: "0.75rem", marginBottom: "0.25rem" }}>
+        AI draft (read-only)
+      </h3>
+      <pre
+        style={{
+          whiteSpace: "pre-wrap",
+          marginTop: "0.3rem",
+          fontFamily: "inherit",
+          background: "#f3f4f6",
+          padding: "0.6rem",
+          borderRadius: "4px",
+        }}
+      >
+        {generatedNote}
+      </pre>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "0.75rem",
+          marginTop: "0.75rem",
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          type="button"
+          onClick={handleCopyNote}
+          style={{
+            padding: "0.5rem 1.1rem",
+            cursor: "pointer",
+          }}
+        >
+          Copy AI draft to clipboard
+        </button>
+        {copied && (
+          <span style={{ fontSize: "0.85rem", color: "green" }}>Copied!</span>
+        )}
+      </div>
+
+      {/* Editable final note */}
+      <h3 style={{ marginTop: "1.2rem", marginBottom: "0.25rem" }}>
+        Final note (edit before saving)
+      </h3>
+      <textarea
+        rows={8}
+        value={finalNoteText}
+        onChange={(e) => setFinalNoteText(e.target.value)}
+        style={{
+          width: "100%",
+          padding: "0.6rem",
+          fontFamily: "inherit",
+          borderRadius: "4px",
+          border: "1px solid #d1d5db",
+          resize: "vertical",
+        }}
+      />
+      <div
+        style={{
+          display: "flex",
+          gap: "0.75rem",
+          marginTop: "0.75rem",
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          type="button"
+          onClick={handleSaveFinalNote}
+          style={{
+            padding: "0.5rem 1.1rem",
+            cursor: "pointer",
+          }}
+        >
+          Save final note
+        </button>
+        {finalSaveMsg && (
+          <span style={{ fontSize: "0.85rem", color: "#047857" }}>
+            {finalSaveMsg}
+          </span>
+        )}
+      </div>
+
+      {noteHasIncident && (
         <div
           style={{
-            marginTop: "2rem",
-            padding: "1rem",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-            background: "#f9f9f9",
+            marginTop: "1rem",
+            padding: "0.75rem",
+            borderLeft: "4px solid #d97706",
+            background: "#fff7ed",
+            fontSize: "0.9rem",
             color: "#000000ff",
           }}
         >
-          <h2>Generated Progress Note</h2>
-          <pre
-            style={{
-              whiteSpace: "pre-wrap",
-              marginTop: "0.5rem",
-              fontFamily: "inherit",
-            }}
-          >
-            {generatedNote}
-          </pre>
-
-          <div
-            style={{
-              display: "flex",
-              gap: "0.75rem",
-              marginTop: "0.75rem",
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <button
-              type="button"
-              onClick={handleCopyNote}
-              style={{
-                padding: "0.5rem 1.1rem",
-                cursor: "pointer",
-              }}
-            >
-              Copy note to clipboard
-            </button>
-            {copied && (
-              <span style={{ fontSize: "0.85rem", color: "green" }}>
-                Copied!
-              </span>
-            )}
-          </div>
-
-          {noteHasIncident && (
-            <div
-              style={{
-                marginTop: "1rem",
-                padding: "0.75rem",
-                borderLeft: "4px solid #d97706",
-                background: "#fff7ed",
-                fontSize: "0.9rem",
-                color: "#000000ff",
-              }}
-            >
-              <strong>Incident reminder:</strong> This note includes an
-              incident. Make sure you also follow your organisation&apos;s
-              incident management and reporting procedures (including any NDIS
-              reportable incident requirements that apply).
-            </div>
-          )}
-
-          <p
-            style={{
-              marginTop: "1rem",
-              fontSize: "0.75rem",
-              color: "#6b7280",
-            }}
-          >
-            This AI tool supports progress note drafting. Final responsibility
-            for accuracy, NDIS compliance and incident reporting remains with
-            the provider.
-          </p>
+          <strong>Incident reminder:</strong> This note includes an incident.
+          Make sure you also follow your organisation&apos;s incident
+          management and reporting procedures (including any NDIS
+          reportable incident requirements that apply).
         </div>
       )}
+
+    <p
+      style={{
+        marginTop: "1rem",
+        fontSize: "0.75rem",
+        color: "#6b7280",
+      }}
+    >
+      This AI tool supports progress note drafting. Final responsibility
+      for accuracy, NDIS compliance and incident reporting remains with
+      the provider.
+    </p>
+  </div>
+)}
+
 
       {/* ====== SAVED NOTES / DASHBOARD ====== */}
       <hr style={{ margin: "2rem 0" }} />
@@ -720,13 +835,23 @@ function App() {
                     >
                       Incident?
                     </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: "0.4rem 0.6rem",
+                        borderBottom: "1px solid #e5e7eb",
+                        color: "#ffffffff",
+                      }}
+                    >
+                      Status
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {notes.length === 0 && !notesLoading && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         style={{
                           padding: "0.7rem",
                           textAlign: "center",
@@ -792,6 +917,16 @@ function App() {
                       >
                         {n.incidentFlag ? "Yes" : "No"}
                       </td>
+                      <td
+                      style={{
+                        padding: "0.4rem 0.6rem",
+                        borderBottom: "1px solid #f3f4f6",
+                        color: n.finalisedAt ? "#047857" : "#6b7280",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {n.finalisedAt ? "Finalised" : "Draft"}
+                    </td>
                     </tr>
                   ))}
                 </tbody>
@@ -818,37 +953,90 @@ function App() {
             {selectedNote && (
               <>
                 <p
-                  style={{
-                    fontSize: "0.9rem",
-                    marginBottom: "0.4rem",
-                    color: "#374151",
-                  }}
-                >
-                  <strong>Participant:</strong> {selectedNote.participantName}
-                  <br />
-                  <strong>Worker:</strong> {selectedNote.workerName}
-                  <br />
-                  <strong>Date:</strong> {selectedNote.date}{" "}
-                  {selectedNote.startTime && selectedNote.endTime
-                    ? `(${selectedNote.startTime}–${selectedNote.endTime})`
-                    : ""}
-                  <br />
-                  <strong>Location:</strong> {selectedNote.location}
-                  <br />
-                  <strong>Incident:</strong>{" "}
-                  {selectedNote.incidentFlag ? "Yes" : "No"}
-                </p>
-                <pre
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    fontFamily: "inherit",
-                    fontSize: "0.9rem",
-                    marginTop: "0.6rem",
-                    color: "#111827",
-                  }}
-                >
-                  {selectedNote.noteText}
-                </pre>
+                style={{
+                  fontSize: "0.9rem",
+                  marginBottom: "0.4rem",
+                  color: "#374151",
+                }}
+              >
+                <strong>Participant:</strong> {selectedNote.participantName}
+                <br />
+                <strong>Worker:</strong> {selectedNote.workerName}
+                <br />
+                <strong>Date:</strong> {selectedNote.date}{" "}
+                {selectedNote.startTime && selectedNote.endTime
+                  ? `(${selectedNote.startTime}–${selectedNote.endTime})`
+                  : ""}
+                <br />
+                <strong>Location:</strong> {selectedNote.location}
+                <br />
+                <strong>Incident:</strong>{" "}
+                {selectedNote.incidentFlag ? "Yes" : "No"}
+                <br />
+                <strong>Status:</strong>{" "}
+                {selectedNote.finalisedAt ? "Finalised" : "Draft"}
+                {selectedNote.finalisedAt && (
+                  <>
+                    {" "}
+                    (at {selectedNote.finalisedAt})
+                  </>
+                )}
+              </p>
+
+              {selectedNote.finalNoteText ? (
+                <>
+                  <h4 style={{ marginTop: "0.5rem", marginBottom: "0.2rem" }}>
+                    Final note
+                  </h4>
+                  <pre
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      fontFamily: "inherit",
+                      fontSize: "0.9rem",
+                      marginTop: "0.2rem",
+                      color: "#111827",
+                    }}
+                  >
+                    {selectedNote.finalNoteText}
+                  </pre>
+
+                  <h4 style={{ marginTop: "0.7rem", marginBottom: "0.2rem" }}>
+                    AI draft (original)
+                  </h4>
+                  <pre
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      fontFamily: "inherit",
+                      fontSize: "0.85rem",
+                      marginTop: "0.2rem",
+                      color: "#4b5563",
+                      background: "#f3f4f6",
+                      padding: "0.4rem",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {selectedNote.noteText}
+                  </pre>
+                </>
+              ) : (
+                <>
+                  <h4 style={{ marginTop: "0.5rem", marginBottom: "0.2rem" }}>
+                    Note (AI draft)
+                  </h4>
+                  <pre
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      fontFamily: "inherit",
+                      fontSize: "0.9rem",
+                      marginTop: "0.2rem",
+                      color: "#111827",
+                    }}
+                  >
+                    {selectedNote.noteText}
+                  </pre>
+                </>
+              )}
+
               </>
             )}
           </div>
