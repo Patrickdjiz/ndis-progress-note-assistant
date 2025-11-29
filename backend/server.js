@@ -28,9 +28,10 @@ app.get("/api/notes", (req, res) => {
             location,
             incidentFlag,
             createdAt,
-            finalisedAt
+            finalisedAt,
+            reviewedFlag
         FROM progress_notes
-    `;
+        `;
 
     const where = [];
     const params = [];
@@ -132,10 +133,62 @@ app.post("/api/notes/:id/finalise", (req, res) => {
     return res.json({
       ok: true,
       finalisedAt: nowIso,
+      finalisedBy: (finalisedBy || "").toString().trim(),
+      finalNoteText: finalNoteText.toString().trim(),
     });
   } catch (err) {
     console.error("Error finalising note:", err.message);
     return res.status(500).json({ error: "Failed to finalise note" });
+  }
+});
+
+// Mark or unmark a note as reviewed (e.g. by a provider/coordinator)
+app.post("/api/notes/:id/review", (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: "Invalid note id" });
+    }
+
+    const { reviewedFlag, reviewedBy } = req.body;
+
+    // Default to true if not explicitly false
+    const flag = reviewedFlag === false ? 0 : 1;
+
+    const stmtCheck = db.prepare(`
+      SELECT id FROM progress_notes WHERE id = ?
+    `);
+    const existing = stmtCheck.get(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    const nowIso = new Date().toISOString();
+
+    const stmtUpdate = db.prepare(`
+      UPDATE progress_notes
+      SET reviewedFlag = ?,
+          reviewedAt = ?,
+          reviewedBy = ?
+      WHERE id = ?
+    `);
+
+    stmtUpdate.run(
+      flag,
+      flag ? nowIso : null,
+      (reviewedBy || "").toString().trim(),
+      id
+    );
+
+    return res.json({
+      ok: true,
+      reviewedFlag: flag,
+      reviewedAt: flag ? nowIso : null,
+      reviewedBy: (reviewedBy || "").toString().trim(),
+    });
+  } catch (err) {
+    console.error("Error updating review status:", err.message);
+    return res.status(500).json({ error: "Failed to update review status" });
   }
 });
 
@@ -167,7 +220,12 @@ db.exec(`
     -- NEW: final note fields
     finalNoteText TEXT,
     finalisedAt TEXT,
-    finalisedBy TEXT
+    finalisedBy TEXT,
+
+    -- NEW: provider review fields
+    reviewedFlag INTEGER NOT NULL DEFAULT 0,
+    reviewedAt TEXT,
+    reviewedBy TEXT
   );
 `);
 

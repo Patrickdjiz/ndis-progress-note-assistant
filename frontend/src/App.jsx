@@ -37,6 +37,11 @@ function App() {
   const [finalNoteText, setFinalNoteText] = useState("");
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
 
+  const [dashboardEditText, setDashboardEditText] = useState("");
+  const [dashboardSaveMsg, setDashboardSaveMsg] = useState("");
+  const [reviewToggleMsg, setReviewToggleMsg] = useState("");
+
+
   // Fetch notes from backend with current filters
   const fetchNotes = async () => {
     try {
@@ -87,6 +92,11 @@ function App() {
       }
 
       setSelectedNote(data.note);
+      setDashboardEditText(
+      data.note.finalNoteText || data.note.noteText || ""
+      );
+      setDashboardSaveMsg("");
+      setReviewToggleMsg("");
     } catch (err) {
       console.error("Error fetching note:", err);
       setNotesError(err?.message || "Failed to fetch note");
@@ -235,6 +245,111 @@ function App() {
     setErrorMsg(err?.message || "Failed to save final note");
   }
 };
+
+// Save the selected note's text as the final note (from the dashboard)
+const handleDashboardSaveFinal = async () => {
+  if (!selectedNote) return;
+
+  if (!dashboardEditText || !dashboardEditText.toString().trim()) {
+    setErrorMsg("Final note text cannot be empty.");
+    return;
+  }
+
+  try {
+    setErrorMsg("");
+    setDashboardSaveMsg("");
+
+    const response = await fetch(
+      `http://localhost:5000/api/notes/${selectedNote.id}/finalise`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          finalNoteText: dashboardEditText,
+          // In a real system this would be the logged-in user.
+          finalisedBy: workerName || "Dashboard editor",
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to save final note");
+    }
+
+    setDashboardSaveMsg("Final note saved from dashboard.");
+
+    // Update the selected note in state
+    setSelectedNote((prev) =>
+      prev
+        ? {
+            ...prev,
+            finalNoteText: data.finalNoteText,
+            finalisedAt: data.finalisedAt,
+            finalisedBy: data.finalisedBy,
+          }
+        : prev
+    );
+
+    // Refresh table so status column updates
+    fetchNotes();
+  } catch (err) {
+    console.error("Error saving final note from dashboard:", err);
+    setErrorMsg(err?.message || "Failed to save final note");
+  }
+};
+
+// Toggle reviewed flag for selected note
+const handleToggleReviewed = async () => {
+  if (!selectedNote) return;
+
+  try {
+    setErrorMsg("");
+    setReviewToggleMsg("");
+
+    const newFlag = selectedNote.reviewedFlag ? false : true;
+
+    const response = await fetch(
+      `http://localhost:5000/api/notes/${selectedNote.id}/review`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reviewedFlag: newFlag,
+          reviewedBy: workerName || "Reviewer",
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to update review status");
+    }
+
+    setSelectedNote((prev) =>
+      prev
+        ? {
+            ...prev,
+            reviewedFlag: data.reviewedFlag,
+            reviewedAt: data.reviewedAt,
+            reviewedBy: data.reviewedBy,
+          }
+        : prev
+    );
+
+    setReviewToggleMsg(
+      data.reviewedFlag ? "Marked as reviewed." : "Review mark removed."
+    );
+
+    fetchNotes();
+  } catch (err) {
+    console.error("Error updating review status:", err);
+    setErrorMsg(err?.message || "Failed to update review status");
+  }
+};
+
 
 
   const handleCopyNote = async () => {
@@ -951,15 +1066,23 @@ function App() {
                         {n.incidentFlag ? "Yes" : "No"}
                       </td>
                       <td
-                      style={{
-                        padding: "0.4rem 0.6rem",
-                        borderBottom: "1px solid #f3f4f6",
-                        color: n.finalisedAt ? "#047857" : "#6b7280",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {n.finalisedAt ? "Finalised" : "Draft"}
-                    </td>
+                        style={{
+                          padding: "0.4rem 0.6rem",
+                          borderBottom: "1px solid #f3f4f6",
+                          color: n.reviewedFlag
+                            ? "#065f46" // darker green if reviewed
+                            : n.finalisedAt
+                            ? "#047857" // green if finalised
+                            : "#6b7280", // grey if draft
+                          fontWeight: 600,
+                        }}
+                      >
+                        {n.reviewedFlag
+                          ? "Finalised + Reviewed"
+                          : n.finalisedAt
+                          ? "Finalised"
+                          : "Draft"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -977,99 +1100,140 @@ function App() {
               background: "#f9fafb",
             }}
           >
-            <h3 style={{ marginTop: 0, color: "#000000ff"}}>Note details</h3>
+            <h3 style={{ marginTop: 0 }}>Note details</h3>
+
             {!selectedNote && (
               <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
-                Click a row in the table to view the full note body here.
+                Click a row in the table to view and edit the note here.
               </p>
             )}
+
             {selectedNote && (
               <>
                 <p
-                style={{
-                  fontSize: "0.9rem",
-                  marginBottom: "0.4rem",
-                  color: "#374151",
-                }}
-              >
-                <strong>Participant:</strong> {selectedNote.participantName}
-                <br />
-                <strong>Worker:</strong> {selectedNote.workerName}
-                <br />
-                <strong>Date:</strong> {selectedNote.date}{" "}
-                {selectedNote.startTime && selectedNote.endTime
-                  ? `(${selectedNote.startTime}–${selectedNote.endTime})`
-                  : ""}
-                <br />
-                <strong>Location:</strong> {selectedNote.location}
-                <br />
-                <strong>Incident:</strong>{" "}
-                {selectedNote.incidentFlag ? "Yes" : "No"}
-                <br />
-                <strong>Status:</strong>{" "}
-                {selectedNote.finalisedAt ? "Finalised" : "Draft"}
-                {selectedNote.finalisedAt && (
-                  <>
-                    {" "}
-                    (at {selectedNote.finalisedAt})
-                  </>
+                  style={{
+                    fontSize: "0.9rem",
+                    marginBottom: "0.4rem",
+                    color: "#374151",
+                  }}
+                >
+                  <strong>Participant:</strong> {selectedNote.participantName}
+                  <br />
+                  <strong>Worker:</strong> {selectedNote.workerName}
+                  <br />
+                  <strong>Date:</strong> {selectedNote.date}{" "}
+                  {selectedNote.startTime && selectedNote.endTime
+                    ? `(${selectedNote.startTime}–${selectedNote.endTime})`
+                    : ""}
+                  <br />
+                  <strong>Location:</strong> {selectedNote.location}
+                  <br />
+                  <strong>Incident:</strong>{" "}
+                  {selectedNote.incidentFlag ? "Yes" : "No"}
+                  <br />
+                  <strong>Status:</strong>{" "}
+                  {selectedNote.reviewedFlag
+                    ? "Finalised + Reviewed"
+                    : selectedNote.finalisedAt
+                    ? "Finalised"
+                    : "Draft"}
+                  {selectedNote.finalisedAt && (
+                    <>
+                      {" "}
+                      (finalised at {selectedNote.finalisedAt})
+                    </>
+                  )}
+                </p>
+
+                {/* Provider review toggle */}
+                <div
+                  style={{
+                    marginTop: "0.4rem",
+                    marginBottom: "0.6rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                  }}
+                >
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={!!selectedNote.reviewedFlag}
+                      onChange={handleToggleReviewed}
+                    />
+                    <span style={{ fontSize: "0.85rem" }}>
+                      Mark note as reviewed by provider
+                    </span>
+                  </label>
+                </div>
+                {reviewToggleMsg && (
+                  <p style={{ fontSize: "0.8rem", color: "#047857" }}>
+                    {reviewToggleMsg}
+                  </p>
                 )}
-              </p>
 
-              {selectedNote.finalNoteText ? (
-                <>
-                  <h4 style={{ marginTop: "0.5rem", marginBottom: "0.2rem", color: "#000000ff" }}>
-                    Final note
-                  </h4>
-                  <pre
+                {/* Editable final note text */}
+                <h4 style={{ marginTop: "0.8rem", marginBottom: "0.2rem" }}>
+                  Final note for this shift (editable)
+                </h4>
+                <textarea
+                  rows={10}
+                  value={dashboardEditText}
+                  onChange={(e) => setDashboardEditText(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "0.6rem",
+                    fontFamily: "inherit",
+                    borderRadius: "4px",
+                    border: "1px solid #d1d5db",
+                    resize: "vertical",
+                  }}
+                />
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.75rem",
+                    marginTop: "0.75rem",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={handleDashboardSaveFinal}
                     style={{
-                      whiteSpace: "pre-wrap",
-                      fontFamily: "inherit",
-                      fontSize: "0.9rem",
-                      marginTop: "0.2rem",
-                      color: "#111827",
+                      padding: "0.5rem 1.1rem",
+                      cursor: "pointer",
                     }}
                   >
-                    {selectedNote.finalNoteText}
-                  </pre>
+                    Save final note for this shift
+                  </button>
+                  {dashboardSaveMsg && (
+                    <span style={{ fontSize: "0.85rem", color: "#047857" }}>
+                      {dashboardSaveMsg}
+                    </span>
+                  )}
+                </div>
 
-                  <h4 style={{ marginTop: "0.7rem", marginBottom: "0.2rem", color: "#000000ff" }}>
-                    AI draft (original)
-                  </h4>
-                  <pre
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      fontFamily: "inherit",
-                      fontSize: "0.85rem",
-                      marginTop: "0.2rem",
-                      color: "#4b5563",
-                      background: "#f3f4f6",
-                      padding: "0.4rem",
-                      borderRadius: "4px",
-                    }}
-                  >
-                    {selectedNote.noteText}
-                  </pre>
-                </>
-              ) : (
-                <>
-                  <h4 style={{ marginTop: "0.5rem", marginBottom: "0.2rem" }}>
-                    Note (AI draft)
-                  </h4>
-                  <pre
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      fontFamily: "inherit",
-                      fontSize: "0.9rem",
-                      marginTop: "0.2rem",
-                      color: "#111827",
-                    }}
-                  >
-                    {selectedNote.noteText}
-                  </pre>
-                </>
-              )}
-
+                {/* Show AI draft underneath for reference */}
+                <h4 style={{ marginTop: "1rem", marginBottom: "0.2rem" }}>
+                  AI draft (original)
+                </h4>
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    fontFamily: "inherit",
+                    fontSize: "0.85rem",
+                    marginTop: "0.2rem",
+                    color: "#4b5563",
+                    background: "#f3f4f6",
+                    padding: "0.4rem",
+                    borderRadius: "4px",
+                  }}
+                >
+                  {selectedNote.noteText}
+                </pre>
               </>
             )}
           </div>
