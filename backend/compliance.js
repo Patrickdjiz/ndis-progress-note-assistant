@@ -9,16 +9,24 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
 
   // A) Remove full sentences that restate date/time explicitly
   body = body.replace(
-    /\b(on\s+\d{4}-\d{2}-\d{2}|on\s+[A-Z][a-z]+\s+\d{1,2},\s*\d{4}|from\s+\d{1,2}:\d{2}\s*(?:–|-)\s*\d{1,2}:\d{2})[^.]*\./gi,
+    /\b(on\s+\d{4}-\d{2}-\d{2}|on\s+[A-Z][a-z]+\s+\d{1,2},\s*\d{4}|from\s+\d{1,2}:\d{2}\s*(?:–|-|to)\s*\d{1,2}:\d{2})[^.]*\./gi,
     ""
-  );
+    );
+
 
   // B) Strip any remaining bare time/date fragments inside sentences
   body = body.replace(
-    /\bfrom\s+\d{1,2}:\d{2}\s*(?:–|-)\s*\d{1,2}:\d{2}\b/gi,
+  /\bfrom\s+\d{1,2}:\d{2}\s*(?:–|-|to)\s*\d{1,2}:\d{2}\b/gi,
+  ""
+    );
+    body = body.replace(/\bon\s+\d{4}-\d{2}-\d{2}\b/gi, "");
+
+    // extra safety for generic “shift took place …” type lines
+    body = body.replace(
+    /\bthe shift took place\b[^.]*\./gi,
     ""
-  );
-  body = body.replace(/\bon\s+\d{4}-\d{2}-\d{2}\b/gi, "");
+    );
+
 
   // 1) Drop obvious intro lines
   const lines = body.split("\n").filter((line, idx) => {
