@@ -71,6 +71,8 @@ function UsersAdminPage({ token, user }) {
         throw new Error(data.error || "Failed to create user");
       }
 
+      await fetchUsers();
+
       setUsers((prev) => [data.user, ...prev]);
       setNewEmail("");
       setNewFullName("");

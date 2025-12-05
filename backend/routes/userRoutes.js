@@ -20,9 +20,11 @@ router.get("/", (req, res) => {
       SELECT id, email, fullName, role, isActive, createdAt
       FROM users
       WHERE organisationId = ?
-      ORDER BY createdAt DESC
+        AND (role = 'WORKER' OR id = ?)
+      ORDER BY role DESC, createdAt DESC
     `);
-    const rows = stmt.all(req.user.organisationId);
+
+    const rows = stmt.all(req.user.organisationId, req.user.id);
     res.json({ users: rows });
   } catch (err) {
     console.error("Error listing users:", err.message);
@@ -35,25 +37,27 @@ router.get("/", (req, res) => {
  * Create a new user (ADMIN or WORKER)
  * body: { email, fullName, role, password }
  */
+// POST /api/users
+// Provider admin can ONLY create WORKER accounts in *their* organisation
 router.post("/", (req, res) => {
   try {
-    const { email, fullName, role, password } = req.body;
+    const { email, fullName, password } = req.body;
 
-    if (!email || !fullName || !role || !password) {
+    if (!email || !fullName || !password) {
       return res
         .status(400)
-        .json({ error: "email, fullName, role and password are required" });
+        .json({ error: "email, fullName and password are required" });
     }
 
-    if (!["ADMIN", "WORKER"].includes(role)) {
-      return res.status(400).json({ error: "Invalid role" });
-    }
+    const normalisedEmail = email.trim().toLowerCase();
 
     const existing = db
       .prepare(`SELECT id FROM users WHERE email = ?`)
-      .get(email.trim().toLowerCase());
+      .get(normalisedEmail);
     if (existing) {
-      return res.status(400).json({ error: "A user with this email already exists" });
+      return res
+        .status(400)
+        .json({ error: "A user with this email already exists" });
     }
 
     const hash = bcrypt.hashSync(password, 10);
@@ -61,14 +65,13 @@ router.post("/", (req, res) => {
 
     const stmt = db.prepare(`
       INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
-      VALUES (?, ?, ?, ?, ?, 1, ?)
+      VALUES (?, ?, ?, 'WORKER', ?, 1, ?)
     `);
 
     const info = stmt.run(
       req.user.organisationId,
-      email.trim().toLowerCase(),
+      normalisedEmail,
       hash,
-      role,
       fullName.trim(),
       nowIso
     );
@@ -76,9 +79,9 @@ router.post("/", (req, res) => {
     res.status(201).json({
       user: {
         id: info.lastInsertRowid,
-        email: email.trim().toLowerCase(),
+        email: normalisedEmail,
         fullName: fullName.trim(),
-        role,
+        role: "WORKER",
         isActive: 1,
         createdAt: nowIso,
       },
@@ -89,11 +92,13 @@ router.post("/", (req, res) => {
   }
 });
 
+
 /**
  * PATCH /api/users/:id/status
  * Toggle active / inactive
  * body: { isActive }
  */
+// PATCH /api/users/:id/status
 router.patch("/:id/status", (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -104,20 +109,23 @@ router.patch("/:id/status", (req, res) => {
     const { isActive } = req.body;
     const activeFlag = isActive ? 1 : 0;
 
-    // Can't deactivate yourself
+    // Can't change your own status
     if (id === req.user.id) {
       return res.status(400).json({ error: "You cannot change your own status" });
     }
 
-    // Ensure user is in same organisation
+    // Ensure user is in same org AND is a WORKER
     const existing = db
       .prepare(
-        `SELECT id FROM users WHERE id = ? AND organisationId = ?`
+        `SELECT id, role FROM users WHERE id = ? AND organisationId = ?`
       )
       .get(id, req.user.organisationId);
 
     if (!existing) {
       return res.status(404).json({ error: "User not found" });
+    }
+    if (existing.role !== "WORKER") {
+      return res.status(400).json({ error: "You can only change worker accounts" });
     }
 
     db.prepare(`UPDATE users SET isActive = ? WHERE id = ?`).run(
@@ -131,5 +139,6 @@ router.patch("/:id/status", (req, res) => {
     res.status(500).json({ error: "Failed to update user status" });
   }
 });
+
 
 module.exports = router;

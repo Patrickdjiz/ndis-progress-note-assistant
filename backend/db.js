@@ -94,6 +94,27 @@ function seedDemoOrgAndAdmin() {
   console.log("Seeded demo org + admin:");
   console.log("  Email:    admin@demo.local");
   console.log("  Password: demo1234");
+
+  // Also seed a platform OWNER if none exists yet
+  const ownerRow = db
+    .prepare(`SELECT COUNT(*) AS c FROM users WHERE role = 'OWNER'`)
+    .get();
+  if (ownerRow.c === 0) {
+    const ownerHash = bcrypt.hashSync("owner1234", 10);
+    db.prepare(`
+      INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
+      VALUES (?, ?, ?, 'OWNER', ?, 1, ?)
+    `).run(
+      orgId,                      // or make a separate org if you want
+      "owner@demo.local",
+      ownerHash,
+      "Platform Owner",
+      nowIso
+    );
+
+    console.log("Seeded platform OWNER:");
+    console.log("  Email:    owner@demo.local");
+    console.log("  Password: owner1234");
 }
 
 seedDemoOrgAndAdmin();

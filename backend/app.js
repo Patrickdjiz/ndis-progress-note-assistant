@@ -5,6 +5,7 @@ const cors = require("cors");
 const notesRoutes = require("./routes/notesRoutes");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
+const ownerRoutes = require("./routes/ownerRoutes");
 
 const app = express();
 
@@ -27,6 +28,8 @@ app.use("/api", notesRoutes);
 
 // new
 app.use("/api/users", userRoutes);
+
+app.use("/api/owner", ownerRoutes);
 
 
 module.exports = app;
