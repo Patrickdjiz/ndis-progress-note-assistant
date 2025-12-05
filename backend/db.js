@@ -115,6 +115,7 @@ function seedDemoOrgAndAdmin() {
     console.log("Seeded platform OWNER:");
     console.log("  Email:    owner@demo.local");
     console.log("  Password: owner1234");
+    }   
 }
 
 seedDemoOrgAndAdmin();
