@@ -56,20 +56,21 @@ router.get("/overview", (req, res) => {
  */
 const bcrypt = require("bcryptjs");
 
-router.post("/providers", (req, res) => {
+// routes/ownerRoutes.js
+router.post("/providers", requireAuth, requireRole("OWNER"), (req, res) => {
   try {
-    const { organisationName, adminEmail, adminFullName, adminPassword } =
-      req.body || {};
+    const {
+      organisationName,
+      adminEmail,
+      adminFullName,
+      adminPassword,
+    } = req.body;
 
     if (
-      !organisationName ||
-      !organisationName.trim() ||
-      !adminEmail ||
-      !adminEmail.trim() ||
-      !adminFullName ||
-      !adminFullName.trim() ||
-      !adminPassword ||
-      !adminPassword.trim()
+      !organisationName?.trim() ||
+      !adminEmail?.trim() ||
+      !adminFullName?.trim() ||
+      !adminPassword?.trim()
     ) {
       return res.status(400).json({
         error:
@@ -77,75 +78,55 @@ router.post("/providers", (req, res) => {
       });
     }
 
+    const normalisedEmail = adminEmail.trim().toLowerCase();
     const nowIso = new Date().toISOString();
-    const orgName = organisationName.trim();
-    const email = adminEmail.trim().toLowerCase();
-    const fullName = adminFullName.trim();
-    const passwordHash = bcrypt.hashSync(adminPassword.trim(), 10);
 
-    // Ensure org name is unique
-    const existingOrg = db
-      .prepare(`SELECT id FROM organisations WHERE name = ?`)
-      .get(orgName);
-    if (existingOrg) {
-      return res
-        .status(400)
-        .json({ error: "An organisation with this name already exists" });
-    }
-
-    // Ensure email is unique
-    const existingUser = db
-      .prepare(`SELECT id FROM users WHERE email = ?`)
-      .get(email);
-    if (existingUser) {
-      return res
-        .status(400)
-        .json({ error: "A user with this email already exists" });
-    }
-
-    // Create org
-    const orgInfo = db
-      .prepare(
-        `
+    // create org
+    const orgStmt = db.prepare(`
       INSERT INTO organisations (name, status, createdAt)
       VALUES (?, 'ACTIVE', ?)
-    `
-      )
-      .run(orgName, nowIso);
-
+    `);
+    const orgInfo = orgStmt.run(organisationName.trim(), nowIso);
     const orgId = orgInfo.lastInsertRowid;
 
-    // Create ADMIN
-    const adminInfo = db
-      .prepare(
-        `
+    // create admin user
+    const hash = bcrypt.hashSync(adminPassword.trim(), 10);
+    const userStmt = db.prepare(`
       INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
       VALUES (?, ?, ?, 'ADMIN', ?, 1, ?)
-    `
-      )
-      .run(orgId, email, passwordHash, fullName, nowIso);
+    `);
+    const adminInfo = userStmt.run(
+      orgId,
+      normalisedEmail,
+      hash,
+      adminFullName.trim(),
+      nowIso
+    );
 
-    res.status(201).json({
-      organisation: {
-        id: orgId,
-        name: orgName,
-        status: "ACTIVE",
-        createdAt: nowIso,
-      },
-      admin: {
-        id: adminInfo.lastInsertRowid,
-        email,
-        fullName,
-        role: "ADMIN",
-        isActive: 1,
-        createdAt: nowIso,
-      },
-    });
+    const organisation = {
+      id: orgId,
+      name: organisationName.trim(),
+      status: "ACTIVE",
+      createdAt: nowIso,
+    };
+
+    const admin = {
+      id: adminInfo.lastInsertRowid,
+      organisationId: orgId,
+      email: normalisedEmail,
+      fullName: adminFullName.trim(),
+      role: "ADMIN",
+      isActive: 1,
+      createdAt: nowIso,
+    };
+
+    return res.status(201).json({ organisation, admin });
   } catch (err) {
-    console.error("Error in POST /api/owner/providers:", err.message);
-    res.status(500).json({ error: "Failed to create provider" });
+    console.error("Error creating provider:", err);
+    return res.status(500).json({ error: "Failed to create provider" });
   }
 });
+
 
 /**
  * PATCH /api/owner/organisations/:id/status

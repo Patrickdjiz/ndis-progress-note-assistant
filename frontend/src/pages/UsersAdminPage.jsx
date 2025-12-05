@@ -9,8 +9,9 @@ function UsersAdminPage({ token, user }) {
   // new user form
   const [newEmail, setNewEmail] = useState("");
   const [newFullName, setNewFullName] = useState("");
-  const [newRole, setNewRole] = useState("WORKER");
   const [newPassword, setNewPassword] = useState("");
+  const [createMsg, setCreateMsg] = useState("");
+
 
   const fetchUsers = async () => {
     try {
@@ -43,46 +44,49 @@ function UsersAdminPage({ token, user }) {
   }, []);
 
   const handleCreateUser = async (e) => {
-    e.preventDefault();
-    try {
-      setErrorMsg("");
+  e.preventDefault();
+  try {
+    setErrorMsg("");
+    setCreateMsg("");
 
-      if (!newEmail || !newFullName || !newPassword) {
-        setErrorMsg("Email, full name and password are required.");
-        return;
-      }
-
-      const res = await fetch("http://localhost:5000/api/users", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          email: newEmail,
-          fullName: newFullName,
-          role: newRole,
-          password: newPassword,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to create user");
-      }
-
-      await fetchUsers();
-
-      setUsers((prev) => [data.user, ...prev]);
-      setNewEmail("");
-      setNewFullName("");
-      setNewPassword("");
-      setNewRole("WORKER");
-    } catch (err) {
-      console.error("Error creating user:", err);
-      setErrorMsg(err?.message || "Failed to create user");
+    if (!newEmail.trim() || !newFullName.trim() || !newPassword.trim()) {
+      setErrorMsg("Email, full name and password are required.");
+      return;
     }
-  };
+
+    const res = await fetch("http://localhost:5000/api/users", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        email: newEmail.trim(),
+        fullName: newFullName.trim(),
+        password: newPassword.trim(),
+        // role is deliberately NOT sent / ignored by backend
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to create user");
+    }
+
+    // Clear the form
+    setNewEmail("");
+    setNewFullName("");
+    setNewPassword("");
+    setCreateMsg(`Worker ${data.user.email} created.`);
+
+    // Safest: reload from backend
+    await fetchUsers(); // <-- your existing list loader
+  } catch (err) {
+    console.error("Error creating user:", err);
+    setErrorMsg(err?.message || "Failed to create user");
+  }
+};
+
 
   const handleToggleActive = async (id, isActive) => {
     try {
@@ -120,8 +124,8 @@ function UsersAdminPage({ token, user }) {
     <section>
       <h2>Team management</h2>
       <p style={{ fontSize: "0.9rem", color: "#4b5563" }}>
-        As an {user.role}, you can invite admins and workers to your
-        organisation, and deactivate accounts that are no longer in use.
+        As an {user.role}, you can invite workers to your organisation,
+        and deactivate accounts that are no longer in use.
       </p>
 
       {errorMsg && (
@@ -138,7 +142,7 @@ function UsersAdminPage({ token, user }) {
           borderRadius: "8px",
           background: "#f9fafb",
           display: "grid",
-          gridTemplateColumns: "1fr 1fr 0.6fr 0.6fr auto",
+          gridTemplateColumns: "1fr 1fr 0.6fr auto",
           gap: "0.6rem",
           alignItems: "flex-end",
         }}
@@ -171,20 +175,6 @@ function UsersAdminPage({ token, user }) {
 
         <div>
           <label style={{ display: "block", fontSize: "0.85rem" }}>
-            Role
-          </label>
-          <select
-            value={newRole}
-            onChange={(e) => setNewRole(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem" }}
-          >
-            <option value="WORKER">Worker</option>
-            <option value="ADMIN">Admin</option>
-          </select>
-        </div>
-
-        <div>
-          <label style={{ display: "block", fontSize: "0.85rem" }}>
             Temp password
           </label>
           <input
@@ -208,6 +198,11 @@ function UsersAdminPage({ token, user }) {
           {loading ? "Saving..." : "Create user"}
         </button>
       </form>
+      {createMsg && (
+        <p style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "#047857" }}>
+            {createMsg}
+        </p>
+        )}
 
       {/* Users table */}
       <div
@@ -256,7 +251,7 @@ function UsersAdminPage({ token, user }) {
                       color: "#6b7280",
                     }}
                   >
-                    No users yet. Add your first worker or admin above.
+                    No users yet. Add your first worker above.
                   </td>
                 </tr>
               )}

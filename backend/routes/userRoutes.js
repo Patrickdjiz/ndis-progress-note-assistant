@@ -12,19 +12,22 @@ router.use(requireRole("ADMIN", "OWNER"));
 
 /**
  * GET /api/users
- * List all users in the current organisation
+ * List team for the current organisation.
+ * - ADMIN: sees themselves + all WORKERs in their org
+ * - OWNER: we generally won't use this route (owner uses /api/owner/overview)
  */
 router.get("/", (req, res) => {
   try {
     const stmt = db.prepare(`
-    SELECT id, email, fullName, role, isActive, createdAt
-    FROM users
-    WHERE organisationId = ?
-      AND (role = 'WORKER' OR id = ?)
-    ORDER BY role DESC, createdAt DESC
-  `);
-  const rows = stmt.all(req.user.organisationId, req.user.id);
-  res.json({ users: rows });
+      SELECT id, email, fullName, role, isActive, createdAt
+      FROM users
+      WHERE organisationId = ?
+        AND (role = 'WORKER' OR id = ?)
+      ORDER BY role DESC, createdAt DESC
+    `);
+
+    const rows = stmt.all(req.user.organisationId, req.user.id);
+    res.json({ users: rows });
   } catch (err) {
     console.error("Error listing users:", err.message);
     res.status(500).json({ error: "Failed to list users" });
@@ -33,11 +36,9 @@ router.get("/", (req, res) => {
 
 /**
  * POST /api/users
- * Create a new user (ADMIN or WORKER)
- * body: { email, fullName, role, password }
+ * Create a new WORKER in the current organisation.
+ * Provider admins CANNOT create other admins from here.
  */
-// POST /api/users
-// Provider admin can ONLY create WORKER accounts in *their* organisation
 router.post("/", (req, res) => {
   try {
     const { email, fullName, password } = req.body;
@@ -59,9 +60,10 @@ router.post("/", (req, res) => {
         .json({ error: "A user with this email already exists" });
     }
 
-    const hash = bcrypt.hashSync(password, 10);
+    const hash = bcrypt.hashSync(password.trim(), 10);
     const nowIso = new Date().toISOString();
 
+    // Force role = WORKER, ignore any "role" in body
     const stmt = db.prepare(`
       INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
       VALUES (?, ?, ?, 'WORKER', ?, 1, ?)
@@ -91,13 +93,10 @@ router.post("/", (req, res) => {
   }
 });
 
-
 /**
  * PATCH /api/users/:id/status
- * Toggle active / inactive
- * body: { isActive }
+ * Toggle active / inactive for WORKERs only.
  */
-// PATCH /api/users/:id/status
 router.patch("/:id/status", (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -110,7 +109,9 @@ router.patch("/:id/status", (req, res) => {
 
     // Can't change your own status
     if (id === req.user.id) {
-      return res.status(400).json({ error: "You cannot change your own status" });
+      return res
+        .status(400)
+        .json({ error: "You cannot change your own status" });
     }
 
     // Ensure user is in same org AND is a WORKER
@@ -124,7 +125,9 @@ router.patch("/:id/status", (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
     if (existing.role !== "WORKER") {
-      return res.status(400).json({ error: "You can only change worker accounts" });
+      return res.status(400).json({
+        error: "You can only change worker accounts from the team screen",
+      });
     }
 
     db.prepare(`UPDATE users SET isActive = ? WHERE id = ?`).run(
@@ -138,6 +141,5 @@ router.patch("/:id/status", (req, res) => {
     res.status(500).json({ error: "Failed to update user status" });
   }
 });
-
 
 module.exports = router;

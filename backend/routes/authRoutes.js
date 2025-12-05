@@ -6,39 +6,77 @@ const { generateToken, requireAuth, requireRole } = require("../authMiddleware")
 
 const router = express.Router();
 
-// POST /api/auth/login
-router.post("/auth/login", (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ error: "Email and password required" });
-  }
-
-  const stmt = db.prepare(
-    "SELECT * FROM users WHERE email = ? AND isActive = 1"
-  );
-  const user = stmt.get(email.toLowerCase());
-
-  if (!user) {
-    return res.status(401).json({ error: "Invalid email or password" });
-  }
-
-  const ok = bcrypt.compareSync(password, user.passwordHash);
-  if (!ok) {
-    return res.status(401).json({ error: "Invalid email or password" });
-  }
-
-  const token = generateToken(user);
-
-  return res.json({
-    token,
-    user: {
-      id: user.id,
-      fullName: user.fullName,
-      role: user.role,
-      organisationId: user.organisationId
+router.post("/login", (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
     }
-  });
+
+    const normalisedEmail = email.trim().toLowerCase();
+
+    // IMPORTANT: join organisations to get org status
+    const row = db
+      .prepare(
+        `
+        SELECT
+          u.id,
+          u.email,
+          u.passwordHash,
+          u.role,
+          u.fullName,
+          u.isActive,
+          u.organisationId,
+          o.status AS orgStatus
+        FROM users u
+        JOIN organisations o ON u.organisationId = o.id
+        WHERE u.email = ?
+      `
+      )
+      .get(normalisedEmail);
+
+    if (!row) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    // Block deactivated users
+    if (!row.isActive) {
+      return res
+        .status(403)
+        .json({ error: "This user account is inactive. Please contact your provider." });
+    }
+
+    // Block users from a suspended provider (but still allow OWNER)
+    if (row.role !== "OWNER" && row.orgStatus !== "ACTIVE") {
+      return res.status(403).json({
+        error:
+          "This provider account is suspended. Please contact the platform owner or your organisation.",
+      });
+    }
+
+    const ok = bcrypt.compareSync(password, row.passwordHash);
+    if (!ok) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const token = generateToken(row);
+
+    return res.json({
+      token,
+      user: {
+        id: row.id,
+        email: row.email,
+        role: row.role,
+        fullName: row.fullName,
+        organisationId: row.organisationId,
+      },
+    });
+  } catch (err) {
+    console.error("Login error:", err);
+    return res.status(500).json({ error: "Login failed" });
+  }
 });
+
 
 // GET /api/auth/me  (who am I?)
 router.get("/auth/me", requireAuth, (req, res) => {
