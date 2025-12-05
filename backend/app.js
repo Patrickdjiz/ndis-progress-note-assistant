@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 
 const notesRoutes = require("./routes/notesRoutes");
+const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 
@@ -14,7 +15,10 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "Backend running" });
 });
 
-// All note-related endpoints
+// Auth routes (login, create user)
+app.use("/api", authRoutes);
+
+// Notes routes (all protected inside notesRoutes via router.use(requireAuth))
 app.use("/api", notesRoutes);
 
 module.exports = app;

@@ -1,7 +1,7 @@
 // src/pages/NotesDashboardPage.jsx
 import { useEffect, useState } from "react";
 
-function NotesDashboardPage() {
+function NotesDashboardPage({ token, user }) {
   const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(false);
   const [notesError, setNotesError] = useState("");
@@ -36,7 +36,12 @@ function NotesDashboardPage() {
         "http://localhost:5000/api/notes" +
         (params.toString() ? `?${params.toString()}` : "");
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
+
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to load notes");
@@ -68,7 +73,15 @@ function NotesDashboardPage() {
       setFinalSaveMsg("");
       setErrorMsg("");
 
-      const response = await fetch(`http://localhost:5000/api/notes/${id}`);
+      const response = await fetch(
+  `http://localhost:5000/api/notes/${id}`,
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
+
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch note");
@@ -102,7 +115,11 @@ function NotesDashboardPage() {
         `http://localhost:5000/api/notes/${selectedNote.id}/finalise`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${token}`,
+},
+
           body: JSON.stringify({
             finalNoteText: finalNoteEditText,
             finalisedBy: reviewerName || selectedNote.workerName,
@@ -149,7 +166,11 @@ function NotesDashboardPage() {
         `http://localhost:5000/api/notes/${selectedNote.id}/review`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${token}`,
+},
+
           body: JSON.stringify({
             reviewedFlag: newFlag,
             reviewedBy: reviewerName || selectedNote.reviewedBy || "",

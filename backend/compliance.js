@@ -1,7 +1,8 @@
 // compliance.js
 
-// Escape helper for regex
-const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 // ---- Compliance filter (hybrid layer) ----
 function applyComplianceFilter(noteBody, rawCombined, workerName) {
@@ -9,24 +10,16 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
 
   // A) Remove full sentences that restate date/time explicitly
   body = body.replace(
-    /\b(on\s+\d{4}-\d{2}-\d{2}|on\s+[A-Z][a-z]+\s+\d{1,2},\s*\d{4}|from\s+\d{1,2}:\d{2}\s*(?:–|-|to)\s*\d{1,2}:\d{2})[^.]*\./gi,
+    /\b(on\s+\d{4}-\d{2}-\d{2}|on\s+[A-Z][a-z]+\s+\d{1,2},\s*\d{4}|from\s+\d{1,2}:\d{2}\s*(?:–|-)\s*\d{1,2}:\d{2})[^.]*\./gi,
     ""
-    );
-
+  );
 
   // B) Strip any remaining bare time/date fragments inside sentences
   body = body.replace(
-  /\bfrom\s+\d{1,2}:\d{2}\s*(?:–|-|to)\s*\d{1,2}:\d{2}\b/gi,
-  ""
-    );
-    body = body.replace(/\bon\s+\d{4}-\d{2}-\d{2}\b/gi, "");
-
-    // extra safety for generic “shift took place …” type lines
-    body = body.replace(
-    /\bthe shift took place\b[^.]*\./gi,
+    /\bfrom\s+\d{1,2}:\d{2}\s*(?:–|-)\s*\d{1,2}:\d{2}\b/gi,
     ""
-    );
-
+  );
+  body = body.replace(/\bon\s+\d{4}-\d{2}-\d{2}\b/gi, "");
 
   // 1) Drop obvious intro lines
   const lines = body.split("\n").filter((line, idx) => {
@@ -54,48 +47,39 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
   // 3) Remove / neutralise subjective, therapeutic or organisational-process phrases
   const replacements = [
     {
-      // Remove sentences that restate date, time, or shift framing
       regex: /\b(the support worker|the participant)[^.]*\b(from\s+\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}|on\s+[A-Za-z]+\s+\d{1,2},\s*\d{4}|on\s+\d{4}-\d{2}-\d{2}|at\s+(his|her|their)\s+(home|residence)|at\s+\b(home|residence))[^.]*\./gi,
       replace: ""
     },
     {
-      // e.g. "with persistence and patience, Ali ..."
       regex: /\bwith persistence and patience[^.]*\./gi,
       replace:
         "After some time, the participant began to engage in the activity."
     },
     {
-      // causal mood / wellbeing statements
       regex: /\b(had|has|having|made|caused)\b[^.]*\b(positive impact|impact on (his|her|their) mood|improved (his|her|their) mood|helped (him|her|them) feel better)\b[^.]*/gi,
       replace: ""
     },
     {
-      // overly therapeutic environment description
       regex: /\b(calming|therapeutic)\s+environment[^.]*/gi,
       replace: "environment"
     },
     {
-      // very broad emotional wellbeing phrase
       regex: /\bemotional well[- ]?being\b/gi,
       replace: "presentation"
     },
     {
-      // generic wellbeing
       regex: /\boverall well[- ]?being\b/gi,
       replace: "overall presentation"
     },
     {
-      // internal process / records – remove the whole sentence fragment
       regex: /\b(this|the incident)\s+(will|has been)\s+documented in (the )?service records[^.]*/gi,
       replace: ""
     },
     {
-      // "an incident report was/will be completed"
       regex: /\ban incident report (?:was|will be) completed[^.]*/gi,
       replace: ""
     },
     {
-      // soften behavioural comparison
       regex: /distinct from his usual presentation/gi,
       replace: "different from how he usually presents"
     }
@@ -105,7 +89,7 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
     body = body.replace(regex, replace);
   });
 
-  // 4) First-person pronouns -> third-person (simple mapping)
+  // 4) First-person pronouns -> third-person
   const pronounRules = [
     { regex: /\bI am\b/gi, replace: "The support worker is" },
     { regex: /\bI'm\b/gi, replace: "The support worker is" },

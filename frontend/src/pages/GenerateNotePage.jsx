@@ -1,7 +1,7 @@
 // src/pages/GenerateNotePage.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-function GenerateNotePage() {
+function GenerateNotePage({ token, user }) {
   const todayIso = new Date().toISOString().slice(0, 10);
 
   const [participantName, setParticipantName] = useState("");
@@ -14,7 +14,7 @@ function GenerateNotePage() {
   const [goalsWorkedOn, setGoalsWorkedOn] = useState("");
   const [incidentsOrRisks, setIncidentsOrRisks] = useState("");
   const [followUpActions, setFollowUpActions] = useState("");
-  const [workerName, setWorkerName] = useState("");
+  const [workerName, setWorkerName] = useState(user?.fullName || "");
 
   // Incident UI
   const [incidentOccurred, setIncidentOccurred] = useState(false);
@@ -29,6 +29,12 @@ function GenerateNotePage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [copied, setCopied] = useState(false);
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
+
+  useEffect(() => {
+  if (user?.fullName) {
+    setWorkerName(user.fullName);
+  }
+}, [user]);
 
   const handleGenerate = async () => {
     const fields = {
@@ -66,7 +72,10 @@ function GenerateNotePage() {
     try {
       const response = await fetch("http://localhost:5000/api/generate-note", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${token}`,
+},
         body: JSON.stringify({
           participantName,
           date,
@@ -136,7 +145,11 @@ function GenerateNotePage() {
         `http://localhost:5000/api/notes/${latestNoteId}/finalise`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${token}`,
+},
+  
           body: JSON.stringify({
             finalNoteText,
             finalisedBy: workerName, // simple stand-in for logged-in user

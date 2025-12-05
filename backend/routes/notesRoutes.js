@@ -5,13 +5,18 @@ const axios = require("axios");
 const db = require("../db");
 const applyComplianceFilter = require("../compliance");
 const { timeToMinutes, parseYyyyMmDd, looksLikeJunk } = require("../utils");
+const { requireAuth } = require("../authMiddleware");
 
 const router = express.Router();
 
-// GET /api/notes  (list recent notes with filters)
+// All routes in this file require auth
+router.use(requireAuth);
+
+// GET /api/notes  (list recent notes with filters, org-scoped)
 router.get("/notes", (req, res) => {
   try {
     const { participant, hasIncident } = req.query;
+    const orgId = req.user.organisationId;
 
     let baseQuery = `
       SELECT
@@ -27,24 +32,20 @@ router.get("/notes", (req, res) => {
         finalisedAt,
         reviewedFlag
       FROM progress_notes
+      WHERE organisationId = ?
     `;
 
-    const where = [];
-    const params = [];
+    const params = [orgId];
 
     if (participant && participant.trim()) {
-      where.push("participantName LIKE ?");
+      baseQuery += " AND participantName LIKE ?";
       params.push(`%${participant.trim()}%`);
     }
 
     if (hasIncident === "true") {
-      where.push("incidentFlag = 1");
+      baseQuery += " AND incidentFlag = 1";
     } else if (hasIncident === "false") {
-      where.push("incidentFlag = 0");
-    }
-
-    if (where.length > 0) {
-      baseQuery += " WHERE " + where.join(" AND ");
+      baseQuery += " AND incidentFlag = 0";
     }
 
     baseQuery += " ORDER BY createdAt DESC LIMIT 50";
@@ -59,7 +60,7 @@ router.get("/notes", (req, res) => {
   }
 });
 
-// GET /api/notes/:id  (single note)
+// GET /api/notes/:id  (single note, org-scoped)
 router.get("/notes/:id", (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -70,9 +71,9 @@ router.get("/notes/:id", (req, res) => {
     const stmt = db.prepare(`
       SELECT *
       FROM progress_notes
-      WHERE id = ?
+      WHERE id = ? AND organisationId = ?
     `);
-    const row = stmt.get(id);
+    const row = stmt.get(id, req.user.organisationId);
 
     if (!row) {
       return res.status(404).json({ error: "Note not found" });
@@ -102,9 +103,9 @@ router.post("/notes/:id/finalise", (req, res) => {
     }
 
     const stmtCheck = db.prepare(`
-      SELECT id FROM progress_notes WHERE id = ?
+      SELECT id FROM progress_notes WHERE id = ? AND organisationId = ?
     `);
-    const existing = stmtCheck.get(id);
+    const existing = stmtCheck.get(id, req.user.organisationId);
     if (!existing) {
       return res.status(404).json({ error: "Note not found" });
     }
@@ -130,7 +131,7 @@ router.post("/notes/:id/finalise", (req, res) => {
       ok: true,
       finalisedAt: nowIso,
       finalisedBy: (finalisedBy || "").toString().trim(),
-      finalNoteText: finalNoteText.toString().trim(),
+      finalNoteText: finalNoteText.toString().trim()
     });
   } catch (err) {
     console.error("Error finalising note:", err.message);
@@ -147,14 +148,12 @@ router.post("/notes/:id/review", (req, res) => {
     }
 
     const { reviewedFlag, reviewedBy } = req.body;
-
-    // Default to true if not explicitly false
     const flag = reviewedFlag === false ? 0 : 1;
 
     const stmtCheck = db.prepare(`
-      SELECT id FROM progress_notes WHERE id = ?
+      SELECT id FROM progress_notes WHERE id = ? AND organisationId = ?
     `);
-    const existing = stmtCheck.get(id);
+    const existing = stmtCheck.get(id, req.user.organisationId);
     if (!existing) {
       return res.status(404).json({ error: "Note not found" });
     }
@@ -180,7 +179,7 @@ router.post("/notes/:id/review", (req, res) => {
       ok: true,
       reviewedFlag: flag,
       reviewedAt: flag ? nowIso : null,
-      reviewedBy: (reviewedBy || "").toString().trim(),
+      reviewedBy: (reviewedBy || "").toString().trim()
     });
   } catch (err) {
     console.error("Error updating review status:", err.message);
@@ -188,7 +187,7 @@ router.post("/notes/:id/review", (req, res) => {
   }
 });
 
-// POST /api/generate-note
+// POST /api/generate-note  (org-scoped)
 router.post("/generate-note", async (req, res) => {
   try {
     const {
@@ -203,10 +202,10 @@ router.post("/generate-note", async (req, res) => {
       incidentsOrRisks,
       followUpActions,
       workerName,
-      incidentOccurred,
+      incidentOccurred
     } = req.body;
 
-    // 1. Required field checks
+    // 1. Required fields
     const requiredFields = {
       participantName,
       date,
@@ -218,7 +217,7 @@ router.post("/generate-note", async (req, res) => {
       goalsWorkedOn,
       incidentsOrRisks,
       followUpActions,
-      workerName,
+      workerName
     };
 
     const missing = Object.entries(requiredFields)
@@ -227,11 +226,11 @@ router.post("/generate-note", async (req, res) => {
 
     if (missing.length > 0) {
       return res.status(400).json({
-        error: `Missing required fields: ${missing.join(", ")}`,
+        error: `Missing required fields: ${missing.join(", ")}`
       });
     }
 
-    // 2. Date sanity check (no future dates)
+    // 2. Date sanity
     const shiftDate = parseYyyyMmDd(date);
     if (!shiftDate) {
       return res.status(400).json({ error: "Invalid date format." });
@@ -242,11 +241,11 @@ router.post("/generate-note", async (req, res) => {
 
     if (shiftDate > today) {
       return res.status(400).json({
-        error: "Date of support cannot be in the future.",
+        error: "Date of support cannot be in the future."
       });
     }
 
-    // 3. Basic time sanity check (same-day, non-overnight)
+    // 3. Time sanity
     const startMins = timeToMinutes(startTime);
     const endMins = timeToMinutes(endTime);
 
@@ -254,17 +253,17 @@ router.post("/generate-note", async (req, res) => {
 
     if (startMins === null || endMins === null) {
       return res.status(400).json({
-        error: "Invalid start or end time format.",
+        error: "Invalid start or end time format."
       });
     }
 
     if (endMins <= startMins) {
       return res.status(400).json({
-        error: "End time must be after start time for the shift.",
+        error: "End time must be after start time for the shift."
       });
     }
 
-    // 4. Junk detection on key description fields
+    // 4. Junk detection
     const junkFields = [];
     if (looksLikeJunk(activitiesAndSupports))
       junkFields.push("activitiesAndSupports");
@@ -272,7 +271,6 @@ router.post("/generate-note", async (req, res) => {
       junkFields.push("participantPresentation");
     if (looksLikeJunk(goalsWorkedOn)) junkFields.push("goalsWorkedOn");
 
-    // Only enforce "not junk" for incidents if worker says an incident occurred
     if (incidentOccurred === true && looksLikeJunk(incidentsOrRisks)) {
       junkFields.push("incidentsOrRisks");
     }
@@ -281,7 +279,7 @@ router.post("/generate-note", async (req, res) => {
       return res.status(400).json({
         error:
           "Some fields do not look like meaningful descriptions. Please rewrite: " +
-          junkFields.join(", "),
+          junkFields.join(", ")
       });
     }
 
@@ -299,7 +297,6 @@ router.post("/generate-note", async (req, res) => {
       " " +
       (followUpActions || "");
 
-    // Llama 3 prompt (same as before)
     const prompt = `
 You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
 
@@ -376,36 +373,32 @@ NO INTRO LINES.
       {
         model: "llama3",
         prompt,
-        stream: false,
+        stream: false
       }
     );
 
     let modelText = (ollamaResponse.data.response || "").trim();
 
-    // If model followed the "ERROR:" contract
     if (modelText.startsWith("ERROR:")) {
       return res.status(400).json({ error: modelText });
     }
 
-    // Apply hybrid compliance filter
     const filteredBody = applyComplianceFilter(
       modelText,
       rawCombined,
       workerName
     );
 
-    // Header (non-AI)
     const header = [
       `Support Worker: ${workerName}`,
       `Date of Support: ${date}`,
       `Shift Time: ${shiftTime}`,
       `Location: ${safeLocation}`,
-      `Participant: ${participantName}`,
+      `Participant: ${participantName}`
     ].join("\n");
 
     const fullNote = `${header}\n\n${filteredBody}`;
 
-    // naïve incident flag
     const incidentText = (incidentsOrRisks || "").toLowerCase();
     const incidentFlag =
       incidentText.trim().length > 0 &&
@@ -415,6 +408,8 @@ NO INTRO LINES.
 
     const insertStmt = db.prepare(`
       INSERT INTO progress_notes (
+        organisationId,
+        workerUserId,
         participantName,
         workerName,
         date,
@@ -429,10 +424,12 @@ NO INTRO LINES.
         noteText,
         incidentFlag,
         createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const info = insertStmt.run(
+      req.user.organisationId,
+      req.user.id,
       participantName,
       workerName,
       date,
