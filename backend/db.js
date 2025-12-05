@@ -1,11 +1,12 @@
 // db.js
 const Database = require("better-sqlite3");
+const bcrypt = require("bcryptjs");
 
 // open or create local DB file
 const db = new Database("notes.db");
 
-// good practice
-db.exec(`PRAGMA foreign_keys = ON;`);
+// enable foreign keys
+db.pragma("foreign_keys = ON");
 
 // --- Organisations (providers) ---
 db.exec(`
@@ -32,7 +33,7 @@ db.exec(`
   );
 `);
 
-// --- Progress notes (now multi-tenant) ---
+// --- Progress notes (multi-tenant) ---
 db.exec(`
   CREATE TABLE IF NOT EXISTS progress_notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,7 +75,6 @@ function seedDemoOrgAndAdmin() {
   const row = db.prepare(`SELECT COUNT(*) AS c FROM organisations`).get();
   if (row.c > 0) return;
 
-  const bcrypt = require("bcryptjs");
   const nowIso = new Date().toISOString();
 
   const orgStmt = db.prepare(`

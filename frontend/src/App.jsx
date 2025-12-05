@@ -5,6 +5,7 @@ import { NavLink, Routes, Route } from "react-router-dom";
 import GenerateNotePage from "./pages/GenerateNotePage.jsx";
 import NotesDashboardPage from "./pages/NotesDashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx"; // <--- wherever you put it
+import UsersAdminPage from "./pages/UsersAdminPage.jsx"; 
 
 
 function App() {
@@ -105,7 +106,22 @@ function App() {
             >
               Saved notes
             </NavLink>
-            {/* later: extra tabs for ADMIN / OWNER e.g. Users, Providers */}
+            {user.role !== "WORKER" && (
+              <NavLink
+                to="/team"
+                style={({ isActive }) => ({
+                  padding: "0.4rem 0.8rem",
+                  borderRadius: "999px",
+                  textDecoration: "none",
+                  fontSize: "0.9rem",
+                  border: "1px solid #d1d5db",
+                  background: isActive ? "#111827" : "#f3f4f6",
+                  color: isActive ? "#f9fafb" : "#111827",
+                })}
+              >
+                Team
+              </NavLink>
+            )}
           </nav>
 
           <button
@@ -132,6 +148,12 @@ function App() {
           element={<NotesDashboardPage token={token} user={user} />}
         />
       </Routes>
+      {user.role !== "WORKER" && (
+        <Route
+          path="/team"
+          element={<UsersAdminPage token={token} user={user} />}
+        />
+      )}
     </div>
   );
 }

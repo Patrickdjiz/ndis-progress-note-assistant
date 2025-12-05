@@ -16,7 +16,6 @@ router.use(requireAuth);
 router.get("/notes", (req, res) => {
   try {
     const { participant, hasIncident } = req.query;
-    const orgId = req.user.organisationId;
 
     let baseQuery = `
       SELECT
@@ -35,7 +34,7 @@ router.get("/notes", (req, res) => {
       WHERE organisationId = ?
     `;
 
-    const params = [orgId];
+    const params = [req.user.organisationId];
 
     if (participant && participant.trim()) {
       baseQuery += " AND participantName LIKE ?";
@@ -407,7 +406,7 @@ NO INTRO LINES.
       !incidentText.includes("no concerns");
 
     const insertStmt = db.prepare(`
-      INSERT INTO progress_notes (
+    INSERT INTO progress_notes (
         organisationId,
         workerUserId,
         participantName,
@@ -424,26 +423,26 @@ NO INTRO LINES.
         noteText,
         incidentFlag,
         createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const info = insertStmt.run(
-      req.user.organisationId,
-      req.user.id,
-      participantName,
-      workerName,
-      date,
-      startTime,
-      endTime,
-      safeLocation,
-      activitiesAndSupports,
-      participantPresentation,
-      goalsWorkedOn,
-      incidentsOrRisks,
-      followUpActions,
-      fullNote,
-      incidentFlag ? 1 : 0,
-      new Date().toISOString()
+    req.user.organisationId,
+    req.user.id, // logged-in worker
+    participantName,
+    workerName,
+    date,
+    startTime,
+    endTime,
+    safeLocation,
+    activitiesAndSupports,
+    participantPresentation,
+    goalsWorkedOn,
+    incidentsOrRisks,
+    followUpActions,
+    fullNote,
+    incidentFlag ? 1 : 0,
+    new Date().toISOString()
     );
 
     return res.json({ note: fullNote, id: info.lastInsertRowid });
