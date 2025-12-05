@@ -71,52 +71,63 @@ db.exec(`
 `);
 
 // --- Seed one demo org + admin (dev only) ---
+// --- Seed one platform owner org + demo provider (dev only) ---
 function seedDemoOrgAndAdmin() {
-  const row = db.prepare(`SELECT COUNT(*) AS c FROM organisations`).get();
-  if (row.c > 0) return;
+  const orgCount = db.prepare(`SELECT COUNT(*) AS c FROM organisations`).get();
+  if (orgCount.c > 0) return;
 
   const nowIso = new Date().toISOString();
 
-  const orgStmt = db.prepare(`
+  // 1) Platform org for OWNER
+  const platformOrgStmt = db.prepare(`
     INSERT INTO organisations (name, status, createdAt)
     VALUES (?, 'ACTIVE', ?)
   `);
-  const orgInfo = orgStmt.run("Demo Provider", nowIso);
-  const orgId = orgInfo.lastInsertRowid;
+  const platformOrgInfo = platformOrgStmt.run("Platform Root Org", nowIso);
+  const platformOrgId = platformOrgInfo.lastInsertRowid;
 
-  const hash = bcrypt.hashSync("demo1234", 10);
-  const userStmt = db.prepare(`
+  // 2) OWNER user in platform org
+  const ownerHash = bcrypt.hashSync("owner1234", 10);
+  db.prepare(`
+    INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
+    VALUES (?, ?, ?, 'OWNER', ?, 1, ?)
+  `).run(
+    platformOrgId,
+    "owner@demo.local",
+    ownerHash,
+    "Platform Owner",
+    nowIso
+  );
+
+  console.log("Seeded platform OWNER:");
+  console.log("  Email:    owner@demo.local");
+  console.log("  Password: owner1234");
+
+  // 3) Separate demo provider org for the demo ADMIN
+  const demoOrgStmt = db.prepare(`
+    INSERT INTO organisations (name, status, createdAt)
+    VALUES (?, 'ACTIVE', ?)
+  `);
+  const demoOrgInfo = demoOrgStmt.run("Demo Provider", nowIso);
+  const demoOrgId = demoOrgInfo.lastInsertRowid;
+
+  const adminHash = bcrypt.hashSync("demo1234", 10);
+  db.prepare(`
     INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
     VALUES (?, ?, ?, 'ADMIN', ?, 1, ?)
-  `);
-  userStmt.run(orgId, "admin@demo.local", hash, "Demo Admin", nowIso);
+  `).run(
+    demoOrgId,
+    "admin@demo.local",
+    adminHash,
+    "Demo Admin",
+    nowIso
+  );
 
   console.log("Seeded demo org + admin:");
   console.log("  Email:    admin@demo.local");
   console.log("  Password: demo1234");
-
-  // Also seed a platform OWNER if none exists yet
-  const ownerRow = db
-    .prepare(`SELECT COUNT(*) AS c FROM users WHERE role = 'OWNER'`)
-    .get();
-  if (ownerRow.c === 0) {
-    const ownerHash = bcrypt.hashSync("owner1234", 10);
-    db.prepare(`
-      INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
-      VALUES (?, ?, ?, 'OWNER', ?, 1, ?)
-    `).run(
-      orgId,                      // or make a separate org if you want
-      "owner@demo.local",
-      ownerHash,
-      "Platform Owner",
-      nowIso
-    );
-
-    console.log("Seeded platform OWNER:");
-    console.log("  Email:    owner@demo.local");
-    console.log("  Password: owner1234");
-    }   
 }
+
 
 seedDemoOrgAndAdmin();
 

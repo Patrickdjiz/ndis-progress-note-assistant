@@ -47,6 +47,67 @@ function OwnerConsolePage({ token, user }) {
     }
   };
 
+  const handleToggleOrgStatus = async (org) => {
+  try {
+    setErrorMsg("");
+    setCreateMsg("");
+
+    const newStatus = org.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+
+    const res = await fetch(
+      `http://localhost:5000/api/owner/organisations/${org.id}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      }
+    );
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to update organisation status");
+    }
+
+    await fetchOverview();
+  } catch (err) {
+    console.error("Error toggling org status:", err);
+    setErrorMsg(err?.message || "Failed to update organisation status");
+  }
+};
+
+const handleToggleUserStatus = async (userId, currentIsActive) => {
+  try {
+    setErrorMsg("");
+    setCreateMsg("");
+
+    const res = await fetch(
+      `http://localhost:5000/api/owner/users/${userId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive: !currentIsActive }),
+      }
+    );
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to update user status");
+    }
+
+    await fetchOverview();
+  } catch (err) {
+    console.error("Error toggling user status:", err);
+    setErrorMsg(err?.message || "Failed to update user status");
+  }
+};
+
+
   useEffect(() => {
     fetchOverview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -257,23 +318,52 @@ function OwnerConsolePage({ token, user }) {
             }}
           >
             <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "0.4rem",
-                alignItems: "baseline",
-              }}
-            >
-              <div>
-                <h4 style={{ margin: 0 }}>{org.name}</h4>
-                <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-                  Organisation ID: {org.id}
+                style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "0.4rem",
+                    alignItems: "baseline",
+                }}
+                >
+                <div>
+                    <h4 style={{ margin: 0 }}>{org.name}</h4>
+                    <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+                    Organisation ID: {org.id}
+                    </span>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span
+                style={{
+                    fontSize: "0.75rem",
+                    padding: "0.15rem 0.5rem",
+                    borderRadius: "999px",
+                    border: "1px solid #e5e7eb",
+                    background: org.status === "ACTIVE" ? "#ecfdf3" : "#fef2f2",
+                    color: org.status === "ACTIVE" ? "#166534" : "#b91c1c",
+                }}
+                >
+                {org.status}
                 </span>
-              </div>
-              <span style={{ fontSize: "0.8rem", color: "#4b5563" }}>
+
+                <button
+                type="button"
+                onClick={() => handleToggleOrgStatus(org)}
+                style={{
+                    fontSize: "0.75rem",
+                    padding: "0.25rem 0.7rem",
+                    cursor: "pointer",
+                }}
+                >
+                {org.status === "ACTIVE" ? "Suspend provider" : "Reactivate provider"}
+                </button>
+
+                <span style={{ fontSize: "0.8rem", color: "#4b5563" }}>
                 Users: {org.users?.length || 0}
-              </span>
+                </span>
             </div>
+            </div>
+
 
             {(!org.users || org.users.length === 0) && (
               <p style={{ fontSize: "0.85rem", color: "#6b7280" }}>
@@ -292,53 +382,63 @@ function OwnerConsolePage({ token, user }) {
                 >
                   <thead>
                     <tr>
-                      <th
+                        <th
                         style={{
-                          textAlign: "left",
-                          padding: "0.35rem 0.4rem",
-                          borderBottom: "1px solid #e5e7eb",
+                            textAlign: "left",
+                            padding: "0.35rem 0.4rem",
+                            borderBottom: "1px solid #e5e7eb",
                         }}
-                      >
+                        >
                         Role
-                      </th>
-                      <th
+                        </th>
+                        <th
                         style={{
-                          textAlign: "left",
-                          padding: "0.35rem 0.4rem",
-                          borderBottom: "1px solid #e5e7eb",
+                            textAlign: "left",
+                            padding: "0.35rem 0.4rem",
+                            borderBottom: "1px solid #e5e7eb",
                         }}
-                      >
+                        >
                         Name
-                      </th>
-                      <th
+                        </th>
+                        <th
                         style={{
-                          textAlign: "left",
-                          padding: "0.35rem 0.4rem",
-                          borderBottom: "1px solid #e5e7eb",
+                            textAlign: "left",
+                            padding: "0.35rem 0.4rem",
+                            borderBottom: "1px solid #e5e7eb",
                         }}
-                      >
+                        >
                         Email
-                      </th>
-                      <th
+                        </th>
+                        <th
                         style={{
-                          textAlign: "left",
-                          padding: "0.35rem 0.4rem",
-                          borderBottom: "1px solid #e5e7eb",
+                            textAlign: "left",
+                            padding: "0.35rem 0.4rem",
+                            borderBottom: "1px solid #e5e7eb",
                         }}
-                      >
+                        >
                         Active
-                      </th>
-                      <th
+                        </th>
+                        <th
                         style={{
-                          textAlign: "left",
-                          padding: "0.35rem 0.4rem",
-                          borderBottom: "1px solid #e5e7eb",
+                            textAlign: "left",
+                            padding: "0.35rem 0.4rem",
+                            borderBottom: "1px solid #e5e7eb",
                         }}
-                      >
+                        >
                         Created
-                      </th>
+                        </th>
+                        <th
+                        style={{
+                            textAlign: "left",
+                            padding: "0.35rem 0.4rem",
+                            borderBottom: "1px solid #e5e7eb",
+                        }}
+                        >
+                        Actions
+                        </th>
                     </tr>
-                  </thead>
+                    </thead>
+
                   <tbody>
                     {org.users.map((u) => (
                       <tr key={u.id}>
@@ -387,6 +487,24 @@ function OwnerConsolePage({ token, user }) {
                         >
                           {u.createdAt}
                         </td>
+                        <td
+                            style={{
+                                padding: "0.35rem 0.4rem",
+                                borderBottom: "1px solid #f3f4f6",
+                            }}
+                            >
+                            <button
+                                type="button"
+                                onClick={() => handleToggleUserStatus(u.id, !!u.isActive)}
+                                style={{
+                                fontSize: "0.75rem",
+                                padding: "0.25rem 0.6rem",
+                                cursor: "pointer",
+                                }}
+                            >
+                                {u.isActive ? "Deactivate" : "Activate"}
+                            </button>
+                            </td>
                       </tr>
                     ))}
                   </tbody>

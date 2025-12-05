@@ -17,15 +17,14 @@ router.use(requireRole("ADMIN", "OWNER"));
 router.get("/", (req, res) => {
   try {
     const stmt = db.prepare(`
-      SELECT id, email, fullName, role, isActive, createdAt
-      FROM users
-      WHERE organisationId = ?
-        AND (role = 'WORKER' OR id = ?)
-      ORDER BY role DESC, createdAt DESC
-    `);
-
-    const rows = stmt.all(req.user.organisationId, req.user.id);
-    res.json({ users: rows });
+    SELECT id, email, fullName, role, isActive, createdAt
+    FROM users
+    WHERE organisationId = ?
+      AND (role = 'WORKER' OR id = ?)
+    ORDER BY role DESC, createdAt DESC
+  `);
+  const rows = stmt.all(req.user.organisationId, req.user.id);
+  res.json({ users: rows });
   } catch (err) {
     console.error("Error listing users:", err.message);
     res.status(500).json({ error: "Failed to list users" });

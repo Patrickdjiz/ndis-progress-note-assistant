@@ -107,7 +107,7 @@ function App() {
             >
               Saved notes
             </NavLink>
-            {user.role !== "WORKER" && (
+            {user.role === "ADMIN" && (
               <NavLink
                 to="/team"
                 style={({ isActive }) => ({
@@ -164,12 +164,12 @@ function App() {
           path="/dashboard"
           element={<NotesDashboardPage token={token} user={user} />}
         />
-        {user.role !== "WORKER" && (
-        <Route
-          path="/team"
-          element={<UsersAdminPage token={token} user={user} />}
-        />
-      )}
+        {user.role === "ADMIN" && (
+          <Route
+            path="/team"
+            element={<UsersAdminPage token={token} user={user} />}
+          />
+        )}
 
       {user.role === "OWNER" && (
         <Route

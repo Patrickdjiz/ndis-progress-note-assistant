@@ -65,6 +65,45 @@ router.get("/overview", (req, res) => {
   }
 });
 
+// PATCH /api/owner/users/:id/status
+router.patch("/users/:id/status", (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { isActive } = req.body;
+
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const activeFlag = isActive ? 1 : 0;
+
+    const existing = db
+      .prepare(`SELECT id, role FROM users WHERE id = ?`)
+      .get(id);
+    if (!existing) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Safety: owner cannot deactivate OWNER accounts (including themselves)
+    if (existing.role === "OWNER") {
+      return res
+        .status(400)
+        .json({ error: "You cannot change OWNER account status" });
+    }
+
+    db.prepare(`UPDATE users SET isActive = ? WHERE id = ?`).run(
+      activeFlag,
+      id
+    );
+
+    res.json({ ok: true, id, isActive: activeFlag });
+  } catch (err) {
+    console.error("Error updating user status (owner):", err.message);
+    res.status(500).json({ error: "Failed to update user status" });
+  }
+});
+
+
 /**
  * POST /api/owner/providers
  * Create a new organisation + its ADMIN user
