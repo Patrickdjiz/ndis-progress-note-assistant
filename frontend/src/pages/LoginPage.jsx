@@ -7,29 +7,32 @@ function LoginPage({ onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const res = await fetch("http://localhost:5000/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+  e.preventDefault();
+  setError("");
+  setLoading(true);
+  try {
+    const res = await fetch("http://localhost:5000/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
 
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Login failed");
-      } else {
-        onLoginSuccess(data);
-      }
-    } catch (err) {
-      console.error("Login error", err);
-      setError("Network error");
-    } finally {
-      setLoading(false);
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error((data && data.error) || "Login failed");
     }
-  };
+
+    // This should call the prop from App.jsx
+    onLoginSuccess(data);
+  } catch (err) {
+    console.error("Login error:", err);
+    setError(err.message || "Login failed");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div style={{ maxWidth: 400, margin: "80px auto", color: "#fff" }}>
