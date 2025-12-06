@@ -77,7 +77,12 @@ function UsersAdminPage({ token, user }) {
     setNewEmail("");
     setNewFullName("");
     setNewPassword("");
-    setCreateMsg(`Worker ${data.user.email} created.`);
+    const workerEmail = data?.user?.email || newEmail.trim();
+        setCreateMsg(
+        workerEmail
+            ? `Worker ${workerEmail} created.`
+            : "Worker created."
+        );
 
     // Safest: reload from backend
     await fetchUsers();

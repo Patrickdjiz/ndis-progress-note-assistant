@@ -2,10 +2,11 @@
 const express = require("express");
 const cors = require("cors");
 
-const notesRoutes = require("./routes/notesRoutes");
+
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const ownerRoutes = require("./routes/ownerRoutes");
+const notesRoutes = require("./routes/notesRoutes");
 
 const app = express();
 
