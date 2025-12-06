@@ -132,41 +132,43 @@ router.post("/providers", requireAuth, requireRole("OWNER"), (req, res) => {
  * PATCH /api/owner/organisations/:id/status
  * body: { status: 'ACTIVE' | 'SUSPENDED' }
  */
-router.patch("/organisations/:id/status", (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: "Invalid organisation id" });
+// routes/ownerRoutes.js
+router.patch(
+  "/organisations/:id/status",
+  requireAuth,
+  requireRole("OWNER"),
+  (req, res) => {
+    try {
+      const orgId = Number(req.params.id);
+      if (!Number.isInteger(orgId)) {
+        return res.status(400).json({ error: "Invalid organisation id" });
+      }
+
+      const { status } = req.body;
+      if (!["ACTIVE", "SUSPENDED"].includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+
+      const existing = db
+        .prepare(`SELECT id FROM organisations WHERE id = ?`)
+        .get(orgId);
+      if (!existing) {
+        return res.status(404).json({ error: "Organisation not found" });
+      }
+
+      db.prepare(`UPDATE organisations SET status = ? WHERE id = ?`).run(
+        status,
+        orgId
+      );
+
+      return res.json({ ok: true, id: orgId, status });
+    } catch (err) {
+      console.error("Error updating organisation status:", err.message);
+      return res.status(500).json({ error: "Failed to update organisation status" });
     }
-
-    const { status } = req.body || {};
-    if (!["ACTIVE", "SUSPENDED"].includes(status)) {
-      return res
-        .status(400)
-        .json({ error: "Status must be 'ACTIVE' or 'SUSPENDED'" });
-    }
-
-    const existing = db
-      .prepare(`SELECT id FROM organisations WHERE id = ?`)
-      .get(id);
-    if (!existing) {
-      return res.status(404).json({ error: "Organisation not found" });
-    }
-
-    db.prepare(`UPDATE organisations SET status = ? WHERE id = ?`).run(
-      status,
-      id
-    );
-
-    res.json({ ok: true, id, status });
-  } catch (err) {
-    console.error(
-      "Error in PATCH /api/owner/organisations/:id/status:",
-      err.message
-    );
-    res.status(500).json({ error: "Failed to update organisation status" });
   }
-});
+);
+
 
 /**
  * PATCH /api/owner/users/:id/status

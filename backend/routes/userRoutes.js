@@ -39,6 +39,7 @@ router.get("/", (req, res) => {
  * Create a new WORKER in the current organisation.
  * Provider admins CANNOT create other admins from here.
  */
+// POST /api/users
 router.post("/", (req, res) => {
   try {
     const { email, fullName, password } = req.body;
@@ -60,10 +61,9 @@ router.post("/", (req, res) => {
         .json({ error: "A user with this email already exists" });
     }
 
-    const hash = bcrypt.hashSync(password.trim(), 10);
+    const hash = bcrypt.hashSync(password, 10);
     const nowIso = new Date().toISOString();
 
-    // Force role = WORKER, ignore any "role" in body
     const stmt = db.prepare(`
       INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
       VALUES (?, ?, ?, 'WORKER', ?, 1, ?)
@@ -92,6 +92,7 @@ router.post("/", (req, res) => {
     res.status(500).json({ error: "Failed to create user" });
   }
 });
+
 
 /**
  * PATCH /api/users/:id/status

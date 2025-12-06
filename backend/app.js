@@ -20,16 +20,12 @@ app.get("/api/health", (req, res) => {
 // Auth routes (login, create user)
 app.use("/api", authRoutes);
 
-// Notes routes (all protected inside notesRoutes via router.use(requireAuth))
-app.use("/api", notesRoutes);
-
-// existing
-app.use("/api", notesRoutes);
-
 // new
 app.use("/api/users", userRoutes);
 
 app.use("/api/owner", ownerRoutes);
+
+app.use("/api", notesRoutes);
 
 
 module.exports = app;

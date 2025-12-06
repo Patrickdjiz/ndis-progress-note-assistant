@@ -80,12 +80,13 @@ function UsersAdminPage({ token, user }) {
     setCreateMsg(`Worker ${data.user.email} created.`);
 
     // Safest: reload from backend
-    await fetchUsers(); // <-- your existing list loader
+    await fetchUsers();
   } catch (err) {
     console.error("Error creating user:", err);
     setErrorMsg(err?.message || "Failed to create user");
   }
 };
+
 
 
   const handleToggleActive = async (id, isActive) => {
@@ -251,7 +252,7 @@ function UsersAdminPage({ token, user }) {
                       color: "#6b7280",
                     }}
                   >
-                    No users yet. Add your first worker above.
+                    No users yet. Add your first worker above.--*-
                   </td>
                 </tr>
               )}
