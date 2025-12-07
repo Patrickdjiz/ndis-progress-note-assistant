@@ -1,6 +1,6 @@
 // src/App.jsx
 import { useState } from "react";
-import { NavLink, Routes, Route } from "react-router-dom";
+import { NavLink, Routes, Route, Navigate } from "react-router-dom";
 import GenerateNotePage from "./pages/GenerateNotePage.jsx";
 import NotesDashboardPage from "./pages/NotesDashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx"; // <--- wherever you put it
@@ -78,6 +78,7 @@ function App() {
 
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <nav style={{ display: "flex", gap: "0.75rem" }}>
+            {user.role !== "OWNER" && (
             <NavLink
               to="/"
               end
@@ -93,6 +94,7 @@ function App() {
             >
               Generate note
             </NavLink>
+            )}
             {user.role === "ADMIN" && (
               <NavLink
                 to="/team"
@@ -125,7 +127,7 @@ function App() {
               Owner console
             </NavLink>
           )}
-          {user.role === "ADMIN" && (
+          {user.role === "ADMIN" && user.role !== "WORKER" && user.role !== "OWNER" && (
             <NavLink
               to="/dashboard"
               style={({ isActive }) => ({
@@ -158,41 +160,34 @@ function App() {
       </header>
 
       <Routes>
-        <Route
-          path="/"
-          element={<GenerateNotePage token={token} user={user} />}
-        />
+  {user.role === "OWNER" ? (
+    <>
+      <Route path="/owner" element={<OwnerConsolePage token={token} user={user} />} />
+      <Route path="*" element={<Navigate to="/owner" replace />} />
+    </>
+  ) : (
+    <>
+      <Route path="/" element={<GenerateNotePage token={token} user={user} />} />
+
+      {user.role !== "WORKER" && (
         <Route
           path="/dashboard"
           element={<NotesDashboardPage token={token} user={user} />}
         />
-        {user.role === "ADMIN" && (
-          <Route
-            path="/team"
-            element={<UsersAdminPage token={token} user={user} />}
-          />
-        )}
+      )}
 
-      {user.role === "OWNER" && (
+      {user.role === "ADMIN" && (
         <Route
-          path="/owner"
-          element={<OwnerConsolePage token={token} user={user} />}
+          path="/team"
+          element={<UsersAdminPage token={token} user={user} />}
         />
       )}
-      {user.role !== "WORKER" && (
-    <Route
-      path="/dashboard"
-      element={<NotesDashboardPage token={token} user={user} />}
-    />
-  )}
 
-  {user.role !== "WORKER" && (
-    <Route
-      path="/team"
-      element={<UsersAdminPage token={token} user={user} />}
-    />
+      {/* Catch-all: non-owner users go to generator */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </>
   )}
-      </Routes>
+</Routes>
     </div>
   );
 }

@@ -17,6 +17,11 @@ router.get("/notes", (req, res) => {
   try {
     const { participant, hasIncident } = req.query;
 
+    // Block OWNER at API level just in case
+    if (req.user.role === "OWNER") {
+      return res.status(403).json({ error: "Owners cannot access notes API" });
+    }
+
     let baseQuery = `
       SELECT
         id,
@@ -35,6 +40,12 @@ router.get("/notes", (req, res) => {
     `;
 
     const params = [req.user.organisationId];
+
+    // Worker: only their own notes
+    if (req.user.role === "WORKER") {
+      baseQuery += " AND workerUserId = ?";
+      params.push(req.user.id);
+    }
 
     if (participant && participant.trim()) {
       baseQuery += " AND participantName LIKE ?";
@@ -59,6 +70,7 @@ router.get("/notes", (req, res) => {
   }
 });
 
+
 // GET /api/notes/:id  (single note, org-scoped)
 router.get("/notes/:id", (req, res) => {
   try {
@@ -67,12 +79,25 @@ router.get("/notes/:id", (req, res) => {
       return res.status(400).json({ error: "Invalid note id" });
     }
 
-    const stmt = db.prepare(`
+    if (req.user.role === "OWNER") {
+      return res.status(403).json({ error: "Owners cannot access notes API" });
+    }
+
+    let query = `
       SELECT *
       FROM progress_notes
-      WHERE id = ? AND organisationId = ?
-    `);
-    const row = stmt.get(id, req.user.organisationId);
+      WHERE id = ?
+        AND organisationId = ?
+    `;
+    const params = [id, req.user.organisationId];
+
+    if (req.user.role === "WORKER") {
+      query += " AND workerUserId = ?";
+      params.push(req.user.id);
+    }
+
+    const stmt = db.prepare(query);
+    const row = stmt.get(...params);
 
     if (!row) {
       return res.status(404).json({ error: "Note not found" });
@@ -84,6 +109,7 @@ router.get("/notes/:id", (req, res) => {
     return res.status(500).json({ error: "Failed to fetch note" });
   }
 });
+
 
 // POST /api/notes/:id/finalise
 router.post("/notes/:id/finalise", (req, res) => {
