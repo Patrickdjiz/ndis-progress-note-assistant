@@ -93,20 +93,6 @@ function App() {
             >
               Generate note
             </NavLink>
-            <NavLink
-              to="/dashboard"
-              style={({ isActive }) => ({
-                padding: "0.4rem 0.8rem",
-                borderRadius: "999px",
-                textDecoration: "none",
-                fontSize: "0.9rem",
-                border: "1px solid #d1d5db",
-                background: isActive ? "#111827" : "#f3f4f6",
-                color: isActive ? "#f9fafb" : "#111827",
-              })}
-            >
-              Saved notes
-            </NavLink>
             {user.role === "ADMIN" && (
               <NavLink
                 to="/team"
@@ -139,22 +125,22 @@ function App() {
               Owner console
             </NavLink>
           )}
-          {user.role !== "WORKER" && (
-  <NavLink
-    to="/dashboard"
-    style={({ isActive }) => ({
-      padding: "0.4rem 0.8rem",
-      borderRadius: "999px",
-      textDecoration: "none",
-      fontSize: "0.9rem",
-      border: "1px solid #d1d5db",
-      background: isActive ? "#111827" : "#f3f4f6",
-      color: isActive ? "#f9fafb" : "#111827",
-    })}
-  >
-    Saved notes
-  </NavLink>
-)}
+          {user.role === "ADMIN" && (
+            <NavLink
+              to="/dashboard"
+              style={({ isActive }) => ({
+                padding: "0.4rem 0.8rem",
+                borderRadius: "999px",
+                textDecoration: "none",
+                fontSize: "0.9rem",
+                border: "1px solid #d1d5db",
+                background: isActive ? "#111827" : "#f3f4f6",
+                color: isActive ? "#f9fafb" : "#111827",
+              })}
+            >
+              Saved notes
+            </NavLink>
+          )}
           </nav>
 
           <button
