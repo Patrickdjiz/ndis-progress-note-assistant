@@ -112,11 +112,19 @@ router.get("/notes/:id", (req, res) => {
 
 
 // POST /api/notes/:id/finalise
+// POST /api/notes/:id/finalise
 router.post("/notes/:id/finalise", (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
       return res.status(400).json({ error: "Invalid note id" });
+    }
+
+    // Owners should not be involved in day-to-day note flows
+    if (req.user.role === "OWNER") {
+      return res
+        .status(403)
+        .json({ error: "Owners cannot finalise notes" });
     }
 
     const { finalNoteText, finalisedBy } = req.body;
@@ -127,10 +135,24 @@ router.post("/notes/:id/finalise", (req, res) => {
         .json({ error: "Final note text is required" });
     }
 
-    const stmtCheck = db.prepare(`
-      SELECT id FROM progress_notes WHERE id = ? AND organisationId = ?
-    `);
-    const existing = stmtCheck.get(id, req.user.organisationId);
+    // Base query: same org + note id
+    let query = `
+      SELECT *
+      FROM progress_notes
+      WHERE id = ?
+        AND organisationId = ?
+    `;
+    const params = [id, req.user.organisationId];
+
+    // Workers can only finalise their own notes
+    if (req.user.role === "WORKER") {
+      query += " AND workerUserId = ?";
+      params.push(req.user.id);
+    }
+
+    const stmtCheck = db.prepare(query);
+    const existing = stmtCheck.get(...params);
+
     if (!existing) {
       return res.status(404).json({ error: "Note not found" });
     }
@@ -156,7 +178,7 @@ router.post("/notes/:id/finalise", (req, res) => {
       ok: true,
       finalisedAt: nowIso,
       finalisedBy: (finalisedBy || "").toString().trim(),
-      finalNoteText: finalNoteText.toString().trim()
+      finalNoteText: finalNoteText.toString().trim(),
     });
   } catch (err) {
     console.error("Error finalising note:", err.message);
@@ -164,6 +186,8 @@ router.post("/notes/:id/finalise", (req, res) => {
   }
 });
 
+
+// POST /api/notes/:id/review
 // POST /api/notes/:id/review
 router.post("/notes/:id/review", (req, res) => {
   try {
@@ -172,11 +196,21 @@ router.post("/notes/:id/review", (req, res) => {
       return res.status(400).json({ error: "Invalid note id" });
     }
 
+    // Only admins can mark reviewed
+    if (req.user.role !== "ADMIN") {
+      return res
+        .status(403)
+        .json({ error: "Only admins can review notes" });
+    }
+
     const { reviewedFlag, reviewedBy } = req.body;
     const flag = reviewedFlag === false ? 0 : 1;
 
     const stmtCheck = db.prepare(`
-      SELECT id FROM progress_notes WHERE id = ? AND organisationId = ?
+      SELECT id
+      FROM progress_notes
+      WHERE id = ?
+        AND organisationId = ?
     `);
     const existing = stmtCheck.get(id, req.user.organisationId);
     if (!existing) {
@@ -204,13 +238,14 @@ router.post("/notes/:id/review", (req, res) => {
       ok: true,
       reviewedFlag: flag,
       reviewedAt: flag ? nowIso : null,
-      reviewedBy: (reviewedBy || "").toString().trim()
+      reviewedBy: (reviewedBy || "").toString().trim(),
     });
   } catch (err) {
     console.error("Error updating review status:", err.message);
     return res.status(500).json({ error: "Failed to update review status" });
   }
 });
+
 
 // POST /api/generate-note  (org-scoped)
 router.post("/generate-note", async (req, res) => {
