@@ -6,6 +6,8 @@ import NotesDashboardPage from "./pages/NotesDashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import UsersAdminPage from "./pages/UsersAdminPage.jsx";
 import OwnerConsolePage from "./pages/OwnerConsolePage.jsx";
+import MyNotesPage from "./pages/MyNotesPage.jsx";
+
 
 function App() {
   // Load auth from localStorage if present
@@ -103,6 +105,13 @@ function App() {
               </NavLink>
             )}
 
+            {/* WORKER: My notes */}
+            {user.role === "WORKER" && (
+              <NavLink to="/my-notes" style={linkStyle}>
+                My notes
+              </NavLink>
+            )}
+
             {/* ADMIN: Team + Saved notes */}
             {user.role === "ADMIN" && (
               <>
@@ -155,6 +164,14 @@ function App() {
               path="/"
               element={<GenerateNotePage token={token} user={user} />}
             />
+
+            {/* WORKER: My notes */}
+            {user.role === "WORKER" && (
+              <Route
+                path="/my-notes"
+                element={<MyNotesPage token={token} user={user} />}
+              />
+            )}
 
             {/* Admin-only pages */}
             {user.role === "ADMIN" && (
