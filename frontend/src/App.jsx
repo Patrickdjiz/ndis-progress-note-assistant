@@ -62,11 +62,13 @@ function App() {
   return (
     <div
       style={{
-        maxWidth: "1100px",
-        margin: "0 auto",
-        padding: "1.5rem",
-        fontFamily: "sans-serif",
-      }}
+      maxWidth: "1100px",
+      margin: "1.5rem auto",
+      padding: "1.5rem",
+      fontFamily: "sans-serif",
+      borderRadius: "0.75rem",
+      boxShadow: "0 10px 25px rgba(15, 23, 42, 0.06)",
+    }}
     >
       {/* Top header with user + logout */}
       <header
@@ -139,6 +141,9 @@ function App() {
               padding: "0.35rem 0.8rem",
               fontSize: "0.85rem",
               cursor: "pointer",
+              borderRadius: "999px",
+              border: "1px solid #e5e7eb",
+              background: "#ffffff",
             }}
           >
             Log out

@@ -307,7 +307,9 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#ffffffff",
+                      color: "#000000ff",
+                      fontWeight: 600,
+
                     }}
                   >
                     Date
@@ -317,7 +319,8 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#ffffffff",
+                      color: "#000000ff",
+                      fontWeight: 600,
                     }}
                   >
                     Participant
@@ -327,7 +330,8 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#ffffffff",
+                      color: "#000000ff",
+                      fontWeight: 600,
                     }}
                   >
                     Worker
@@ -337,7 +341,8 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#ffffffff",
+                      color: "#000000ff",
+                      fontWeight: 600,
                     }}
                   >
                     Location
@@ -347,7 +352,8 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#ffffffff",
+                      color: "#000000ff",
+                      fontWeight: 600,
                     }}
                   >
                     Incident?
@@ -357,7 +363,8 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#ffffffff",
+                      color: "#000000ff",
+                      fontWeight: 600,
                     }}
                   >
                     Status

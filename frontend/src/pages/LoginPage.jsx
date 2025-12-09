@@ -35,7 +35,17 @@ function LoginPage({ onLoginSuccess }) {
 
 
   return (
-    <div style={{ maxWidth: 400, margin: "80px auto", color: "#fff" }}>
+    <div
+      style={{
+        maxWidth: 400,
+        margin: "80px auto",
+        color: "#111827",
+        background: "#f9fafb",
+        padding: "1.5rem",
+        borderRadius: "0.75rem",
+        border: "1px solid #e5e7eb",
+      }}
+    >
       <h2>NDIS AI Notes – Login</h2>
       {error && <div style={{ color: "salmon", marginBottom: 8 }}>{error}</div>}
       <form onSubmit={handleSubmit}>
