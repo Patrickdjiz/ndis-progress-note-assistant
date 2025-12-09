@@ -112,7 +112,7 @@ router.get("/notes/:id", (req, res) => {
 
 
 // POST /api/notes/:id/finalise
-// POST /api/notes/:id/finalise
+
 router.post("/notes/:id/finalise", (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -127,7 +127,8 @@ router.post("/notes/:id/finalise", (req, res) => {
         .json({ error: "Owners cannot finalise notes" });
     }
 
-    const { finalNoteText, finalisedBy } = req.body;
+    const { finalNoteText } = req.body;
+    const finalisedByName = req.user.fullName;
 
     if (!finalNoteText || !finalNoteText.toString().trim()) {
       return res
@@ -170,14 +171,14 @@ router.post("/notes/:id/finalise", (req, res) => {
     stmtUpdate.run(
       finalNoteText.toString().trim(),
       nowIso,
-      (finalisedBy || "").toString().trim(),
+      finalisedByName,
       id
     );
 
     return res.json({
       ok: true,
       finalisedAt: nowIso,
-      finalisedBy: (finalisedBy || "").toString().trim(),
+      finalisedBy: finalisedByName,
       finalNoteText: finalNoteText.toString().trim(),
     });
   } catch (err) {
@@ -203,8 +204,9 @@ router.post("/notes/:id/review", (req, res) => {
         .json({ error: "Only admins can review notes" });
     }
 
-    const { reviewedFlag, reviewedBy } = req.body;
+    const { reviewedFlag } = req.body;
     const flag = reviewedFlag === false ? 0 : 1;
+    const reviewerName = req.user.fullName;
 
     const stmtCheck = db.prepare(`
       SELECT id
@@ -230,7 +232,7 @@ router.post("/notes/:id/review", (req, res) => {
     stmtUpdate.run(
       flag,
       flag ? nowIso : null,
-      (reviewedBy || "").toString().trim(),
+      flag ? reviewerName : null,
       id
     );
 
@@ -238,7 +240,7 @@ router.post("/notes/:id/review", (req, res) => {
       ok: true,
       reviewedFlag: flag,
       reviewedAt: flag ? nowIso : null,
-      reviewedBy: (reviewedBy || "").toString().trim(),
+      reviewedBy: flag ? reviewerName : null,
     });
   } catch (err) {
     console.error("Error updating review status:", err.message);
@@ -250,6 +252,11 @@ router.post("/notes/:id/review", (req, res) => {
 // POST /api/generate-note  (org-scoped)
 router.post("/generate-note", async (req, res) => {
   try {
+
+    if (req.user.role === "OWNER") {
+      return res.status(403).json({ error: "Owners cannot generate notes" });
+    }
+
     const {
       participantName,
       date,
