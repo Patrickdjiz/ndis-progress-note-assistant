@@ -489,7 +489,7 @@ function NotesDashboardPage({ token, user }) {
                             ? { bg: "#eff6ff", color: "#1d4ed8" }
                             : { bg: "#f3f4f6", color: "#4b5563" }
                         )}{" "}
-                        {n.reviewedFlag &&
+                        {!!n.reviewedFlag &&
                           badge("Reviewed", {
                             bg: "#fef3c7",
                             color: "#92400e",
