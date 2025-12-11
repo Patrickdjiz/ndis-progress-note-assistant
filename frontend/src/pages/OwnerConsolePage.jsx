@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 
 function OwnerConsolePage({ token, user }) {
+  const PRIMARY = "#111827";
+
   // Extra safety: block if somehow rendered for non-owner
   if (!user || user.role !== "OWNER") {
     return (
@@ -24,6 +26,7 @@ function OwnerConsolePage({ token, user }) {
   const [adminFullName, setAdminFullName] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [createMsg, setCreateMsg] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const fetchOverview = async () => {
     try {
@@ -38,7 +41,9 @@ function OwnerConsolePage({ token, user }) {
       if (!res.ok) {
         throw new Error(data.error || "Failed to load overview");
       }
-      setOrganisations(Array.isArray(data.organisations) ? data.organisations : []);
+      setOrganisations(
+        Array.isArray(data.organisations) ? data.organisations : []
+      );
     } catch (err) {
       console.error("Error loading owner overview:", err);
       setErrorMsg(err?.message || "Failed to load overview");
@@ -48,65 +53,64 @@ function OwnerConsolePage({ token, user }) {
   };
 
   const handleToggleOrgStatus = async (org) => {
-  try {
-    setErrorMsg("");
-    setCreateMsg("");
+    try {
+      setErrorMsg("");
+      setCreateMsg("");
 
-    const newStatus = org.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+      const newStatus = org.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
 
-    const res = await fetch(
-      `http://localhost:5000/api/owner/organisations/${org.id}/status`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
+      const res = await fetch(
+        `http://localhost:5000/api/owner/organisations/${org.id}/status`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
+        }
+      );
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update organisation status");
       }
-    );
 
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || "Failed to update organisation status");
+      await fetchOverview();
+    } catch (err) {
+      console.error("Error toggling org status:", err);
+      setErrorMsg(err?.message || "Failed to update organisation status");
     }
+  };
 
-    await fetchOverview();
-  } catch (err) {
-    console.error("Error toggling org status:", err);
-    setErrorMsg(err?.message || "Failed to update organisation status");
-  }
-};
+  const handleToggleUserStatus = async (userId, currentIsActive) => {
+    try {
+      setErrorMsg("");
+      setCreateMsg("");
 
-const handleToggleUserStatus = async (userId, currentIsActive) => {
-  try {
-    setErrorMsg("");
-    setCreateMsg("");
+      const res = await fetch(
+        `http://localhost:5000/api/owner/users/${userId}/status`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ isActive: !currentIsActive }),
+        }
+      );
 
-    const res = await fetch(
-      `http://localhost:5000/api/owner/users/${userId}/status`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ isActive: !currentIsActive }),
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update user status");
       }
-    );
 
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || "Failed to update user status");
+      await fetchOverview();
+    } catch (err) {
+      console.error("Error toggling user status:", err);
+      setErrorMsg(err?.message || "Failed to update user status");
     }
-
-    await fetchOverview();
-  } catch (err) {
-    console.error("Error toggling user status:", err);
-    setErrorMsg(err?.message || "Failed to update user status");
-  }
-};
-
+  };
 
   useEffect(() => {
     fetchOverview();
@@ -130,6 +134,8 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
         );
         return;
       }
+
+      setCreating(true);
 
       const res = await fetch("http://localhost:5000/api/owner/providers", {
         method: "POST",
@@ -165,36 +171,89 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
     } catch (err) {
       console.error("Error creating provider:", err);
       setErrorMsg(err?.message || "Failed to create provider");
+    } finally {
+      setCreating(false);
     }
   };
 
+  const statusBadge = (label, isActive) => (
+    <span
+      style={{
+        fontSize: "0.75rem",
+        padding: "0.15rem 0.55rem",
+        borderRadius: "999px",
+        border: "1px solid #e5e7eb",
+        background: isActive ? "#ecfdf3" : "#fef2f2",
+        color: isActive ? "#166534" : "#b91c1c",
+        fontWeight: 600,
+      }}
+    >
+      {label}
+    </span>
+  );
+
   return (
     <section>
-      <h2>Owner console</h2>
-      <p style={{ fontSize: "0.9rem", color: "#4b5563", marginBottom: "1rem" }}>
-        This view is for the platform owner only. From here you can create new
-        provider organisations, assign an admin to each, and see all admins and
-        workers grouped by organisation.
-      </p>
+      {/* Header */}
+      <div style={{ marginBottom: "0.75rem" }}>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: "1.25rem",
+            color: PRIMARY,
+          }}
+        >
+          Owner console
+        </h2>
+        <p
+          style={{
+            fontSize: "0.9rem",
+            color: "#4b5563",
+            marginTop: "0.25rem",
+          }}
+        >
+          This view is for the platform owner only. From here you can create new
+          provider organisations, assign an admin to each, and see all admins
+          and workers grouped by organisation.
+        </p>
+      </div>
 
       {/* Create provider form */}
       <div
         style={{
+          borderRadius: "0.75rem",
           border: "1px solid #e5e7eb",
-          borderRadius: "8px",
-          padding: "0.9rem",
+          background: "#ffffff",
+          padding: "1rem 1.1rem",
           marginBottom: "1.5rem",
-          background: "#f9fafb",
         }}
       >
-        <h3 style={{ marginTop: 0 }}>Create new provider organisation</h3>
+        <h3
+          style={{
+            marginTop: 0,
+            marginBottom: "0.6rem",
+            fontSize: "1rem",
+            color: PRIMARY,
+          }}
+        >
+          Create new provider organisation
+        </h3>
+
         <form
           onSubmit={handleCreateProvider}
-          style={{ display: "grid", gap: "0.6rem", maxWidth: "500px" }}
+          style={{
+            display: "grid",
+            gap: "0.7rem",
+            maxWidth: "540px",
+          }}
         >
           <div>
             <label
-              style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}
+              style={{
+                display: "block",
+                fontSize: "0.85rem",
+                marginBottom: "0.15rem",
+              }}
             >
               Organisation name
             </label>
@@ -203,13 +262,23 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
               value={organisationName}
               onChange={(e) => setOrganisationName(e.target.value)}
               placeholder="e.g. Bright Path Support Services"
-              style={{ width: "100%", padding: "0.45rem", fontSize: "0.9rem" }}
+              style={{
+                width: "100%",
+                padding: "0.5rem 0.55rem",
+                fontSize: "0.9rem",
+                borderRadius: "0.6rem",
+                border: "1px solid #d1d5db",
+              }}
             />
           </div>
 
           <div>
             <label
-              style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}
+              style={{
+                display: "block",
+                fontSize: "0.85rem",
+                marginBottom: "0.15rem",
+              }}
             >
               Admin email
             </label>
@@ -218,13 +287,23 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
               value={adminEmail}
               onChange={(e) => setAdminEmail(e.target.value)}
               placeholder="provider.admin@example.com"
-              style={{ width: "100%", padding: "0.45rem", fontSize: "0.9rem" }}
+              style={{
+                width: "100%",
+                padding: "0.5rem 0.55rem",
+                fontSize: "0.9rem",
+                borderRadius: "0.6rem",
+                border: "1px solid #d1d5db",
+              }}
             />
           </div>
 
           <div>
             <label
-              style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}
+              style={{
+                display: "block",
+                fontSize: "0.85rem",
+                marginBottom: "0.15rem",
+              }}
             >
               Admin full name
             </label>
@@ -233,13 +312,23 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
               value={adminFullName}
               onChange={(e) => setAdminFullName(e.target.value)}
               placeholder="e.g. Sarah Khan"
-              style={{ width: "100%", padding: "0.45rem", fontSize: "0.9rem" }}
+              style={{
+                width: "100%",
+                padding: "0.5rem 0.55rem",
+                fontSize: "0.9rem",
+                borderRadius: "0.6rem",
+                border: "1px solid #d1d5db",
+              }}
             />
           </div>
 
           <div>
             <label
-              style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}
+              style={{
+                display: "block",
+                fontSize: "0.85rem",
+                marginBottom: "0.15rem",
+              }}
             >
               Admin password
             </label>
@@ -248,55 +337,96 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
               value={adminPassword}
               onChange={(e) => setAdminPassword(e.target.value)}
               placeholder="Temporary password for admin"
-              style={{ width: "100%", padding: "0.45rem", fontSize: "0.9rem" }}
+              style={{
+                width: "100%",
+                padding: "0.5rem 0.55rem",
+                fontSize: "0.9rem",
+                borderRadius: "0.6rem",
+                border: "1px solid #d1d5db",
+              }}
             />
           </div>
 
-          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: "0.75rem",
+              alignItems: "center",
+              marginTop: "0.2rem",
+            }}
+          >
             <button
               type="submit"
+              disabled={creating}
               style={{
-                padding: "0.55rem 1.2rem",
+                padding: "0.55rem 1.25rem",
                 fontSize: "0.9rem",
-                cursor: "pointer",
+                cursor: creating ? "wait" : "pointer",
+                borderRadius: "999px",
+                border: "none",
+                background: PRIMARY,
+                color: "#f9fafb",
+                fontWeight: 500,
               }}
             >
-              Create provider
+              {creating ? "Creating…" : "Create provider"}
             </button>
             {createMsg && (
-              <span style={{ fontSize: "0.8rem", color: "#047857" }}>{createMsg}</span>
+              <span style={{ fontSize: "0.8rem", color: "#047857" }}>
+                {createMsg}
+              </span>
             )}
           </div>
         </form>
       </div>
 
       {errorMsg && (
-        <p style={{ color: "red", fontSize: "0.85rem", marginBottom: "0.8rem" }}>
+        <p
+          style={{
+            color: "red",
+            fontSize: "0.85rem",
+            marginBottom: "0.9rem",
+          }}
+        >
           {errorMsg}
         </p>
       )}
 
-      {/* Overview list */}
+      {/* Overview list header */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           marginBottom: "0.5rem",
           alignItems: "center",
+          gap: "0.75rem",
         }}
       >
-        <h3 style={{ margin: 0 }}>All providers and users</h3>
+        <h3
+          style={{
+            margin: 0,
+            fontSize: "1rem",
+            color: PRIMARY,
+          }}
+        >
+          All providers and users
+        </h3>
         <button
           type="button"
           onClick={fetchOverview}
           disabled={loading}
           style={{
-            padding: "0.45rem 1rem",
+            padding: "0.45rem 1.1rem",
             fontSize: "0.85rem",
             cursor: loading ? "wait" : "pointer",
+            borderRadius: "999px",
+            border: "1px solid #d1d5db",
+            background: "#ffffff",
+            color: PRIMARY,
+            fontWeight: 500,
           }}
         >
-          {loading ? "Refreshing..." : "Refresh"}
+          {loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
@@ -306,65 +436,85 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
         </p>
       )}
 
+      {/* Organisation cards */}
       <div style={{ display: "grid", gap: "1rem", marginTop: "0.5rem" }}>
         {organisations.map((org) => (
           <div
             key={org.id}
             style={{
+              borderRadius: "0.75rem",
               border: "1px solid #e5e7eb",
-              borderRadius: "8px",
-              padding: "0.8rem",
               background: "#ffffff",
+              padding: "0.9rem 1rem",
             }}
           >
+            {/* Card header */}
             <div
-                style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: "0.4rem",
-                    alignItems: "baseline",
-                }}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: "0.5rem",
+                alignItems: "flex-start",
+                gap: "0.75rem",
+              }}
+            >
+              <div>
+                <h4
+                  style={{
+                    margin: 0,
+                    fontSize: "1rem",
+                    color: PRIMARY,
+                  }}
                 >
-                <div>
-                    <h4 style={{ margin: 0 }}>{org.name}</h4>
-                    <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-                    Organisation ID: {org.id}
-                    </span>
+                  {org.name}
+                </h4>
+                <div
+                  style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: 2 }}
+                >
+                  Organisation ID: {org.id}
                 </div>
+              </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span
+              <div
                 style={{
-                    fontSize: "0.75rem",
-                    padding: "0.15rem 0.5rem",
-                    borderRadius: "999px",
-                    border: "1px solid #e5e7eb",
-                    background: org.status === "ACTIVE" ? "#ecfdf3" : "#fef2f2",
-                    color: org.status === "ACTIVE" ? "#166534" : "#b91c1c",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.55rem",
+                  flexWrap: "wrap",
                 }}
-                >
-                {org.status}
-                </span>
+              >
+                {statusBadge(org.status, org.status === "ACTIVE")}
 
                 <button
-                type="button"
-                onClick={() => handleToggleOrgStatus(org)}
-                style={{
+                  type="button"
+                  onClick={() => handleToggleOrgStatus(org)}
+                  style={{
                     fontSize: "0.75rem",
-                    padding: "0.25rem 0.7rem",
+                    padding: "0.3rem 0.8rem",
                     cursor: "pointer",
-                }}
+                    borderRadius: "999px",
+                    border: "1px solid #e5e7eb",
+                    background:
+                      org.status === "ACTIVE" ? "#fef2f2" : "#ecfdf3",
+                    color:
+                      org.status === "ACTIVE" ? "#b91c1c" : "#166534",
+                    fontWeight: 500,
+                  }}
                 >
-                {org.status === "ACTIVE" ? "Suspend provider" : "Reactivate provider"}
+                  {org.status === "ACTIVE"
+                    ? "Suspend provider"
+                    : "Reactivate provider"}
                 </button>
 
-                <span style={{ fontSize: "0.8rem", color: "#4b5563" }}>
-                Users: {org.users?.length || 0}
+                <span
+                  style={{ fontSize: "0.8rem", color: "#4b5563" }}
+                >
+                  Users: {org.users?.length || 0}
                 </span>
-            </div>
+              </div>
             </div>
 
-
+            {/* Users table */}
             {(!org.users || org.users.length === 0) && (
               <p style={{ fontSize: "0.85rem", color: "#6b7280" }}>
                 No admins or workers yet.
@@ -372,7 +522,7 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
             )}
 
             {org.users && org.users.length > 0 && (
-              <div style={{ overflowX: "auto" }}>
+              <div style={{ overflowX: "auto", marginTop: "0.25rem" }}>
                 <table
                   style={{
                     width: "100%",
@@ -382,63 +532,24 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
                 >
                   <thead>
                     <tr>
-                        <th
-                        style={{
-                            textAlign: "left",
-                            padding: "0.35rem 0.4rem",
-                            borderBottom: "1px solid #e5e7eb",
-                        }}
-                        >
-                        Role
-                        </th>
-                        <th
-                        style={{
-                            textAlign: "left",
-                            padding: "0.35rem 0.4rem",
-                            borderBottom: "1px solid #e5e7eb",
-                        }}
-                        >
-                        Name
-                        </th>
-                        <th
-                        style={{
-                            textAlign: "left",
-                            padding: "0.35rem 0.4rem",
-                            borderBottom: "1px solid #e5e7eb",
-                        }}
-                        >
-                        Email
-                        </th>
-                        <th
-                        style={{
-                            textAlign: "left",
-                            padding: "0.35rem 0.4rem",
-                            borderBottom: "1px solid #e5e7eb",
-                        }}
-                        >
-                        Active
-                        </th>
-                        <th
-                        style={{
-                            textAlign: "left",
-                            padding: "0.35rem 0.4rem",
-                            borderBottom: "1px solid #e5e7eb",
-                        }}
-                        >
-                        Created
-                        </th>
-                        <th
-                        style={{
-                            textAlign: "left",
-                            padding: "0.35rem 0.4rem",
-                            borderBottom: "1px solid #e5e7eb",
-                        }}
-                        >
-                        Actions
-                        </th>
+                      {["Role", "Name", "Email", "Active", "Created", "Actions"].map(
+                        (h) => (
+                          <th
+                            key={h}
+                            style={{
+                              textAlign: "left",
+                              padding: "0.35rem 0.4rem",
+                              borderBottom: "1px solid #e5e7eb",
+                              fontWeight: 600,
+                              color: "#111827",
+                            }}
+                          >
+                            {h}
+                          </th>
+                        )
+                      )}
                     </tr>
-                    </thead>
-
+                  </thead>
                   <tbody>
                     {org.users.map((u) => (
                       <tr key={u.id}>
@@ -447,7 +558,8 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
                             padding: "0.35rem 0.4rem",
                             borderBottom: "1px solid #f3f4f6",
                             fontWeight: u.role === "ADMIN" ? 600 : 400,
-                            color: u.role === "ADMIN" ? "#111827" : "#4b5563",
+                            color:
+                              u.role === "ADMIN" ? "#111827" : "#4b5563",
                           }}
                         >
                           {u.role}
@@ -488,23 +600,30 @@ const handleToggleUserStatus = async (userId, currentIsActive) => {
                           {u.createdAt}
                         </td>
                         <td
+                          style={{
+                            padding: "0.35rem 0.4rem",
+                            borderBottom: "1px solid #f3f4f6",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleToggleUserStatus(u.id, !!u.isActive)
+                            }
                             style={{
-                                padding: "0.35rem 0.4rem",
-                                borderBottom: "1px solid #f3f4f6",
+                              fontSize: "0.75rem",
+                              padding: "0.25rem 0.75rem",
+                              cursor: "pointer",
+                              borderRadius: "999px",
+                              border: "1px solid #e5e7eb",
+                              background: "#f9fafb",
+                              color: PRIMARY,
+                              fontWeight: 500,
                             }}
-                            >
-                            <button
-                                type="button"
-                                onClick={() => handleToggleUserStatus(u.id, !!u.isActive)}
-                                style={{
-                                fontSize: "0.75rem",
-                                padding: "0.25rem 0.6rem",
-                                cursor: "pointer",
-                                }}
-                            >
-                                {u.isActive ? "Deactivate" : "Activate"}
-                            </button>
-                            </td>
+                          >
+                            {u.isActive ? "Deactivate" : "Activate"}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
