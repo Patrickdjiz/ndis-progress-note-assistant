@@ -8,6 +8,9 @@ import UsersAdminPage from "./pages/UsersAdminPage.jsx";
 import OwnerConsolePage from "./pages/OwnerConsolePage.jsx";
 import MyNotesPage from "./pages/MyNotesPage.jsx";
 
+const PRIMARY = "#111827";      // same as login button
+const PRIMARY_TEXT = "#f9fafb";
+const MUTED_TEXT = "#4b5563";
 
 function App() {
   // Load auth from localStorage if present
@@ -30,21 +33,17 @@ function App() {
     localStorage.removeItem("ndisAuth");
   };
 
-  // If not logged in: only show login page
-    if (!auth) {
+  // --------- Logged out: show centred login card ----------
+  if (!auth) {
     return (
       <div
         style={{
           minHeight: "100vh",
-          width: "100%",
+          background: "#f3f4f6",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "1.5rem",
-          fontFamily:
-            'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-          boxSizing: "border-box",
-          background: "#f3f4f6",
+          padding: "1rem",
         }}
       >
         <LoginPage onLoginSuccess={handleLoginSuccess} />
@@ -52,140 +51,199 @@ function App() {
     );
   }
 
+  // --------- Logged in layout ----------
   const { user, token } = auth;
 
   const linkStyle = ({ isActive }) => ({
-    padding: "0.4rem 0.8rem",
+    padding: "0.4rem 0.9rem",
     borderRadius: "999px",
+    fontSize: "0.85rem",
+    fontWeight: 500,
     textDecoration: "none",
-    fontSize: "0.9rem",
-    border: "1px solid #d1d5db",
-    background: isActive ? "#111827" : "#f3f4f6",
-    color: isActive ? "#f9fafb" : "#111827",
+    border: "1px solid transparent",
+    background: isActive ? PRIMARY : "transparent",
+    color: isActive ? PRIMARY_TEXT : MUTED_TEXT,
     whiteSpace: "nowrap",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "background 120ms ease, color 120ms ease, border-color 120ms ease",
   });
 
   return (
-  <div
-    style={{
-      minHeight: "100vh",
-      display: "flex",
-      flexDirection: "column",
-      background: "#f3f4f6",
-    }}
-  >
-    {/* Header */}
-    <header
+    <div
       style={{
-        width: "100%",
-        background: "#ffffff",
-        padding: "1rem 1.5rem",
-        borderBottom: "1px solid #e5e7eb",
-        boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
-        position: "sticky",
-        top: 0,
-        zIndex: 10,
+        minHeight: "100vh",
+        background: "#f3f4f6",
+        padding: "1.5rem 1rem",
+        boxSizing: "border-box",
       }}
     >
       <div
         style={{
           maxWidth: "1100px",
           margin: "0 auto",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "1rem",
+          background: "#ffffff",
+          borderRadius: "0.75rem",
+          boxShadow: "0 10px 25px rgba(15, 23, 42, 0.06)",
+          padding: "1.25rem 1.5rem 1.5rem",
+          boxSizing: "border-box",
         }}
       >
-        <div>
-          <h1 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600 }}>
-            NDIS AI Notes Assistant
-          </h1>
-          <p style={{ margin: 0, fontSize: "0.85rem", color: "#6b7280" }}>
-            Logged in as <strong>{user.fullName}</strong> ({user.role})
-          </p>
-        </div>
+        {/* Top header with branding + navigation */}
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "1rem",
+            flexWrap: "wrap",
+            borderBottom: "1px solid #e5e7eb",
+            paddingBottom: "0.75rem",
+            marginBottom: "1.25rem",
+          }}
+        >
+          {/* Left: app title + user */}
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: "0.95rem",
+                fontWeight: 600,
+                color: PRIMARY,
+              }}
+            >
+              NDIS AI Notes Assistant
+            </div>
+            <div
+              style={{
+                fontSize: "0.8rem",
+                color: MUTED_TEXT,
+                marginTop: "0.15rem",
+              }}
+            >
+              Logged in as{" "}
+              <strong style={{ fontWeight: 600 }}>{user.fullName}</strong>{" "}
+              <span style={{ color: "#9ca3af" }}>· {user.role}</span>
+            </div>
+          </div>
 
-        {/* NAVIGATION */}
-        <nav style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          
-          {user.role !== "OWNER" && (
-            <NavLink to="/" end style={linkStyle}>
-              Generate note
-            </NavLink>
-          )}
-
-          {user.role === "WORKER" && (
-            <NavLink to="/my-notes" style={linkStyle}>
-              My notes
-            </NavLink>
-          )}
-
-          {user.role === "ADMIN" && (
-            <>
-              <NavLink to="/team" style={linkStyle}>Team</NavLink>
-              <NavLink to="/dashboard" style={linkStyle}>Saved notes</NavLink>
-            </>
-          )}
-
-          {user.role === "OWNER" && (
-            <NavLink to="/owner" style={linkStyle}>Owner console</NavLink>
-          )}
-
-          <button
-            onClick={handleLogout}
+          {/* Right: nav tabs + logout */}
+          <div
             style={{
-              marginLeft: "0.75rem",
-              background: "#ffffff",
-              color: "#111827",
-              border: "1px solid #d1d5db",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
             }}
           >
-            Log out
-          </button>
-        </nav>
+            <nav
+              style={{
+                display: "flex",
+                gap: "0.35rem",
+                flexWrap: "wrap",
+                background: "#f3f4f6",
+                padding: "0.25rem",
+                borderRadius: "999px",
+              }}
+            >
+              {/* WORKER + ADMIN: Generator */}
+              {user.role !== "OWNER" && (
+                <NavLink to="/" end style={linkStyle}>
+                  Generate note
+                </NavLink>
+              )}
+
+              {/* WORKER: My notes */}
+              {user.role === "WORKER" && (
+                <NavLink to="/my-notes" style={linkStyle}>
+                  My notes
+                </NavLink>
+              )}
+
+              {/* ADMIN: Team + Saved notes */}
+              {user.role === "ADMIN" && (
+                <>
+                  <NavLink to="/team" style={linkStyle}>
+                    Team
+                  </NavLink>
+                  <NavLink to="/dashboard" style={linkStyle}>
+                    Saved notes
+                  </NavLink>
+                </>
+              )}
+
+              {/* OWNER: Owner console only */}
+              {user.role === "OWNER" && (
+                <NavLink to="/owner" style={linkStyle}>
+                  Owner console
+                </NavLink>
+              )}
+            </nav>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{
+                padding: "0.35rem 0.85rem",
+                fontSize: "0.8rem",
+                fontWeight: 500,
+                cursor: "pointer",
+                borderRadius: "999px",
+                border: "1px solid #e5e7eb",
+                background: "#ffffff",
+                color: MUTED_TEXT,
+              }}
+            >
+              Log out
+            </button>
+          </div>
+        </header>
+
+        {/* Role-based routes */}
+        <Routes>
+          {user.role === "OWNER" ? (
+            <>
+              <Route
+                path="/owner"
+                element={<OwnerConsolePage token={token} user={user} />}
+              />
+              <Route path="*" element={<Navigate to="/owner" replace />} />
+            </>
+          ) : (
+            <>
+              <Route
+                path="/"
+                element={<GenerateNotePage token={token} user={user} />}
+              />
+
+              {user.role === "WORKER" && (
+                <Route
+                  path="/my-notes"
+                  element={<MyNotesPage token={token} user={user} />}
+                />
+              )}
+
+              {user.role === "ADMIN" && (
+                <>
+                  <Route
+                    path="/team"
+                    element={<UsersAdminPage token={token} user={user} />}
+                  />
+                  <Route
+                    path="/dashboard"
+                    element={<NotesDashboardPage token={token} user={user} />}
+                  />
+                </>
+              )}
+
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </>
+          )}
+        </Routes>
       </div>
-    </header>
-
-    {/* MAIN CONTENT WRAPPER */}
-    <main
-      style={{
-        flex: 1,
-        width: "100%",
-        maxWidth: "1100px",
-        margin: "2rem auto",
-        padding: "0 1.5rem",
-      }}
-    >
-      <Routes>
-        {user.role === "OWNER" ? (
-          <>
-            <Route path="/owner" element={<OwnerConsolePage token={token} user={user} />} />
-            <Route path="*" element={<Navigate to="/owner" replace />} />
-          </>
-        ) : (
-          <>
-            <Route path="/" element={<GenerateNotePage token={token} user={user} />} />
-
-            {user.role === "WORKER" && (
-              <Route path="/my-notes" element={<MyNotesPage token={token} user={user} />} />
-            )}
-
-            {user.role === "ADMIN" && (
-              <>
-                <Route path="/team" element={<UsersAdminPage token={token} user={user} />} />
-                <Route path="/dashboard" element={<NotesDashboardPage token={token} user={user} />} />
-              </>
-            )}
-
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </>
-        )}
-      </Routes>
-    </main>
-  </div>
-);
+    </div>
+  );
 }
 
 export default App;

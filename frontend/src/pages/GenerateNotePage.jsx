@@ -16,11 +16,9 @@ function GenerateNotePage({ token, user }) {
   const [followUpActions, setFollowUpActions] = useState("");
   const [workerName, setWorkerName] = useState(user?.fullName || "");
 
-  // Incident UI
   const [incidentOccurred, setIncidentOccurred] = useState(false);
   const [noteHasIncident, setNoteHasIncident] = useState(false);
 
-  // AI + final note
   const [generatedNote, setGeneratedNote] = useState("");
   const [finalNoteText, setFinalNoteText] = useState("");
   const [latestNoteId, setLatestNoteId] = useState(null);
@@ -31,11 +29,91 @@ function GenerateNotePage({ token, user }) {
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
 
   useEffect(() => {
-  if (user?.fullName) {
-    setWorkerName(user.fullName);
-  }
-}, [user]);
+    if (user?.fullName) {
+      setWorkerName(user.fullName);
+    }
+  }, [user]);
 
+  // --- shared styles to keep things consistent with login ---
+  const cardStyle = {
+    background: "#ffffff",
+    borderRadius: "0.75rem",
+    border: "1px solid #e5e7eb",
+    padding: "1.5rem",
+    boxShadow: "0 18px 45px rgba(15, 23, 42, 0.04)",
+  };
+
+  const sectionTitleStyle = {
+    fontSize: "1.15rem",
+    fontWeight: 600,
+    margin: 0,
+    marginBottom: "0.35rem",
+    color: "#111827",
+  };
+
+  const sectionSubTextStyle = {
+    fontSize: "0.9rem",
+    color: "#4b5563",
+    margin: 0,
+    marginBottom: "1.1rem",
+  };
+
+  const labelStyle = {
+    display: "block",
+    fontSize: "0.85rem",
+    fontWeight: 500,
+    marginBottom: "0.3rem",
+    color: "#374151",
+  };
+
+  const inputBaseStyle = {
+    width: "100%",
+    padding: "0.55rem 0.75rem",
+    borderRadius: "0.5rem",
+    border: "1px solid #d1d5db",
+    fontSize: "0.9rem",
+    fontFamily: "inherit",
+    background: "#f9fafb",
+    boxSizing: "border-box",
+  };
+
+  const textareaStyle = {
+    ...inputBaseStyle,
+    minHeight: "140px", // fixes the “cut off” placeholder look
+    resize: "vertical",
+    lineHeight: 1.5,
+  };
+
+  const counterStyle = {
+    textAlign: "right",
+    fontSize: "0.75rem",
+    color: "#6b7280",
+    marginTop: "0.2rem",
+  };
+
+  const primaryButtonStyle = {
+    padding: "0.7rem 1.4rem",
+    borderRadius: "999px",
+    border: "none",
+    background: "#111827",
+    color: "#f9fafb",
+    fontSize: "0.9rem",
+    fontWeight: 500,
+    cursor: loading ? "wait" : "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+
+  const secondaryButtonStyle = {
+    ...primaryButtonStyle,
+    background: "#f3f4f6",
+    color: "#111827",
+    border: "1px solid #d1d5db",
+    cursor: loading ? "not-allowed" : "pointer",
+  };
+
+  // --- handlers (unchanged except for formatting) ---
   const handleGenerate = async () => {
     const fields = {
       participantName,
@@ -73,9 +151,9 @@ function GenerateNotePage({ token, user }) {
       const response = await fetch("http://localhost:5000/api/generate-note", {
         method: "POST",
         headers: {
-  "Content-Type": "application/json",
-  Authorization: `Bearer ${token}`,
-},
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           participantName,
           date,
@@ -97,12 +175,10 @@ function GenerateNotePage({ token, user }) {
         throw new Error(data.error || "Failed to generate note");
       }
 
-      // AI draft text + note id from backend
       setGeneratedNote(data.note || "");
       setFinalNoteText(data.note || "");
       setLatestNoteId(data.id || null);
 
-      // incident banner
       const incText = (incidentsOrRisks || "").trim();
       const looksLikeNoIncident =
         /^no incidents?|^no incident|^no concerns?/i.test(incText);
@@ -146,10 +222,9 @@ function GenerateNotePage({ token, user }) {
         {
           method: "POST",
           headers: {
-  "Content-Type": "application/json",
-  Authorization: `Bearer ${token}`,
-},
-  
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({
             finalNoteText,
           }),
@@ -181,448 +256,443 @@ function GenerateNotePage({ token, user }) {
   };
 
   const handleClearForm = () => {
-      setParticipantName("");
-      setDate(todayIso);
-      setStartTime("");
-      setEndTime("");
-      setLocation("");
-      setActivitiesAndSupports("");
-      setParticipantPresentation("");
-      setGoalsWorkedOn("");
-      setIncidentsOrRisks("");
-      setFollowUpActions("");
+    setParticipantName("");
+    setDate(todayIso);
+    setStartTime("");
+    setEndTime("");
+    setLocation("");
+    setActivitiesAndSupports("");
+    setParticipantPresentation("");
+    setGoalsWorkedOn("");
+    setIncidentsOrRisks("");
+    setFollowUpActions("");
 
-      // keep worker name tied to logged-in user
-      if (user?.fullName) {
-        setWorkerName(user.fullName);
-      }
+    if (user?.fullName) {
+      setWorkerName(user.fullName);
+    }
 
-      setIncidentOccurred(false);
-      setNoteHasIncident(false);
+    setIncidentOccurred(false);
+    setNoteHasIncident(false);
 
-      setGeneratedNote("");
-      setFinalNoteText("");
-      setLatestNoteId(null);
-      setErrorMsg("");
-      setCopied(false);
-      setFinalSaveMsg("");
+    setGeneratedNote("");
+    setFinalNoteText("");
+    setLatestNoteId(null);
+    setErrorMsg("");
+    setCopied(false);
+    setFinalSaveMsg("");
   };
 
   return (
-    <>
-      <p>
-        Fill in the key details from your shift and we&apos;ll generate a
-        professional, NDIS-style progress note. Review and edit it before
-        saving to your service records.
-      </p>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
+      {/* ====== GENERATOR FORM CARD ====== */}
+      <section style={cardStyle}>
+        <h2 style={sectionTitleStyle}>Generate a progress note</h2>
+        <p style={sectionSubTextStyle}>
+          Fill in the key details from your shift and we&apos;ll generate a
+          professional, NDIS-style progress note. Review and edit it before
+          saving to your service records.
+        </p>
 
-      {/* ====== GENERATOR FORM ====== */}
-      <div style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}>
-        {/* Row 1: Participant + date */}
-        <div style={{ display: "flex", gap: "1rem" }}>
-          <div style={{ flex: 1 }}>
-            <label>Participant name*</label>
-            <input
-              type="text"
-              required
-              value={participantName}
-              onChange={(e) => setParticipantName(e.target.value)}
-              style={{ width: "100%", padding: "0.4rem" }}
-              placeholder="e.g. Ali Ahmed"
-            />
-          </div>
-          <div>
-            <label>Date of support*</label>
-            <input
-              type="date"
-              required
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={{ padding: "0.4rem" }}
-            />
-          </div>
-        </div>
-
-        {/* Row 2: Times */}
-        <div style={{ display: "flex", gap: "1rem" }}>
-          <div>
-            <label>Start time*</label>
-            <input
-              type="time"
-              required
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              style={{ padding: "0.4rem" }}
-            />
-          </div>
-          <div>
-            <label>End time*</label>
-            <input
-              type="time"
-              required
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              style={{ padding: "0.4rem" }}
-            />
-          </div>
-        </div>
-
-        {/* Row 3: Location + worker */}
-        <div style={{ display: "flex", gap: "1rem" }}>
-          <div style={{ flex: 1 }}>
-            <label>Location*</label>
-            <input
-              type="text"
-              required
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              style={{ width: "100%", padding: "0.4rem" }}
-              placeholder="e.g. Home and local shops"
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label>Support worker name*</label>
-            <input
-              type="text"
-              required
-              value={workerName}
-              onChange={(e) => setWorkerName(e.target.value)}
-              style={{ width: "100%", padding: "0.4rem" }}
-              placeholder="e.g. Fatima Khan"
-            />
-          </div>
-        </div>
-
-        {/* Activities */}
-        <div>
-          <label>Activities and supports provided* (what you did)</label>
-          <textarea
-            required
-            rows={4}
-            value={activitiesAndSupports}
-            onChange={(e) => setActivitiesAndSupports(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit", minHeight: "80px" }}
-            placeholder={
-  "Briefly describe what you did, where, and how.\n\n" +
-  "Example:\n" +
-  "At home, the support worker prompted [Name] to shower, dress and prepare breakfast, " +
-  "providing verbal prompts and supervision. Later, they supported [Name] to walk to " +
-  "the local park, practise safe road crossing and choose a bench for a short rest."
-}
-          />
+        {/* Form fields */}
+        <div style={{ display: "grid", gap: "1rem" }}>
+          {/* Participant + date */}
           <div
             style={{
-              textAlign: "right",
-              fontSize: "0.75rem",
-              color: "#666",
-              marginTop: "0.15rem",
+              display: "grid",
+              gap: "1rem",
+              gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)",
             }}
           >
-            {activitiesAndSupports.length} characters
+            <div>
+              <label style={labelStyle}>Participant name*</label>
+              <input
+                type="text"
+                required
+                value={participantName}
+                onChange={(e) => setParticipantName(e.target.value)}
+                style={inputBaseStyle}
+                placeholder="e.g. Ali Ahmed"
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Date of support*</label>
+              <input
+                type="date"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                style={{
+                  ...inputBaseStyle,
+                  maxWidth: "210px",
+                }}
+              />
+            </div>
           </div>
-        </div>
 
-        {/* Presentation */}
-        <div>
-          <label>
-            Participant presentation* (mood, behaviour, health, communication)
-          </label>
-          <textarea
-            required
-            rows={3}
-            value={participantPresentation}
-            onChange={(e) => setParticipantPresentation(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit", minHeight: "80px" }}
-            placeholder={
-  "How did the participant present compared to usual? Focus on observable behaviour, " +
-  "communication and engagement.\n\n" +
-  "Example:\n" +
-  "[Name] appeared more tired than usual after school, speaking in shorter sentences " +
-  "and needing extra time to respond. After a snack and drawing break, [Name] became " +
-  "more talkative and followed prompts with some repetition required."
-}
-          />
+          {/* Times */}
           <div
             style={{
-              textAlign: "right",
-              fontSize: "0.75rem",
-              color: "#666",
-              marginTop: "0.15rem",
+              display: "grid",
+              gap: "1rem",
+              gridTemplateColumns:
+                "repeat(auto-fit, minmax(160px, min-content))",
             }}
           >
-            {participantPresentation.length} characters
+            <div>
+              <label style={labelStyle}>Start time*</label>
+              <input
+                type="time"
+                required
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                style={inputBaseStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>End time*</label>
+              <input
+                type="time"
+                required
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                style={inputBaseStyle}
+              />
+            </div>
           </div>
-        </div>
 
-        {/* Goals */}
-        <div>
-          <label>Goals worked on* (link to NDIS goals)</label>
-          <textarea
-            required
-            rows={2}
-            value={goalsWorkedOn}
-            onChange={(e) => setGoalsWorkedOn(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit", minHeight: "80px" }}
-            placeholder={
-  "Link your activities to NDIS goals (community access, daily living, social skills, " +
-  "communication, etc.).\n\n" +
-  "Example:\n" +
-  "This shift supported [Name]'s goals around increasing independence with personal " +
-  "care and safe participation in community activities by practising showering, dressing " +
-  "and road safety with graded prompts."
-}
-          />
+          {/* Location + worker */}
           <div
             style={{
-              textAlign: "right",
-              fontSize: "0.75rem",
-              color: "#666",
-              marginTop: "0.15rem",
+              display: "grid",
+              gap: "1rem",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
             }}
           >
-            {goalsWorkedOn.length} characters
+            <div>
+              <label style={labelStyle}>Location*</label>
+              <input
+                type="text"
+                required
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                style={inputBaseStyle}
+                placeholder="e.g. Home and local shops"
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Support worker name*</label>
+              <input
+                type="text"
+                required
+                value={workerName}
+                onChange={(e) => setWorkerName(e.target.value)}
+                style={inputBaseStyle}
+                placeholder="e.g. Fatima Khan"
+              />
+            </div>
+          </div>
+
+          {/* Activities */}
+          <div>
+            <label style={labelStyle}>
+              Activities and supports provided* (what you did)
+            </label>
+            <textarea
+              required
+              value={activitiesAndSupports}
+              onChange={(e) => setActivitiesAndSupports(e.target.value)}
+              style={textareaStyle}
+              placeholder={
+                "Briefly describe what you did, where, and how.\n\n" +
+                "Example:\n" +
+                "At home, the support worker prompted [Name] to shower, dress and prepare breakfast, " +
+                "providing verbal prompts and supervision. Later, they supported [Name] to walk to " +
+                "the local park, practise safe road crossing and choose a bench for a short rest."
+              }
+            />
+            <div style={counterStyle}>
+              {activitiesAndSupports.length} characters
+            </div>
+          </div>
+
+          {/* Presentation */}
+          <div>
+            <label style={labelStyle}>
+              Participant presentation* (mood, behaviour, health,
+              communication)
+            </label>
+            <textarea
+              required
+              value={participantPresentation}
+              onChange={(e) => setParticipantPresentation(e.target.value)}
+              style={textareaStyle}
+              placeholder={
+                "How did the participant present compared to usual? Focus on observable behaviour, " +
+                "communication and engagement.\n\n" +
+                "Example:\n" +
+                "[Name] appeared more tired than usual after school, speaking in shorter sentences " +
+                "and needing extra time to respond. After a snack and drawing break, [Name] became " +
+                "more talkative and followed prompts with some repetition required."
+              }
+            />
+            <div style={counterStyle}>
+              {participantPresentation.length} characters
+            </div>
+          </div>
+
+          {/* Goals */}
+          <div>
+            <label style={labelStyle}>Goals worked on* (link to NDIS goals)</label>
+            <textarea
+              required
+              value={goalsWorkedOn}
+              onChange={(e) => setGoalsWorkedOn(e.target.value)}
+              style={textareaStyle}
+              placeholder={
+                "Link your activities to NDIS goals (community access, daily living, social skills, " +
+                "communication, etc.).\n\n" +
+                "Example:\n" +
+                "This shift supported [Name]'s goals around increasing independence with personal " +
+                "care and safe participation in community activities by practising showering, dressing " +
+                "and road safety with graded prompts."
+              }
+            />
+            <div style={counterStyle}>{goalsWorkedOn.length} characters</div>
+          </div>
+
+          {/* Incident section */}
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: "0.75rem",
+              padding: "0.75rem 0.9rem",
+              background: "#f9fafb",
+            }}
+          >
+            <label
+              style={{
+                ...labelStyle,
+                display: "flex",
+                alignItems: "center",
+                gap: "0.45rem",
+                marginBottom: "0.35rem",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={incidentOccurred}
+                onChange={(e) => setIncidentOccurred(e.target.checked)}
+              />
+              <span style={{ fontWeight: 500 }}>
+                Incident, risk, change or concern occurred this shift
+              </span>
+            </label>
+            <p
+              style={{
+                margin: "0 0 0.5rem",
+                fontSize: "0.8rem",
+                color: "#555",
+              }}
+            >
+              If you tick this, you&apos;ll still write the incident summary
+              below, and your organisation&apos;s usual incident report process
+              still applies.
+            </p>
+
+            <textarea
+              required
+              value={incidentsOrRisks}
+              onChange={(e) => setIncidentsOrRisks(e.target.value)}
+              style={textareaStyle}
+              placeholder={
+                incidentOccurred
+                  ? "Describe what happened, the immediate impact, and your response.\n\nExample:\n" +
+                    "While walking through the park, an off-leash dog ran towards [Name]. " +
+                    "[Name] raised their voice and moved quickly towards the edge of the path. " +
+                    "The support worker stepped between [Name] and the road, prompted them to step " +
+                    "back to the bench and used calm reassurance. No physical contact occurred."
+                  : 'If none, write "No incidents or concerns."'
+              }
+            />
+            <div style={counterStyle}>{incidentsOrRisks.length} characters</div>
+          </div>
+
+          {/* Follow up */}
+          <div>
+            <label style={labelStyle}>Follow-up actions / next steps*</label>
+            <textarea
+              required
+              value={followUpActions}
+              onChange={(e) => setFollowUpActions(e.target.value)}
+              style={textareaStyle}
+              placeholder={
+                "What should staff monitor or continue next time? Include when to escalate.\n\n" +
+                "Example:\n" +
+                "For the next 2–3 shifts, monitor [Name]'s response to dogs in the park and note any " +
+                "further incidents. If [Name] continues to show strong reactions, inform the coordinator " +
+                "so behaviour support strategies can be reviewed with the family."
+              }
+            />
+            <div style={counterStyle}>{followUpActions.length} characters</div>
           </div>
         </div>
 
-        {/* Incident toggle + text */}
+        {/* Actions */}
         <div
           style={{
-            border: "1px solid #ddd",
-            borderRadius: "6px",
-            padding: "0.6rem",
+            display: "flex",
+            gap: "0.75rem",
+            marginTop: "1.2rem",
+            flexWrap: "wrap",
           }}
         >
-          <label
-            style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}
+          <button
+            onClick={handleGenerate}
+            disabled={loading}
+            style={primaryButtonStyle}
           >
-            <input
-              type="checkbox"
-              checked={incidentOccurred}
-              onChange={(e) => setIncidentOccurred(e.target.checked)}
-            />
-            <span>Incident, risk, change or concern occurred this shift</span>
-          </label>
+            {loading ? "Generating note..." : "Generate note"}
+          </button>
+          <button
+            type="button"
+            onClick={handleClearForm}
+            disabled={loading}
+            style={secondaryButtonStyle}
+          >
+            New shift / Clear form
+          </button>
+        </div>
+
+        {errorMsg && (
           <p
             style={{
-              margin: "0.4rem 0 0.3rem",
-              fontSize: "0.8rem",
-              color: "#555",
+              color: "red",
+              marginTop: "0.9rem",
+              fontSize: "0.9rem",
+              whiteSpace: "pre-wrap",
             }}
           >
-            If you tick this, you&apos;ll still write the incident summary
-            below, and your organisation&apos;s usual incident report process
-            still applies.
+            {errorMsg}
+          </p>
+        )}
+      </section>
+
+      {/* ====== GENERATED NOTE CARD ====== */}
+      {generatedNote && (
+        <section style={cardStyle}>
+          <h2 style={sectionTitleStyle}>Generated progress note</h2>
+          <p style={sectionSubTextStyle}>
+            Review the AI draft, make any edits you need, then save the final
+            version to your records.
           </p>
 
-          <textarea
-            required
-            rows={2}
-            value={incidentsOrRisks}
-            onChange={(e) => setIncidentsOrRisks(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit", minHeight: "80px" }}
-            placeholder={
-  incidentOccurred
-    ? "Describe what happened, the immediate impact, and your response.\n\nExample:\n" +
-      "While walking through the park, an off-leash dog ran towards [Name]. " +
-      "[Name] raised their voice and moved quickly towards the edge of the path. " +
-      "The support worker stepped between [Name] and the road, prompted them to step " +
-      "back to the bench and used calm reassurance. No physical contact occurred."
-    : 'If none, write "No incidents or concerns."'
-}
-
-          />
-          <div
-            style={{
-              textAlign: "right",
-              fontSize: "0.75rem",
-              color: "#666",
-              marginTop: "0.15rem",
-            }}
-          >
-            {incidentsOrRisks.length} characters
-          </div>
-        </div>
-
-        {/* Follow up */}
-        <div>
-          <label>Follow-up actions / next steps* </label>
-          <textarea
-            required
-            rows={2}
-            value={followUpActions}
-            onChange={(e) => setFollowUpActions(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem", fontFamily: "inherit", minHeight: "80px" }}
-            placeholder={
-  "What should staff monitor or continue next time? Include when to escalate.\n\n" +
-  "Example:\n" +
-  "For the next 2–3 shifts, monitor [Name]'s response to dogs in the park and note any " +
-  "further incidents. If [Name] continues to show strong reactions, inform the coordinator " +
-  "so behaviour support strategies can be reviewed with the family."
-}
-
-          />
-          <div
-            style={{
-              textAlign: "right",
-              fontSize: "0.75rem",
-              color: "#666",
-              marginTop: "0.15rem",
-            }}
-          >
-            {followUpActions.length} characters
-          </div>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.2rem" }}>
-        <button
-          onClick={handleGenerate}
-          disabled={loading}
-          style={{
-            padding: "0.7rem 1.4rem",
-            cursor: loading ? "wait" : "pointer",
-          }}
-        >
-          {loading ? "Generating note..." : "Generate note"}
-        </button>
-        <button
-          type="button"
-          onClick={handleClearForm}
-          disabled={loading}
-          style={{
-            padding: "0.7rem 1.4rem",
-            background: "#f3f4f6",
-            border: "1px solid #d1d5db",
-            cursor: loading ? "not-allowed" : "pointer",
-            color: "#000000ff",
-          }}
-        >
-          New shift / Clear form
-        </button>
-      </div>
-
-      {errorMsg && (
-        <p
-          style={{
-            color: "red",
-            marginTop: "0.8rem",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {errorMsg}
-        </p>
-      )}
-
-      {generatedNote && (
-        <div
-          style={{
-            marginTop: "2rem",
-            padding: "1rem",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-            background: "#f9f9f9",
-            color: "#000000ff",
-          }}
-        >
-          <h2>Generated Progress Note</h2>
-
-          {/* AI draft (read-only) */}
-          <h3 style={{ marginTop: "0.75rem", marginBottom: "0.25rem" }}>
-            AI draft (read-only)
-          </h3>
-          <pre
-            style={{
-              whiteSpace: "pre-wrap",
-              marginTop: "0.3rem",
-              fontFamily: "inherit",
-              background: "#f3f4f6",
-              padding: "0.6rem",
-              borderRadius: "4px",
-            }}
-          >
-            {generatedNote}
-          </pre>
-
-          <div
-            style={{
-              display: "flex",
-              gap: "0.75rem",
-              marginTop: "0.75rem",
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <button
-              type="button"
-              onClick={handleCopyNote}
+          {/* AI draft */}
+          <div style={{ marginTop: "0.5rem" }}>
+            <div
               style={{
-                padding: "0.5rem 1.1rem",
-                cursor: "pointer",
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                color: "#4b5563",
+                marginBottom: "0.35rem",
               }}
             >
-              Copy AI draft to clipboard
-            </button>
-            {copied && (
-              <span style={{ fontSize: "0.85rem", color: "green" }}>
-                Copied!
-              </span>
-            )}
-          </div>
-
-          {/* Editable final note */}
-          <h3 style={{ marginTop: "1.2rem", marginBottom: "0.25rem" }}>
-            Final note (edit before saving)
-          </h3>
-          <textarea
-            rows={8}
-            value={finalNoteText}
-            onChange={(e) => setFinalNoteText(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.6rem",
-              fontFamily: "inherit",
-              borderRadius: "4px",
-              border: "1px solid #d1d5db",
-              resize: "vertical",
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              gap: "0.75rem",
-              marginTop: "0.75rem",
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <button
-              type="button"
-              onClick={handleSaveFinalNote}
+              AI draft (read-only)
+            </div>
+            <pre
               style={{
-                padding: "0.5rem 1.1rem",
-                cursor: "pointer",
+                whiteSpace: "pre-wrap",
+                marginTop: "0.3rem",
+                fontFamily: "inherit",
+                background: "#f3f4f6",
+                padding: "0.75rem",
+                borderRadius: "0.5rem",
+                border: "1px solid #e5e7eb",
               }}
             >
-              Save final note
-            </button>
-            {finalSaveMsg && (
-              <span style={{ fontSize: "0.85rem", color: "#047857" }}>
-                {finalSaveMsg}
-              </span>
-            )}
+              {generatedNote}
+            </pre>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "0.75rem",
+                marginTop: "0.75rem",
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleCopyNote}
+                style={secondaryButtonStyle}
+              >
+                Copy AI draft to clipboard
+              </button>
+              {copied && (
+                <span style={{ fontSize: "0.85rem", color: "#047857" }}>
+                  Copied!
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Final note */}
+          <div style={{ marginTop: "1.4rem" }}>
+            <div
+              style={{
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                color: "#4b5563",
+                marginBottom: "0.35rem",
+              }}
+            >
+              Final note (edit before saving)
+            </div>
+            <textarea
+              rows={8}
+              value={finalNoteText}
+              onChange={(e) => setFinalNoteText(e.target.value)}
+              style={{
+                ...textareaStyle,
+                minHeight: "180px",
+                background: "#ffffff",
+              }}
+            />
+
+            <div
+              style={{
+                display: "flex",
+                gap: "0.75rem",
+                marginTop: "0.75rem",
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleSaveFinalNote}
+                style={primaryButtonStyle}
+              >
+                Save final note
+              </button>
+              {finalSaveMsg && (
+                <span style={{ fontSize: "0.85rem", color: "#047857" }}>
+                  {finalSaveMsg}
+                </span>
+              )}
+            </div>
           </div>
 
           {noteHasIncident && (
             <div
               style={{
                 marginTop: "1rem",
-                padding: "0.75rem",
+                padding: "0.75rem 0.9rem",
                 borderLeft: "4px solid #d97706",
-                background: "#fff7ed",
+                background: "#fffbeb",
                 fontSize: "0.9rem",
-                color: "#000000ff",
+                color: "#78350f",
+                borderRadius: "0.5rem",
               }}
             >
               <strong>Incident reminder:</strong> This note includes an
@@ -643,9 +713,9 @@ function GenerateNotePage({ token, user }) {
             for accuracy, NDIS compliance and incident reporting remains with
             the provider.
           </p>
-        </div>
+        </section>
       )}
-    </>
+    </div>
   );
 }
 
