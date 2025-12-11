@@ -471,7 +471,7 @@ NO INTRO LINES.
 
     const incidentText = (incidentsOrRisks || "").toLowerCase();
     const looksLikeNoIncident =
-      /^no incidents?|^no incident|^none\b|^no concerns?/i.test(incText);
+      /^no incidents?|^no incident|^none\b|^no concerns?/i.test(incidentText);
 
     const incidentFlag =
       incidentOccurred === true &&
