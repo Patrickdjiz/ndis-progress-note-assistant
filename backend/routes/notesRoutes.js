@@ -470,11 +470,14 @@ NO INTRO LINES.
     const fullNote = `${header}\n\n${filteredBody}`;
 
     const incidentText = (incidentsOrRisks || "").toLowerCase();
+    const looksLikeNoIncident =
+      /^no incidents?|^no incident|^none\b|^no concerns?/i.test(incText);
+
     const incidentFlag =
-      incidentText.trim().length > 0 &&
-      !incidentText.includes("no incident") &&
-      !incidentText.includes("no incidents") &&
-      !incidentText.includes("no concerns");
+      incidentOccurred === true &&
+      incText.length > 0 &&
+      !looksLikeNoIncident;
+
 
     const insertStmt = db.prepare(`
     INSERT INTO progress_notes (
