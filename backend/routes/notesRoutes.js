@@ -475,7 +475,7 @@ NO INTRO LINES.
 
     const incidentFlag =
       incidentOccurred === true &&
-      incText.length > 0 &&
+      incidentText.length > 0 &&
       !looksLikeNoIncident;
 
 
