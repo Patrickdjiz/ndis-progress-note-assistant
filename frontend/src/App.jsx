@@ -31,14 +31,20 @@ function App() {
   };
 
   // If not logged in: only show login page
-  if (!auth) {
+    if (!auth) {
     return (
       <div
         style={{
-          maxWidth: "1100px",
-          margin: "0 auto",
+          minHeight: "100vh",
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           padding: "1.5rem",
-          fontFamily: "sans-serif",
+          fontFamily:
+            'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          boxSizing: "border-box",
+          background: "#f3f4f6",
         }}
       >
         <LoginPage onLoginSuccess={handleLoginSuccess} />
@@ -60,145 +66,126 @@ function App() {
   });
 
   return (
-    <div
-      style={{
-      maxWidth: "1100px",
-      margin: "1.5rem auto",
-      padding: "1.5rem",
-      fontFamily: "sans-serif",
-      borderRadius: "0.75rem",
-      boxShadow: "0 10px 25px rgba(15, 23, 42, 0.06)",
+  <div
+    style={{
+      minHeight: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      background: "#f3f4f6",
     }}
+  >
+    {/* Header */}
+    <header
+      style={{
+        width: "100%",
+        background: "#ffffff",
+        padding: "1rem 1.5rem",
+        borderBottom: "1px solid #e5e7eb",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+      }}
     >
-      {/* Top header with user + logout */}
-      <header
+      <div
         style={{
+          maxWidth: "1100px",
+          margin: "0 auto",
           display: "flex",
-          justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "1.5rem",
-          gap: "1rem",
+          justifyContent: "space-between",
           flexWrap: "wrap",
+          gap: "1rem",
         }}
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: "1.4rem" }}>
-            NDIS AI Progress Notes Assistant
+          <h1 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600 }}>
+            NDIS AI Notes Assistant
           </h1>
-          <div style={{ fontSize: "0.85rem", color: "#4b5563" }}>
+          <p style={{ margin: 0, fontSize: "0.85rem", color: "#6b7280" }}>
             Logged in as <strong>{user.fullName}</strong> ({user.role})
-          </div>
+          </p>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.75rem",
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
-          }}
-        >
-          <nav style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-            {/* WORKER + ADMIN: Generator */}
-            {user.role !== "OWNER" && (
-              <NavLink to="/" end style={linkStyle}>
-                Generate note
-              </NavLink>
-            )}
+        {/* NAVIGATION */}
+        <nav style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          
+          {user.role !== "OWNER" && (
+            <NavLink to="/" end style={linkStyle}>
+              Generate note
+            </NavLink>
+          )}
 
-            {/* WORKER: My notes */}
-            {user.role === "WORKER" && (
-              <NavLink to="/my-notes" style={linkStyle}>
-                My notes
-              </NavLink>
-            )}
+          {user.role === "WORKER" && (
+            <NavLink to="/my-notes" style={linkStyle}>
+              My notes
+            </NavLink>
+          )}
 
-            {/* ADMIN: Team + Saved notes */}
-            {user.role === "ADMIN" && (
-              <>
-                <NavLink to="/team" style={linkStyle}>
-                  Team
-                </NavLink>
-                <NavLink to="/dashboard" style={linkStyle}>
-                  Saved notes
-                </NavLink>
-              </>
-            )}
+          {user.role === "ADMIN" && (
+            <>
+              <NavLink to="/team" style={linkStyle}>Team</NavLink>
+              <NavLink to="/dashboard" style={linkStyle}>Saved notes</NavLink>
+            </>
+          )}
 
-            {/* OWNER: Owner console only */}
-            {user.role === "OWNER" && (
-              <NavLink to="/owner" style={linkStyle}>
-                Owner console
-              </NavLink>
-            )}
-          </nav>
+          {user.role === "OWNER" && (
+            <NavLink to="/owner" style={linkStyle}>Owner console</NavLink>
+          )}
 
           <button
-            type="button"
             onClick={handleLogout}
             style={{
-              padding: "0.35rem 0.8rem",
-              fontSize: "0.85rem",
-              cursor: "pointer",
-              borderRadius: "999px",
-              border: "1px solid #e5e7eb",
+              marginLeft: "0.75rem",
               background: "#ffffff",
+              color: "#111827",
+              border: "1px solid #d1d5db",
             }}
           >
             Log out
           </button>
-        </div>
-      </header>
+        </nav>
+      </div>
+    </header>
 
-      {/* Role-based routes */}
+    {/* MAIN CONTENT WRAPPER */}
+    <main
+      style={{
+        flex: 1,
+        width: "100%",
+        maxWidth: "1100px",
+        margin: "2rem auto",
+        padding: "0 1.5rem",
+      }}
+    >
       <Routes>
         {user.role === "OWNER" ? (
           <>
-            <Route
-              path="/owner"
-              element={<OwnerConsolePage token={token} user={user} />}
-            />
-            {/* Any other path redirects to owner console */}
+            <Route path="/owner" element={<OwnerConsolePage token={token} user={user} />} />
             <Route path="*" element={<Navigate to="/owner" replace />} />
           </>
         ) : (
           <>
-            {/* Generator is home for workers/admins */}
-            <Route
-              path="/"
-              element={<GenerateNotePage token={token} user={user} />}
-            />
+            <Route path="/" element={<GenerateNotePage token={token} user={user} />} />
 
-            {/* WORKER: My notes */}
             {user.role === "WORKER" && (
-              <Route
-                path="/my-notes"
-                element={<MyNotesPage token={token} user={user} />}
-              />
+              <Route path="/my-notes" element={<MyNotesPage token={token} user={user} />} />
             )}
 
-            {/* Admin-only pages */}
             {user.role === "ADMIN" && (
               <>
-                <Route
-                  path="/team"
-                  element={<UsersAdminPage token={token} user={user} />}
-                />
-                <Route
-                  path="/dashboard"
-                  element={<NotesDashboardPage token={token} user={user} />}
-                />
+                <Route path="/team" element={<UsersAdminPage token={token} user={user} />} />
+                <Route path="/dashboard" element={<NotesDashboardPage token={token} user={user} />} />
               </>
             )}
 
-            {/* Catch-all: send to generator */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </>
         )}
       </Routes>
-    </div>
-  );
+    </main>
+  </div>
+);
 }
 
 export default App;
