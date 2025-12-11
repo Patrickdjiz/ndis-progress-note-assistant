@@ -152,7 +152,6 @@ function GenerateNotePage({ token, user }) {
   
           body: JSON.stringify({
             finalNoteText,
-            finalisedBy: workerName, // simple stand-in for logged-in user
           }),
         }
       );
@@ -182,27 +181,31 @@ function GenerateNotePage({ token, user }) {
   };
 
   const handleClearForm = () => {
-    setParticipantName("");
-    setDate(todayIso);
-    setStartTime("");
-    setEndTime("");
-    setLocation("");
-    setActivitiesAndSupports("");
-    setParticipantPresentation("");
-    setGoalsWorkedOn("");
-    setIncidentsOrRisks("");
-    setFollowUpActions("");
-    setWorkerName("");
+      setParticipantName("");
+      setDate(todayIso);
+      setStartTime("");
+      setEndTime("");
+      setLocation("");
+      setActivitiesAndSupports("");
+      setParticipantPresentation("");
+      setGoalsWorkedOn("");
+      setIncidentsOrRisks("");
+      setFollowUpActions("");
 
-    setIncidentOccurred(false);
-    setNoteHasIncident(false);
+      // keep worker name tied to logged-in user
+      if (user?.fullName) {
+        setWorkerName(user.fullName);
+      }
 
-    setGeneratedNote("");
-    setFinalNoteText("");
-    setLatestNoteId(null);
-    setErrorMsg("");
-    setCopied(false);
-    setFinalSaveMsg("");
+      setIncidentOccurred(false);
+      setNoteHasIncident(false);
+
+      setGeneratedNote("");
+      setFinalNoteText("");
+      setLatestNoteId(null);
+      setErrorMsg("");
+      setCopied(false);
+      setFinalSaveMsg("");
   };
 
   return (

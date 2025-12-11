@@ -122,7 +122,6 @@ function NotesDashboardPage({ token, user }) {
 
           body: JSON.stringify({
             finalNoteText: finalNoteEditText,
-            finalisedBy: reviewerName || selectedNote.workerName,
           }),
         }
       );
@@ -173,7 +172,6 @@ function NotesDashboardPage({ token, user }) {
 
           body: JSON.stringify({
             reviewedFlag: newFlag,
-            reviewedBy: reviewerName || selectedNote.reviewedBy || "",
           }),
         }
       );
@@ -307,7 +305,7 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#000000ff",
+                      color: "#111827",
                       fontWeight: 600,
 
                     }}
@@ -319,7 +317,7 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#000000ff",
+                      color: "#111827",
                       fontWeight: 600,
                     }}
                   >
@@ -330,7 +328,7 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#000000ff",
+                      color: "#111827",
                       fontWeight: 600,
                     }}
                   >
@@ -341,7 +339,7 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#000000ff",
+                      color: "#111827",
                       fontWeight: 600,
                     }}
                   >
@@ -352,7 +350,7 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#000000ff",
+                      color: "#111827",
                       fontWeight: 600,
                     }}
                   >
@@ -363,7 +361,7 @@ function NotesDashboardPage({ token, user }) {
                       textAlign: "left",
                       padding: "0.4rem 0.6rem",
                       borderBottom: "1px solid #e5e7eb",
-                      color: "#000000ff",
+                      color: "#111827",
                       fontWeight: 600,
                     }}
                   >

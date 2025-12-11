@@ -42,7 +42,6 @@ function MyNotesPage({ token, user }) {
     setSelectedNote(note);
   };
 
-  // Pick best body to show
   const getNoteBody = (note) => {
     if (!note) return "";
     return note.finalNoteText && note.finalNoteText.trim().length > 0
@@ -89,7 +88,6 @@ function MyNotesPage({ token, user }) {
         <p style={{ color: "red", marginTop: "0.6rem" }}>{errorMsg}</p>
       )}
 
-      {/* Mobile-friendly list of notes */}
       <div
         style={{
           marginTop: "0.9rem",
@@ -98,7 +96,6 @@ function MyNotesPage({ token, user }) {
           gap: "1rem",
         }}
       >
-        {/* Left: list of cards */}
         <div
           style={{
             display: "flex",
@@ -205,7 +202,6 @@ function MyNotesPage({ token, user }) {
           })}
         </div>
 
-        {/* Right: selected note details */}
         <div
           style={{
             border: "1px solid #e5e7eb",

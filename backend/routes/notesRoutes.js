@@ -128,13 +128,15 @@ router.post("/notes/:id/finalise", (req, res) => {
     }
 
     const { finalNoteText } = req.body;
-    const finalisedByName = req.user.fullName;
 
     if (!finalNoteText || !finalNoteText.toString().trim()) {
       return res
         .status(400)
         .json({ error: "Final note text is required" });
     }
+
+    // Always trust server-side user name
+    const finalisedByName = req.user.fullName || "";
 
     // Base query: same org + note id
     let query = `
@@ -189,7 +191,6 @@ router.post("/notes/:id/finalise", (req, res) => {
 
 
 // POST /api/notes/:id/review
-// POST /api/notes/:id/review
 router.post("/notes/:id/review", (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -206,7 +207,9 @@ router.post("/notes/:id/review", (req, res) => {
 
     const { reviewedFlag } = req.body;
     const flag = reviewedFlag === false ? 0 : 1;
-    const reviewerName = req.user.fullName;
+
+    // Server-controlled reviewer name
+    const reviewerName = req.user.fullName || "";
 
     const stmtCheck = db.prepare(`
       SELECT id
