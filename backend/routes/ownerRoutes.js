@@ -2,6 +2,7 @@
 const express = require("express");
 const db = require("../db");
 const { requireAuth, requireRole } = require("../authMiddleware");
+const bcrypt = require("bcryptjs");
 
 const router = express.Router();
 
@@ -54,10 +55,8 @@ router.get("/overview", (req, res) => {
  * body: { organisationName, adminEmail, adminFullName, adminPassword }
  * Creates an organisation + ADMIN user
  */
-const bcrypt = require("bcryptjs");
-
 // routes/ownerRoutes.js
-router.post("/providers", requireAuth, requireRole("OWNER"), (req, res) => {
+router.post("/providers", (req, res) => {
   try {
     const {
       organisationName,
@@ -80,6 +79,17 @@ router.post("/providers", requireAuth, requireRole("OWNER"), (req, res) => {
 
     const normalisedEmail = adminEmail.trim().toLowerCase();
     const nowIso = new Date().toISOString();
+
+    // NEW: check if email already exists anywhere
+    const existingUser = db
+      .prepare(`SELECT id FROM users WHERE email = ?`)
+      .get(normalisedEmail);
+
+    if (existingUser) {
+      return res.status(400).json({
+        error: "A user with this email already exists",
+      });
+    }
 
     // create org
     const orgStmt = db.prepare(`
@@ -181,6 +191,13 @@ router.patch("/users/:id/status", (req, res) => {
     }
 
     const { isActive } = req.body || {};
+
+    if (typeof isActive !== "boolean") {
+      return res
+        .status(400)
+        .json({ error: "isActive must be a boolean" });
+    }
+
     const activeFlag = isActive ? 1 : 0;
 
     const existing = db

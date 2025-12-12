@@ -6,6 +6,7 @@ const db = require("../db");
 const applyComplianceFilter = require("../compliance");
 const { timeToMinutes, parseYyyyMmDd, looksLikeJunk } = require("../utils");
 const { requireAuth } = require("../authMiddleware");
+const { OLLAMA_URL } = require("../config/env");
 
 const router = express.Router();
 
@@ -319,7 +320,9 @@ router.post("/generate-note", async (req, res) => {
     const startMins = timeToMinutes(startTime);
     const endMins = timeToMinutes(endTime);
 
-    console.log("DEBUG times:", { startTime, endTime, startMins, endMins });
+    if (process.env.NODE_ENV === "development") {
+      console.log("DEBUG times:", { startTime, endTime, startMins, endMins });
+    }
 
     if (startMins === null || endMins === null) {
       return res.status(400).json({
@@ -439,11 +442,11 @@ NO INTRO LINES.
 `;
 
     const ollamaResponse = await axios.post(
-      "http://localhost:11434/api/generate",
+      `${OLLAMA_URL}/api/generate`,
       {
         model: "llama3",
         prompt,
-        stream: false
+        stream: false,
       }
     );
 
@@ -521,7 +524,17 @@ NO INTRO LINES.
 
     return res.json({ note: fullNote, id: info.lastInsertRowid });
   } catch (error) {
-    console.error("Error generating note:", error.message);
+    if (process.env.NODE_ENV !== "test") {
+      console.error("Error generating note:", error.message);
+    }
+
+    if (error.code === "ECONNREFUSED" || error.code === "ETIMEDOUT") {
+      return res.status(503).json({
+        error:
+          "The AI note service is currently unavailable. Please try again shortly or contact your system administrator.",
+      });
+    }
+
     return res.status(500).json({ error: "Failed to generate note" });
   }
 });

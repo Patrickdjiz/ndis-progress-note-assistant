@@ -1,7 +1,6 @@
 // authMiddleware.js
 const jwt = require("jsonwebtoken");
-
-const JWT_SECRET = process.env.JWT_SECRET || "CHANGE_ME_IN_PROD";
+const { JWT_SECRET } = require("./config/env");
 
 // helper for login route
 function generateToken(user) {
@@ -35,9 +34,12 @@ function requireAuth(req, res, next) {
     };
     next();
   } catch (err) {
-    console.error("JWT error:", err.message);
+    // Only log full error in development
+    if (process.env.NODE_ENV !== "test") {
+      console.error("JWT error:", err.message);
+    }
     return res.status(401).json({ error: "Invalid or expired token" });
-  }
+    }
 }
 
 function requireRole(...allowed) {

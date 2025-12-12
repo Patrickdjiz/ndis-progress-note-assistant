@@ -1,9 +1,23 @@
 // db.js
 const Database = require("better-sqlite3");
 const bcrypt = require("bcryptjs");
+const { NODE_ENV } = require("./config/env"); // ⬅ NEW
+
+// Decide which DB file to use (or use env override)
+const dbFileFromEnv = process.env.SQLITE_DB_FILE;
+let dbFile = dbFileFromEnv || "notes.dev.db";
+
+if (NODE_ENV === "test") {
+  dbFile = dbFileFromEnv || "notes.test.db";
+}
+if (NODE_ENV === "production") {
+  dbFile = dbFileFromEnv || "notes.prod.db";
+}
+
+console.log(`[db] Using SQLite file: ${dbFile} (env: ${NODE_ENV})`);
 
 // open or create local DB file
-const db = new Database("notes.db");
+const db = new Database(dbFile);
 
 // enable foreign keys
 db.pragma("foreign_keys = ON");
@@ -70,8 +84,7 @@ db.exec(`
   );
 `);
 
-// --- Seed one demo org + admin (dev only) ---
-// --- Seed one platform owner org + demo provider (dev only) ---
+// --- Seed one platform owner + demo provider (dev only) ---
 function seedDemoOrgAndAdmin() {
   const orgCount = db.prepare(`SELECT COUNT(*) AS c FROM organisations`).get();
   if (orgCount.c > 0) return;
@@ -128,7 +141,14 @@ function seedDemoOrgAndAdmin() {
   console.log("  Password: demo1234");
 }
 
-
-seedDemoOrgAndAdmin();
+// ⬅️ IMPORTANT CHANGE: only seed in NON-production
+if (NODE_ENV !== "production") {
+  seedDemoOrgAndAdmin();
+} else {
+  console.log(
+    "[db] Production mode – demo OWNER / ADMIN are NOT auto-seeded. " +
+      "Create real organisations via the owner console."
+  );
+}
 
 module.exports = db;
