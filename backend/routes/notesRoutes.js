@@ -7,6 +7,8 @@ const applyComplianceFilter = require("../compliance");
 const { timeToMinutes, parseYyyyMmDd, looksLikeJunk } = require("../utils");
 const { requireAuth } = require("../authMiddleware");
 const { OLLAMA_URL } = require("../config/env");
+const { generateNoteSchema, notesQuerySchema } = require("../validation");
+
 
 const router = express.Router();
 
@@ -16,12 +18,22 @@ router.use(requireAuth);
 // GET /api/notes  (list recent notes with filters, org-scoped)
 router.get("/notes", (req, res) => {
   try {
-    const { participant, hasIncident } = req.query;
-
     // Block OWNER at API level just in case
     if (req.user.role === "OWNER") {
       return res.status(403).json({ error: "Owners cannot access notes API" });
     }
+
+    // ✅ Validate query
+    const parsed = notesQuerySchema.safeParse({
+      participant: req.query.participant,
+      hasIncident: req.query.hasIncident,
+    });
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid query parameters" });
+    }
+
+    const { participant, hasIncident } = parsed.data;
 
     let baseQuery = `
       SELECT
@@ -70,6 +82,7 @@ router.get("/notes", (req, res) => {
     return res.status(500).json({ error: "Failed to list notes" });
   }
 });
+
 
 
 // GET /api/notes/:id  (single note, org-scoped)
@@ -261,6 +274,13 @@ router.post("/generate-note", async (req, res) => {
       return res.status(403).json({ error: "Owners cannot generate notes" });
     }
 
+    // ✅ Validate body with Zod
+    const parsed = generateNoteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid note data" });
+    }
+
     const {
       participantName,
       date,
@@ -273,33 +293,9 @@ router.post("/generate-note", async (req, res) => {
       incidentsOrRisks,
       followUpActions,
       workerName,
-      incidentOccurred
-    } = req.body;
+      incidentOccurred,
+    } = parsed.data;
 
-    // 1. Required fields
-    const requiredFields = {
-      participantName,
-      date,
-      startTime,
-      endTime,
-      location,
-      activitiesAndSupports,
-      participantPresentation,
-      goalsWorkedOn,
-      incidentsOrRisks,
-      followUpActions,
-      workerName
-    };
-
-    const missing = Object.entries(requiredFields)
-      .filter(([, value]) => !value || !value.toString().trim())
-      .map(([key]) => key);
-
-    if (missing.length > 0) {
-      return res.status(400).json({
-        error: `Missing required fields: ${missing.join(", ")}`
-      });
-    }
 
     // 2. Date sanity
     const shiftDate = parseYyyyMmDd(date);

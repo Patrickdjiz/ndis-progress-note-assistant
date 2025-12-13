@@ -3,19 +3,25 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { generateToken, requireAuth, requireRole } = require("../authMiddleware");
+const { loginSchema } = require("../validation");
+
 
 const router = express.Router();
 
 router.post("/login", (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+    // ✅ Validate body
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid login data" });
     }
+
+    const { email, password } = parsed.data;
 
     const normalisedEmail = email.trim().toLowerCase();
 
-    // IMPORTANT: join organisations to get org status
+    // (rest of your existing logic stays the same)
     const row = db
       .prepare(
         `

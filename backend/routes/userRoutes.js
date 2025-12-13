@@ -3,6 +3,8 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { requireAuth, requireRole } = require("../authMiddleware");
+const { createWorkerSchema, booleanFlagSchema } = require("../validation");
+
 
 const router = express.Router();
 
@@ -42,13 +44,14 @@ router.get("/", (req, res) => {
 // POST /api/users
 router.post("/", (req, res) => {
   try {
-    const { email, fullName, password } = req.body;
-
-    if (!email || !fullName || !password) {
-      return res
-        .status(400)
-        .json({ error: "email, fullName and password are required" });
+    // ✅ Validate body
+    const parsed = createWorkerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid user data" });
     }
+
+    const { email, fullName, password } = parsed.data;
 
     const normalisedEmail = email.trim().toLowerCase();
 
@@ -105,7 +108,14 @@ router.patch("/:id/status", (req, res) => {
       return res.status(400).json({ error: "Invalid user id" });
     }
 
-    const { isActive } = req.body;
+    // ✅ Validate body
+    const parsed = booleanFlagSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid status data" });
+    }
+
+    const { isActive } = parsed.data;
     const activeFlag = isActive ? 1 : 0;
 
     // Can't change your own status

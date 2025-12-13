@@ -3,6 +3,11 @@ const express = require("express");
 const db = require("../db");
 const { requireAuth, requireRole } = require("../authMiddleware");
 const bcrypt = require("bcryptjs");
+const {
+  createProviderSchema,
+  booleanFlagSchema,
+  orgStatusSchema,
+} = require("../validation");
 
 const router = express.Router();
 
@@ -56,26 +61,21 @@ router.get("/overview", (req, res) => {
  * Creates an organisation + ADMIN user
  */
 // routes/ownerRoutes.js
-router.post("/providers", (req, res) => {
+router.post("/providers", requireAuth, requireRole("OWNER"), (req, res) => {
   try {
+    // ✅ Validate body
+    const parsed = createProviderSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid provider data" });
+    }
+
     const {
       organisationName,
       adminEmail,
       adminFullName,
       adminPassword,
-    } = req.body;
-
-    if (
-      !organisationName?.trim() ||
-      !adminEmail?.trim() ||
-      !adminFullName?.trim() ||
-      !adminPassword?.trim()
-    ) {
-      return res.status(400).json({
-        error:
-          "organisationName, adminEmail, adminFullName and adminPassword are required",
-      });
-    }
+    } = parsed.data;
 
     const normalisedEmail = adminEmail.trim().toLowerCase();
     const nowIso = new Date().toISOString();
@@ -149,12 +149,13 @@ router.patch("/organisations/:id/status", (req, res) => {
       return res.status(400).json({ error: "Invalid organisation id" });
     }
 
-    const { status } = req.body || {};
-    if (!["ACTIVE", "SUSPENDED"].includes(status)) {
-      return res
-        .status(400)
-        .json({ error: "Status must be 'ACTIVE' or 'SUSPENDED'" });
+    // ✅ Validate body
+    const parsed = orgStatusSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid status data" });
     }
+    const { status } = parsed.data;
 
     const existing = db
       .prepare(`SELECT id FROM organisations WHERE id = ?`)
@@ -190,15 +191,20 @@ router.patch("/users/:id/status", (req, res) => {
       return res.status(400).json({ error: "Invalid user id" });
     }
 
-    const { isActive } = req.body || {};
+    // ✅ Validate body
+    const parsed = booleanFlagSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid status data" });
+    }
+    const { isActive } = parsed.data;
+    const activeFlag = isActive ? 1 : 0;
 
     if (typeof isActive !== "boolean") {
       return res
         .status(400)
         .json({ error: "isActive must be a boolean" });
     }
-
-    const activeFlag = isActive ? 1 : 0;
 
     const existing = db
       .prepare(
