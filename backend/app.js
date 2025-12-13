@@ -17,17 +17,16 @@ const app = express();
 // Basic security headers
 app.use(helmet());
 
-// Simple request logging (more verbose in dev)
+// Request logging: dev = verbose, prod = combined
 if (NODE_ENV !== "production") {
   app.use(morgan("dev"));
 } else {
   app.use(morgan("combined"));
 }
 
-// CORS – restrict to allowed frontend origins
+// CORS – only allow known frontend origin
 const allowedOrigins = new Set([
   FRONTEND_ORIGIN,
-  // Extra local dev helpers (optional)
   "http://localhost:5173",
   "http://127.0.0.1:5173",
 ]);
@@ -35,7 +34,6 @@ const allowedOrigins = new Set([
 app.use(
   cors({
     origin(origin, callback) {
-      // allow non-browser tools (Postman, curl) which send no origin
       if (!origin || allowedOrigins.has(origin)) {
         return callback(null, true);
       }
@@ -44,26 +42,21 @@ app.use(
   })
 );
 
-// Body parsing with a sane limit
+// JSON body parsing
 app.use(express.json({ limit: "1mb" }));
 
-
-// Rate limiters
+// Rate limits
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
-  legacyHeaders: false,
 });
-
 const aiLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10,            // tweak as you like
+  windowMs: 60 * 1000,
+  max: 10,
   standardHeaders: true,
-  legacyHeaders: false,
 });
 
-// Apply rate limits to specific routes
 app.use("/api/login", authLimiter);
 app.use("/api/generate-note", aiLimiter);
 
@@ -72,29 +65,40 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "Backend running" });
 });
 
-// Auth routes (login, create user)
+// Routes
 app.use("/api", authRoutes);
-
-// new
 app.use("/api/users", userRoutes);
-
 app.use("/api/owner", ownerRoutes);
-
 app.use("/api", notesRoutes);
 
-// Central error handler (must come after all routes & middleware)
-app.use((err, req, res, next) => {
-  // Basic logging
-  console.error(err);
+// -----------------------
+// 404 handler
+// -----------------------
+app.use((req, res, next) => {
+  res.status(404).json({ error: "Route not found" });
+});
 
-  // Friendly CORS error message
+// -----------------------
+// Central error handler
+// -----------------------
+app.use((err, req, res, next) => {
+  // Avoid super noisy preflight logs
+  if (err.message !== "Not allowed by CORS") {
+    if (NODE_ENV !== "test") {
+      console.error("❌ Internal error:", err);
+    }
+  }
+
+  // Friendly CORS message
   if (err.message === "Not allowed by CORS") {
     return res.status(403).json({ error: "CORS error: origin not allowed" });
   }
 
   const status = err.status || 500;
+
+  // Hide internals in production
   const message =
-    status === 500 && NODE_ENV === "production"
+    NODE_ENV === "production" && status === 500
       ? "Internal server error"
       : err.message || "Internal server error";
 
