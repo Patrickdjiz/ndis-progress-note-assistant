@@ -1,8 +1,8 @@
 // routes/ownerRoutes.js
 const express = require("express");
+const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { requireAuth, requireRole } = require("../authMiddleware");
-const bcrypt = require("bcryptjs");
 const {
   createProviderSchema,
   booleanFlagSchema,
@@ -24,20 +24,20 @@ router.get("/overview", (req, res) => {
     const orgs = db
       .prepare(
         `
-      SELECT id, name, status, createdAt
-      FROM organisations
-      ORDER BY createdAt DESC
-    `
+        SELECT id, name, status, createdAt
+        FROM organisations
+        ORDER BY createdAt DESC
+      `
       )
       .all();
 
     const userStmt = db.prepare(
       `
-      SELECT id, email, fullName, role, isActive, createdAt
-      FROM users
-      WHERE organisationId = ?
-      ORDER BY role DESC, createdAt DESC
-    `
+        SELECT id, email, fullName, role, isActive, createdAt
+        FROM users
+        WHERE organisationId = ?
+        ORDER BY role DESC, createdAt DESC
+      `
     );
 
     const result = orgs.map((org) => {
@@ -60,10 +60,9 @@ router.get("/overview", (req, res) => {
  * body: { organisationName, adminEmail, adminFullName, adminPassword }
  * Creates an organisation + ADMIN user
  */
-// routes/ownerRoutes.js
-router.post("/providers", requireAuth, requireRole("OWNER"), (req, res) => {
+router.post("/providers", (req, res) => {
   try {
-    // ✅ Validate body
+    // ✅ Validate body with Zod
     const parsed = createProviderSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
@@ -77,10 +76,13 @@ router.post("/providers", requireAuth, requireRole("OWNER"), (req, res) => {
       adminPassword,
     } = parsed.data;
 
+    const trimmedOrgName = organisationName.trim();
     const normalisedEmail = adminEmail.trim().toLowerCase();
+    const trimmedFullName = adminFullName.trim();
+    const password = adminPassword.trim();
     const nowIso = new Date().toISOString();
 
-    // NEW: check if email already exists anywhere
+    // Check for existing user with same email (any org)
     const existingUser = db
       .prepare(`SELECT id FROM users WHERE email = ?`)
       .get(normalisedEmail);
@@ -91,40 +93,59 @@ router.post("/providers", requireAuth, requireRole("OWNER"), (req, res) => {
       });
     }
 
-    // create org
-    const orgStmt = db.prepare(`
-      INSERT INTO organisations (name, status, createdAt)
-      VALUES (?, 'ACTIVE', ?)
-    `);
-    const orgInfo = orgStmt.run(organisationName.trim(), nowIso);
-    const orgId = orgInfo.lastInsertRowid;
+    // Optional: prevent duplicate provider name
+    const existingOrg = db
+      .prepare(`SELECT id FROM organisations WHERE name = ?`)
+      .get(trimmedOrgName);
 
-    // create admin user
-    const hash = bcrypt.hashSync(adminPassword.trim(), 10);
-    const userStmt = db.prepare(`
-      INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
-      VALUES (?, ?, ?, 'ADMIN', ?, 1, ?)
-    `);
-    const adminInfo = userStmt.run(
-      orgId,
-      normalisedEmail,
-      hash,
-      adminFullName.trim(),
-      nowIso
-    );
+    if (existingOrg) {
+      return res.status(400).json({
+        error: "An organisation with this name already exists",
+      });
+    }
+
+    const hash = bcrypt.hashSync(password, 10);
+
+    // Use a transaction so org + admin are created together
+    const createOrgAndAdmin = db.transaction(() => {
+      // 1) Create org
+      const orgStmt = db.prepare(`
+        INSERT INTO organisations (name, status, createdAt)
+        VALUES (?, 'ACTIVE', ?)
+      `);
+      const orgInfo = orgStmt.run(trimmedOrgName, nowIso);
+      const orgId = orgInfo.lastInsertRowid;
+
+      // 2) Create admin user
+      const userStmt = db.prepare(`
+        INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
+        VALUES (?, ?, ?, 'ADMIN', ?, 1, ?)
+      `);
+      const adminInfo = userStmt.run(
+        orgId,
+        normalisedEmail,
+        hash,
+        trimmedFullName,
+        nowIso
+      );
+
+      return { orgId, adminId: adminInfo.lastInsertRowid };
+    });
+
+    const { orgId, adminId } = createOrgAndAdmin();
 
     const organisation = {
       id: orgId,
-      name: organisationName.trim(),
+      name: trimmedOrgName,
       status: "ACTIVE",
       createdAt: nowIso,
     };
 
     const admin = {
-      id: adminInfo.lastInsertRowid,
+      id: adminId,
       organisationId: orgId,
       email: normalisedEmail,
-      fullName: adminFullName.trim(),
+      fullName: trimmedFullName,
       role: "ADMIN",
       isActive: 1,
       createdAt: nowIso,
@@ -136,7 +157,6 @@ router.post("/providers", requireAuth, requireRole("OWNER"), (req, res) => {
     return res.status(500).json({ error: "Failed to create provider" });
   }
 });
-
 
 /**
  * PATCH /api/owner/organisations/:id/status
@@ -200,19 +220,13 @@ router.patch("/users/:id/status", (req, res) => {
     const { isActive } = parsed.data;
     const activeFlag = isActive ? 1 : 0;
 
-    if (typeof isActive !== "boolean") {
-      return res
-        .status(400)
-        .json({ error: "isActive must be a boolean" });
-    }
-
     const existing = db
       .prepare(
         `
-      SELECT id, role
-      FROM users
-      WHERE id = ?
-    `
+        SELECT id, role
+        FROM users
+        WHERE id = ?
+      `
       )
       .get(id);
 
@@ -220,7 +234,7 @@ router.patch("/users/:id/status", (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Don't let owner kill OWNER accounts (including themselves)
+    // Don't let owner change OWNER accounts (including themselves)
     if (existing.role === "OWNER") {
       return res
         .status(400)
