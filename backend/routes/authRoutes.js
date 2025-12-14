@@ -1,30 +1,25 @@
 // routes/authRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const db = require("../db");
+const { queryOne } = require("../dbAdapter");
 const { generateToken, requireAuth, requireRole } = require("../authMiddleware");
 const { loginSchema } = require("../validation");
 
 
 const router = express.Router();
 
-router.post("/login", (req, res) => {
+router.post("/login", async (req, res) => {
   try {
-    // ✅ Validate body
-    const parsed = loginSchema.safeParse(req.body);
-    if (!parsed.success) {
-      const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid login data" });
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
     }
-
-    const { email, password } = parsed.data;
 
     const normalisedEmail = email.trim().toLowerCase();
 
-    // (rest of your existing logic stays the same)
-    const row = db
-      .prepare(
-        `
+    // Join organisations to get org status
+    const row = await queryOne(
+      `
         SELECT
           u.id,
           u.email,
@@ -37,9 +32,9 @@ router.post("/login", (req, res) => {
         FROM users u
         JOIN organisations o ON u.organisationId = o.id
         WHERE u.email = ?
-      `
-      )
-      .get(normalisedEmail);
+      `,
+      [normalisedEmail]
+    );
 
     if (!row) {
       return res.status(401).json({ error: "Invalid email or password" });
@@ -47,9 +42,10 @@ router.post("/login", (req, res) => {
 
     // Block deactivated users
     if (!row.isActive) {
-      return res
-        .status(403)
-        .json({ error: "This user account is inactive. Please contact your provider." });
+      return res.status(403).json({
+        error:
+          "This user account is inactive. Please contact your provider.",
+      });
     }
 
     // Block users from a suspended provider (but still allow OWNER)
@@ -82,6 +78,7 @@ router.post("/login", (req, res) => {
     return res.status(500).json({ error: "Login failed" });
   }
 });
+
 
 
 // GET /api/auth/me  (who am I?)
