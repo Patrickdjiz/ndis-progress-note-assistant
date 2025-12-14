@@ -6,6 +6,7 @@ const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
 
 const { FRONTEND_ORIGIN, NODE_ENV } = require("./config/env");
+const { testConnection } = require("./pgClient");
 
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -63,6 +64,21 @@ app.use("/api/generate-note", aiLimiter);
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "Backend running" });
+});
+
+// DB health check (Postgres)
+app.get("/api/health/db", async (req, res, next) => {
+  try {
+    const ok = await testConnection();
+    if (!ok) {
+      return res.status(500).json({ status: "db-error" });
+    }
+    res.json({ status: "ok" });
+  } catch (err) {
+    console.error("DB health error:", err);
+    // Let the central error handler format the response
+    next(err);
+  }
 });
 
 // Routes

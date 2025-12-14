@@ -1,27 +1,21 @@
 // config/env.js
-const dotenv = require("dotenv");
-
-dotenv.config(); // loads .env if present
+require("dotenv").config();
 
 const NODE_ENV = process.env.NODE_ENV || "development";
-const PORT = process.env.PORT || 5000;
-
 const FRONTEND_ORIGIN =
   process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 
-// JWT secret for signing tokens
-const JWT_SECRET = process.env.JWT_SECRET;
+const DATABASE_URL = process.env.DATABASE_URL;
 
-// Optional: loud fail in non-test environments
-if (!JWT_SECRET && NODE_ENV !== "test") {
+if (!DATABASE_URL) {
+  // Fail fast in dev/prod if DB URL missing
   console.warn(
-    "WARNING: JWT_SECRET is not set. Set it in your .env file for secure tokens."
+    "[env] DATABASE_URL is not set – Postgres features will not work until you configure it."
   );
 }
 
 module.exports = {
   NODE_ENV,
-  PORT,
   FRONTEND_ORIGIN,
-  JWT_SECRET,
+  DATABASE_URL,
 };
