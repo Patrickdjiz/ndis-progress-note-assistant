@@ -1,7 +1,7 @@
 // db.js
 const Database = require("better-sqlite3");
 const bcrypt = require("bcryptjs");
-const { NODE_ENV } = require("./config/env"); // ⬅ NEW
+const { NODE_ENV } = require("./config/env"); 
 
 // Decide which DB file to use (or use env override)
 const dbFileFromEnv = process.env.SQLITE_DB_FILE;
