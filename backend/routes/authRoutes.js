@@ -1,40 +1,26 @@
 // routes/authRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const { queryOne } = require("../dbAdapter");
-const { generateToken, requireAuth, requireRole } = require("../authMiddleware");
-const { loginSchema } = require("../validation");
-
+const { generateToken, requireAuth } = require("../authMiddleware");
+const { findUserByEmailWithOrg } = require("../dbAdapter");
 
 const router = express.Router();
 
+// POST /api/login
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
+
     if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+      return res
+        .status(400)
+        .json({ error: "Email and password are required" });
     }
 
     const normalisedEmail = email.trim().toLowerCase();
 
-    // Join organisations to get org status
-    const row = await queryOne(
-      `
-        SELECT
-          u.id,
-          u.email,
-          u.passwordHash,
-          u.role,
-          u.fullName,
-          u.isActive,
-          u.organisationId,
-          o.status AS orgStatus
-        FROM users u
-        JOIN organisations o ON u.organisationId = o.id
-        WHERE u.email = ?
-      `,
-      [normalisedEmail]
-    );
+    // ✅ Use adapter (works for SQLite now, Postgres later)
+    const row = await findUserByEmailWithOrg(normalisedEmail);
 
     if (!row) {
       return res.status(401).json({ error: "Invalid email or password" });
@@ -79,8 +65,6 @@ router.post("/login", async (req, res) => {
   }
 });
 
-
-
 // GET /api/auth/me  (who am I?)
 router.get("/auth/me", requireAuth, (req, res) => {
   // req.user is set by requireAuth
@@ -90,8 +74,8 @@ router.get("/auth/me", requireAuth, (req, res) => {
       fullName: req.user.fullName,
       role: req.user.role,
       email: req.user.email,
-      organisationId: req.user.organisationId
-    }
+      organisationId: req.user.organisationId,
+    },
   });
 });
 
