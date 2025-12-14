@@ -1,10 +1,18 @@
 // routes/userRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const db = require("../db");
 const { requireAuth, requireRole } = require("../authMiddleware");
-const { createWorkerSchema, booleanFlagSchema } = require("../validation");
-
+const {
+  createWorkerSchema,
+  booleanFlagSchema,
+} = require("../validation");
+const {
+  findUserByEmail,
+  getOrgUsersForAdmin,
+  createWorkerUser,
+  findUserByIdInOrg,
+  updateUserActiveFlag,
+} = require("../dbAdapter");
 
 const router = express.Router();
 
@@ -18,21 +26,16 @@ router.use(requireRole("ADMIN", "OWNER"));
  * - ADMIN: sees themselves + all WORKERs in their org
  * - OWNER: we generally won't use this route (owner uses /api/owner/overview)
  */
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const stmt = db.prepare(`
-      SELECT id, email, fullName, role, isActive, createdAt
-      FROM users
-      WHERE organisationId = ?
-        AND (role = 'WORKER' OR id = ?)
-      ORDER BY role DESC, createdAt DESC
-    `);
-
-    const rows = stmt.all(req.user.organisationId, req.user.id);
-    res.json({ users: rows });
+    const users = await getOrgUsersForAdmin(
+      req.user.organisationId,
+      req.user.id
+    );
+    return res.json({ users });
   } catch (err) {
     console.error("Error listing users:", err.message);
-    res.status(500).json({ error: "Failed to list users" });
+    return res.status(500).json({ error: "Failed to list users" });
   }
 });
 
@@ -41,10 +44,9 @@ router.get("/", (req, res) => {
  * Create a new WORKER in the current organisation.
  * Provider admins CANNOT create other admins from here.
  */
-// POST /api/users
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   try {
-    // ✅ Validate body
+    // ✅ Validate body with Zod schema
     const parsed = createWorkerSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
@@ -52,12 +54,10 @@ router.post("/", (req, res) => {
     }
 
     const { email, fullName, password } = parsed.data;
-
     const normalisedEmail = email.trim().toLowerCase();
 
-    const existing = db
-      .prepare(`SELECT id FROM users WHERE email = ?`)
-      .get(normalisedEmail);
+    // Check uniqueness across DB
+    const existing = await findUserByEmail(normalisedEmail);
     if (existing) {
       return res
         .status(400)
@@ -65,43 +65,26 @@ router.post("/", (req, res) => {
     }
 
     const hash = bcrypt.hashSync(password, 10);
-    const nowIso = new Date().toISOString();
 
-    const stmt = db.prepare(`
-      INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
-      VALUES (?, ?, ?, 'WORKER', ?, 1, ?)
-    `);
-
-    const info = stmt.run(
-      req.user.organisationId,
-      normalisedEmail,
-      hash,
-      fullName.trim(),
-      nowIso
-    );
-
-    res.status(201).json({
-      user: {
-        id: info.lastInsertRowid,
-        email: normalisedEmail,
-        fullName: fullName.trim(),
-        role: "WORKER",
-        isActive: 1,
-        createdAt: nowIso,
-      },
+    const user = await createWorkerUser({
+      orgId: req.user.organisationId,
+      email: normalisedEmail,
+      fullName: fullName.trim(),
+      passwordHash: hash,
     });
+
+    return res.status(201).json({ user });
   } catch (err) {
     console.error("Error creating user:", err.message);
-    res.status(500).json({ error: "Failed to create user" });
+    return res.status(500).json({ error: "Failed to create user" });
   }
 });
-
 
 /**
  * PATCH /api/users/:id/status
  * Toggle active / inactive for WORKERs only.
  */
-router.patch("/:id/status", (req, res) => {
+router.patch("/:id/status", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -126,11 +109,10 @@ router.patch("/:id/status", (req, res) => {
     }
 
     // Ensure user is in same org AND is a WORKER
-    const existing = db
-      .prepare(
-        `SELECT id, role FROM users WHERE id = ? AND organisationId = ?`
-      )
-      .get(id, req.user.organisationId);
+    const existing = await findUserByIdInOrg(
+      id,
+      req.user.organisationId
+    );
 
     if (!existing) {
       return res.status(404).json({ error: "User not found" });
@@ -141,15 +123,12 @@ router.patch("/:id/status", (req, res) => {
       });
     }
 
-    db.prepare(`UPDATE users SET isActive = ? WHERE id = ?`).run(
-      activeFlag,
-      id
-    );
+    await updateUserActiveFlag(id, !!isActive);
 
-    res.json({ ok: true, id, isActive: activeFlag });
+    return res.json({ ok: true, id, isActive: activeFlag });
   } catch (err) {
     console.error("Error updating user status:", err.message);
-    res.status(500).json({ error: "Failed to update user status" });
+    return res.status(500).json({ error: "Failed to update user status" });
   }
 });
 
