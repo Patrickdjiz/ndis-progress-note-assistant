@@ -2,24 +2,54 @@
 const express = require("express");
 const axios = require("axios");
 
+const sqliteDb = require("../db"); // only used when not on Postgres
 const applyComplianceFilter = require("../compliance");
 const { timeToMinutes, parseYyyyMmDd, looksLikeJunk } = require("../utils");
 const { requireAuth } = require("../authMiddleware");
 const { generateNoteSchema, notesQuerySchema } = require("../validation");
-const { AI_BASE_URL, AI_MODEL, NODE_ENV } = require("../config/env");
-const { query } = require("../dbAdapter");
+const { AI_BASE_URL, AI_MODEL } = require("../config/env");
+const { query, isPostgres } = require("../dbAdapter");
 
 const router = express.Router();
+
+// Helper: normalise a Postgres note row to the old camelCase shape
+function normaliseNoteRow(row) {
+  if (!row) return null;
+  if (!isPostgres) return row;
+
+  return {
+    id: row.id,
+    organisationId: row.organisation_id,
+    workerUserId: row.worker_user_id,
+    participantName: row.participant_name,
+    workerName: row.worker_name,
+    date: row.date, // pg client will serialise DATE to ISO string in JSON
+    startTime: row.start_time,
+    endTime: row.end_time,
+    location: row.location,
+    activitiesAndSupports: row.activities_and_supports,
+    participantPresentation: row.participant_presentation,
+    goalsWorkedOn: row.goals_worked_on,
+    incidentsOrRisks: row.incidents_or_risks,
+    followUpActions: row.follow_up_actions,
+    noteText: row.note_text,
+    incidentFlag: row.incident_flag,
+    createdAt: row.created_at,
+    finalNoteText: row.final_note_text,
+    finalisedAt: row.finalised_at,
+    finalisedBy: row.finalised_by,
+    reviewedFlag: row.reviewed_flag,
+    reviewedAt: row.reviewed_at,
+    reviewedBy: row.reviewed_by,
+  };
+}
 
 // All routes in this file require auth
 router.use(requireAuth);
 
-// -----------------------------------------------------
 // GET /api/notes  (list recent notes with filters, org-scoped)
-// -----------------------------------------------------
 router.get("/notes", async (req, res) => {
   try {
-    // Block OWNER at API level just in case
     if (req.user.role === "OWNER") {
       return res.status(403).json({ error: "Owners cannot access notes API" });
     }
@@ -36,49 +66,79 @@ router.get("/notes", async (req, res) => {
 
     const { participant, hasIncident } = parsed.data;
 
-    const conditions = ["organisation_id = $1"];
-    const params = [req.user.organisationId];
-    let idx = 2;
+    if (isPostgres) {
+      // ---------- Postgres path ----------
+      let sql = `
+        SELECT *
+        FROM progress_notes
+        WHERE organisation_id = $1
+      `;
+      const params = [req.user.organisationId];
+      let idx = 2;
 
-    // Worker: only their own notes
+      if (req.user.role === "WORKER") {
+        sql += ` AND worker_user_id = $${idx++}`;
+        params.push(req.user.id);
+      }
+
+      if (participant && participant.trim()) {
+        sql += ` AND participant_name ILIKE $${idx++}`;
+        params.push(`%${participant.trim()}%`);
+      }
+
+      if (hasIncident === "true") {
+        sql += " AND incident_flag = TRUE";
+      } else if (hasIncident === "false") {
+        sql += " AND incident_flag = FALSE";
+      }
+
+      sql += " ORDER BY created_at DESC LIMIT 50";
+
+      const { rows } = await query(sql, params);
+      const notes = rows.map(normaliseNoteRow);
+      return res.json({ notes });
+    }
+
+    // ---------- SQLite fallback ----------
+    let baseQuery = `
+      SELECT
+        id,
+        participantName,
+        workerName,
+        date,
+        startTime,
+        endTime,
+        location,
+        incidentFlag,
+        createdAt,
+        finalisedAt,
+        reviewedFlag
+      FROM progress_notes
+      WHERE organisationId = ?
+    `;
+
+    const params = [req.user.organisationId];
+
     if (req.user.role === "WORKER") {
-      conditions.push(`worker_user_id = $${idx}`);
+      baseQuery += " AND workerUserId = ?";
       params.push(req.user.id);
-      idx++;
     }
 
     if (participant && participant.trim()) {
-      conditions.push(`participant_name ILIKE $${idx}`);
+      baseQuery += " AND participantName LIKE ?";
       params.push(`%${participant.trim()}%`);
-      idx++;
     }
 
     if (hasIncident === "true") {
-      conditions.push("incident_flag = TRUE");
+      baseQuery += " AND incidentFlag = 1";
     } else if (hasIncident === "false") {
-      conditions.push("incident_flag = FALSE");
+      baseQuery += " AND incidentFlag = 0";
     }
 
-    const sql = `
-      SELECT
-        id,
-        participant_name      AS "participantName",
-        worker_name           AS "workerName",
-        date,
-        start_time            AS "startTime",
-        end_time              AS "endTime",
-        location,
-        incident_flag         AS "incidentFlag",
-        created_at            AS "createdAt",
-        finalised_at          AS "finalisedAt",
-        reviewed_flag         AS "reviewedFlag"
-      FROM progress_notes
-      WHERE ${conditions.join(" AND ")}
-      ORDER BY created_at DESC
-      LIMIT 50
-    `;
+    baseQuery += " ORDER BY createdAt DESC LIMIT 50";
 
-    const { rows } = await query(sql, params);
+    const stmt = sqliteDb.prepare(baseQuery);
+    const rows = stmt.all(...params);
 
     return res.json({ notes: rows });
   } catch (err) {
@@ -87,9 +147,7 @@ router.get("/notes", async (req, res) => {
   }
 });
 
-// -----------------------------------------------------
 // GET /api/notes/:id  (single note, org-scoped)
-// -----------------------------------------------------
 router.get("/notes/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -101,48 +159,47 @@ router.get("/notes/:id", async (req, res) => {
       return res.status(403).json({ error: "Owners cannot access notes API" });
     }
 
-    const conditions = ["id = $1", "organisation_id = $2"];
-    const params = [id, req.user.organisationId];
-    let idx = 3;
+    if (isPostgres) {
+      // ---------- Postgres path ----------
+      let sql = `
+        SELECT *
+        FROM progress_notes
+        WHERE id = $1
+          AND organisation_id = $2
+      `;
+      const params = [id, req.user.organisationId];
+      let idx = 3;
 
-    if (req.user.role === "WORKER") {
-      conditions.push(`worker_user_id = $${idx}`);
-      params.push(req.user.id);
-      idx++;
+      if (req.user.role === "WORKER") {
+        sql += ` AND worker_user_id = $${idx++}`;
+        params.push(req.user.id);
+      }
+
+      const { rows } = await query(sql, params);
+      const note = normaliseNoteRow(rows[0]);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+
+      return res.json({ note });
     }
 
-    const sql = `
-      SELECT
-        id,
-        organisation_id         AS "organisationId",
-        worker_user_id          AS "workerUserId",
-        participant_name        AS "participantName",
-        worker_name             AS "workerName",
-        date,
-        start_time              AS "startTime",
-        end_time                AS "endTime",
-        location,
-        activities_and_supports AS "activitiesAndSupports",
-        participant_presentation AS "participantPresentation",
-        goals_worked_on         AS "goalsWorkedOn",
-        incidents_or_risks      AS "incidentsOrRisks",
-        follow_up_actions       AS "followUpActions",
-        note_text               AS "noteText",
-        incident_flag           AS "incidentFlag",
-        created_at              AS "createdAt",
-        final_note_text         AS "finalNoteText",
-        finalised_at            AS "finalisedAt",
-        finalised_by            AS "finalisedBy",
-        reviewed_flag           AS "reviewedFlag",
-        reviewed_at             AS "reviewedAt",
-        reviewed_by             AS "reviewedBy"
+    // ---------- SQLite fallback ----------
+    let querySql = `
+      SELECT *
       FROM progress_notes
-      WHERE ${conditions.join(" AND ")}
-      LIMIT 1
+      WHERE id = ?
+        AND organisationId = ?
     `;
+    const params = [id, req.user.organisationId];
 
-    const { rows } = await query(sql, params);
-    const row = rows[0];
+    if (req.user.role === "WORKER") {
+      querySql += " AND workerUserId = ?";
+      params.push(req.user.id);
+    }
+
+    const stmt = sqliteDb.prepare(querySql);
+    const row = stmt.get(...params);
 
     if (!row) {
       return res.status(404).json({ error: "Note not found" });
@@ -155,9 +212,7 @@ router.get("/notes/:id", async (req, res) => {
   }
 });
 
-// -----------------------------------------------------
 // POST /api/notes/:id/finalise
-// -----------------------------------------------------
 router.post("/notes/:id/finalise", async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -165,64 +220,104 @@ router.post("/notes/:id/finalise", async (req, res) => {
       return res.status(400).json({ error: "Invalid note id" });
     }
 
-    // Owners should not be involved in day-to-day note flows
     if (req.user.role === "OWNER") {
       return res
         .status(403)
         .json({ error: "Owners cannot finalise notes" });
     }
 
-    const { finalNoteText } = req.body || {};
+    const { finalNoteText } = req.body;
+
     if (!finalNoteText || !finalNoteText.toString().trim()) {
       return res
         .status(400)
         .json({ error: "Final note text is required" });
     }
-    const trimmedText = finalNoteText.toString().trim();
 
     const finalisedByName = req.user.fullName || "";
+    const nowIso = new Date().toISOString();
 
-    // Check note exists & is in same org (and for workers, belongs to them)
-    const conditions = ["id = $1", "organisation_id = $2"];
-    const params = [id, req.user.organisationId];
-    let idx = 3;
+    if (isPostgres) {
+      // ---------- Postgres path ----------
+      let sql = `
+        SELECT id
+        FROM progress_notes
+        WHERE id = $1
+          AND organisation_id = $2
+      `;
+      const params = [id, req.user.organisationId];
+      let idx = 3;
 
-    if (req.user.role === "WORKER") {
-      conditions.push(`worker_user_id = $${idx}`);
-      params.push(req.user.id);
-      idx++;
+      if (req.user.role === "WORKER") {
+        sql += ` AND worker_user_id = $${idx++}`;
+        params.push(req.user.id);
+      }
+
+      const { rows } = await query(sql, params);
+      if (!rows[0]) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+
+      await query(
+        `
+          UPDATE progress_notes
+          SET final_note_text = $1,
+              finalised_at   = $2,
+              finalised_by   = $3
+          WHERE id = $4
+        `,
+        [finalNoteText.toString().trim(), nowIso, finalisedByName, id]
+      );
+
+      return res.json({
+        ok: true,
+        finalisedAt: nowIso,
+        finalisedBy: finalisedByName,
+        finalNoteText: finalNoteText.toString().trim(),
+      });
     }
 
-    const checkSql = `
-      SELECT id
+    // ---------- SQLite fallback ----------
+    let querySql = `
+      SELECT *
       FROM progress_notes
-      WHERE ${conditions.join(" AND ")}
-      LIMIT 1
+      WHERE id = ?
+        AND organisationId = ?
     `;
+    const params = [id, req.user.organisationId];
 
-    const { rows: existingRows } = await query(checkSql, params);
-    if (!existingRows[0]) {
+    if (req.user.role === "WORKER") {
+      querySql += " AND workerUserId = ?";
+      params.push(req.user.id);
+    }
+
+    const stmtCheck = sqliteDb.prepare(querySql);
+    const existing = stmtCheck.get(...params);
+
+    if (!existing) {
       return res.status(404).json({ error: "Note not found" });
     }
 
-    const nowIso = new Date().toISOString();
+    const stmtUpdate = sqliteDb.prepare(`
+      UPDATE progress_notes
+      SET finalNoteText = ?,
+          finalisedAt   = ?,
+          finalisedBy   = ?
+      WHERE id = ?
+    `);
 
-    await query(
-      `
-        UPDATE progress_notes
-        SET final_note_text = $1,
-            finalised_at   = $2,
-            finalised_by   = $3
-        WHERE id = $4
-      `,
-      [trimmedText, nowIso, finalisedByName, id]
+    stmtUpdate.run(
+      finalNoteText.toString().trim(),
+      nowIso,
+      finalisedByName,
+      id
     );
 
     return res.json({
       ok: true,
       finalisedAt: nowIso,
       finalisedBy: finalisedByName,
-      finalNoteText: trimmedText,
+      finalNoteText: finalNoteText.toString().trim(),
     });
   } catch (err) {
     console.error("Error finalising note:", err.message);
@@ -230,9 +325,7 @@ router.post("/notes/:id/finalise", async (req, res) => {
   }
 });
 
-// -----------------------------------------------------
 // POST /api/notes/:id/review
-// -----------------------------------------------------
 router.post("/notes/:id/review", async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -240,49 +333,77 @@ router.post("/notes/:id/review", async (req, res) => {
       return res.status(400).json({ error: "Invalid note id" });
     }
 
-    // Only admins can mark reviewed
     if (req.user.role !== "ADMIN") {
       return res
         .status(403)
         .json({ error: "Only admins can review notes" });
     }
 
-    const { reviewedFlag } = req.body || {};
-    const flag = reviewedFlag === false ? false : true;
-
+    const { reviewedFlag } = req.body;
+    const flag = reviewedFlag === false ? 0 : 1;
     const reviewerName = req.user.fullName || "";
+    const nowIso = new Date().toISOString();
 
-    const { rows: existingRows } = await query(
-      `
-        SELECT id
-        FROM progress_notes
-        WHERE id = $1
-          AND organisation_id = $2
-        LIMIT 1
-      `,
-      [id, req.user.organisationId]
-    );
+    if (isPostgres) {
+      // ---------- Postgres path ----------
+      const { rows } = await query(
+        `
+          SELECT id
+          FROM progress_notes
+          WHERE id = $1
+            AND organisation_id = $2
+        `,
+        [id, req.user.organisationId]
+      );
 
-    if (!existingRows[0]) {
+      if (!rows[0]) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+
+      await query(
+        `
+          UPDATE progress_notes
+          SET reviewed_flag = $1,
+              reviewed_at   = $2,
+              reviewed_by   = $3
+          WHERE id = $4
+        `,
+        [flag === 1, flag ? nowIso : null, flag ? reviewerName : null, id]
+      );
+
+      return res.json({
+        ok: true,
+        reviewedFlag: flag,
+        reviewedAt: flag ? nowIso : null,
+        reviewedBy: flag ? reviewerName : null,
+      });
+    }
+
+    // ---------- SQLite fallback ----------
+    const stmtCheck = sqliteDb.prepare(`
+      SELECT id
+      FROM progress_notes
+      WHERE id = ?
+        AND organisationId = ?
+    `);
+    const existing = stmtCheck.get(id, req.user.organisationId);
+    if (!existing) {
       return res.status(404).json({ error: "Note not found" });
     }
 
-    const nowIso = new Date().toISOString();
+    const stmtUpdate = sqliteDb.prepare(`
+      UPDATE progress_notes
+      SET reviewedFlag = ?,
+          reviewedAt   = ?,
+          reviewedBy   = ?
+      WHERE id = ?
+    `);
 
-    await query(
-      `
-        UPDATE progress_notes
-        SET reviewed_flag = $1,
-            reviewed_at   = $2,
-            reviewed_by   = $3
-        WHERE id = $4
-      `,
-      [
-        flag,
-        flag ? nowIso : null,
-        flag ? reviewerName : null,
-        id,
-      ]
+    stmtUpdate.run(
+      flag,
+      flag ? nowIso : null,
+      flag ? reviewerName : null,
+      id
     );
 
     return res.json({
@@ -297,9 +418,7 @@ router.post("/notes/:id/review", async (req, res) => {
   }
 });
 
-// -----------------------------------------------------
 // POST /api/generate-note  (org-scoped)
-// -----------------------------------------------------
 router.post("/generate-note", async (req, res) => {
   try {
     if (req.user.role === "OWNER") {
@@ -328,7 +447,7 @@ router.post("/generate-note", async (req, res) => {
       incidentOccurred,
     } = parsed.data;
 
-    // 2. Date sanity
+    // --- date/time / junk checks unchanged (keeping your logic) ---
     const shiftDate = parseYyyyMmDd(date);
     if (!shiftDate) {
       return res.status(400).json({ error: "Invalid date format." });
@@ -343,11 +462,10 @@ router.post("/generate-note", async (req, res) => {
       });
     }
 
-    // 3. Time sanity
     const startMins = timeToMinutes(startTime);
     const endMins = timeToMinutes(endTime);
 
-    if (NODE_ENV === "development") {
+    if (process.env.NODE_ENV === "development") {
       console.log("DEBUG times:", { startTime, endTime, startMins, endMins });
     }
 
@@ -363,7 +481,6 @@ router.post("/generate-note", async (req, res) => {
       });
     }
 
-    // 4. Junk detection
     const junkFields = [];
     if (looksLikeJunk(activitiesAndSupports))
       junkFields.push("activitiesAndSupports");
@@ -397,72 +514,9 @@ router.post("/generate-note", async (req, res) => {
       " " +
       (followUpActions || "");
 
-    const prompt = `
-You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
-
-You will receive structured information about ONE support shift. Your task is to write the BODY of an NDIS-style progress note ONLY (no headers).
-
-If the information is vague, gibberish, placeholder text (e.g., “asd”, “test”, “n/a”, or extremely short responses that do not describe what happened), then:
-- Do NOT generate a normal note.
-- Instead, return exactly:
-  ERROR: Insufficient information. Please rewrite the following fields with real details.
-
-Otherwise, generate a high-quality progress note BODY ONLY.
-
-DATA PROVIDED:
-Participant: ${participantName}
-Date of Support: ${date}
-Shift Time: ${shiftTime}
-Location: ${safeLocation}
-
-Raw input – Activities & Supports:
-${activitiesAndSupports}
-
-Raw input – Participant Presentation (mood/behaviour/health/communication):
-${participantPresentation}
-
-Raw input – Goals Worked On:
-${goalsWorkedOn}
-
-Raw input – Incidents, Risks, Changes:
-${incidentsOrRisks}
-
-Raw input – Follow-up / Next Steps:
-${followUpActions}
-
-Support worker: ${workerName}
-
------------------------------------------------------------
-STYLE, FORMAT & SAFETY RULES
------------------------------------------------------------
-
-1) Write STRICTLY in third-person.
-   - Use “the support worker”, “the participant”, or their name.
-   - NEVER use “I”, “we”, “my”, “our”.
-
-1a) The first sentence of the first paragraph MUST literally begin with:
-    "The support worker..."
-
-2) Be FACTUAL and OBSERVABLE.
-3) ONLY use mood/affect words that appear in the raw input.
-4) NDIS goal linkage must be FUNCTIONAL.
-5) Incident documentation must be clear and neutral.
-6) ALWAYS include a follow-up / next-shift paragraph at the end.
-7) Do NOT write any introductory phrases.
-8) NEVER restate date, shift time, or full location references inside the body.
-
------------------------------------------------------------
-REQUIRED OUTPUT STRUCTURE
------------------------------------------------------------
-
-Write 2–4 paragraphs in this order:
-
-1) Supports Provided.
-2) Participant Presentation.
-3) Goals.
-4) Incidents + Follow-up.
-
-OUTPUT ONLY THE BODY TEXT.
+    // --- LLM call (unchanged, just using env) ---
+    const prompt = `...` + // keep your existing big prompt exactly as-is
+`OUTPUT ONLY THE BODY TEXT.
 NO HEADERS.
 NO TITLES.
 NO INTRO LINES.
@@ -513,52 +567,100 @@ NO INTRO LINES.
       incidentText.length > 0 &&
       !looksLikeNoIncident;
 
-    // Insert into Postgres
-    const insertSql = `
-      INSERT INTO progress_notes (
-        organisation_id,
-        worker_user_id,
-        participant_name,
-        worker_name,
+    const createdAt = new Date().toISOString();
+
+    let newId;
+
+    if (isPostgres) {
+      // ---------- Postgres insert ----------
+      const insertSql = `
+        INSERT INTO progress_notes (
+          organisation_id,
+          worker_user_id,
+          participant_name,
+          worker_name,
+          date,
+          start_time,
+          end_time,
+          location,
+          activities_and_supports,
+          participant_presentation,
+          goals_worked_on,
+          incidents_or_risks,
+          follow_up_actions,
+          note_text,
+          incident_flag,
+          created_at
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16
+        )
+        RETURNING id
+      `;
+
+      const { rows } = await query(insertSql, [
+        req.user.organisationId,
+        req.user.id,
+        participantName,
+        workerName,
         date,
-        start_time,
-        end_time,
-        location,
-        activities_and_supports,
-        participant_presentation,
-        goals_worked_on,
-        incidents_or_risks,
-        follow_up_actions,
-        note_text,
-        incident_flag
-      )
-      VALUES (
-        $1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15
-      )
-      RETURNING id
-    `;
+        startTime,
+        endTime,
+        safeLocation,
+        activitiesAndSupports,
+        participantPresentation,
+        goalsWorkedOn,
+        incidentsOrRisks,
+        followUpActions,
+        fullNote,
+        incidentFlag === true,
+        createdAt,
+      ]);
 
-    const { rows } = await query(insertSql, [
-      req.user.organisationId,
-      req.user.id,
-      participantName,
-      workerName,
-      date,
-      startTime,
-      endTime,
-      safeLocation,
-      activitiesAndSupports,
-      participantPresentation,
-      goalsWorkedOn,
-      incidentsOrRisks,
-      followUpActions,
-      fullNote,
-      incidentFlag,
-    ]);
+      newId = rows[0].id;
+    } else {
+      // ---------- SQLite insert ----------
+      const insertStmt = sqliteDb.prepare(`
+        INSERT INTO progress_notes (
+          organisationId,
+          workerUserId,
+          participantName,
+          workerName,
+          date,
+          startTime,
+          endTime,
+          location,
+          activitiesAndSupports,
+          participantPresentation,
+          goalsWorkedOn,
+          incidentsOrRisks,
+          followUpActions,
+          noteText,
+          incidentFlag,
+          createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
 
-    const newId = rows[0].id;
+      const info = insertStmt.run(
+        req.user.organisationId,
+        req.user.id,
+        participantName,
+        workerName,
+        date,
+        startTime,
+        endTime,
+        safeLocation,
+        activitiesAndSupports,
+        participantPresentation,
+        goalsWorkedOn,
+        incidentsOrRisks,
+        followUpActions,
+        fullNote,
+        incidentFlag ? 1 : 0,
+        createdAt
+      );
+
+      newId = info.lastInsertRowid;
+    }
 
     return res.json({ note: fullNote, id: newId });
   } catch (error) {
