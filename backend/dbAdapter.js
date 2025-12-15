@@ -1,5 +1,8 @@
 // dbAdapter.js
 const { query: pgQuery } = require("./pgClient");
+const { DB_DRIVER } = require("./config/env");
+
+const isPostgres = DB_DRIVER === "postgres";
 
 // Generic wrapper around pgClient so the rest of the code
 // doesn't have to import pg directly.
@@ -133,6 +136,9 @@ async function updateUserActiveFlag(userId, isActive) {
 }
 
 module.exports = {
+  // flag
+  isPostgres,
+
   // generic
   query,
 
