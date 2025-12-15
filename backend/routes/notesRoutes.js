@@ -2,21 +2,22 @@
 const express = require("express");
 const axios = require("axios");
 
-const db = require("../db");
 const applyComplianceFilter = require("../compliance");
 const { timeToMinutes, parseYyyyMmDd, looksLikeJunk } = require("../utils");
 const { requireAuth } = require("../authMiddleware");
 const { generateNoteSchema, notesQuerySchema } = require("../validation");
-const { AI_BASE_URL, AI_MODEL } = require("../config/env");
-
+const { AI_BASE_URL, AI_MODEL, NODE_ENV } = require("../config/env");
+const { query } = require("../dbAdapter");
 
 const router = express.Router();
 
 // All routes in this file require auth
 router.use(requireAuth);
 
+// -----------------------------------------------------
 // GET /api/notes  (list recent notes with filters, org-scoped)
-router.get("/notes", (req, res) => {
+// -----------------------------------------------------
+router.get("/notes", async (req, res) => {
   try {
     // Block OWNER at API level just in case
     if (req.user.role === "OWNER") {
@@ -35,46 +36,49 @@ router.get("/notes", (req, res) => {
 
     const { participant, hasIncident } = parsed.data;
 
-    let baseQuery = `
-      SELECT
-        id,
-        participantName,
-        workerName,
-        date,
-        startTime,
-        endTime,
-        location,
-        incidentFlag,
-        createdAt,
-        finalisedAt,
-        reviewedFlag
-      FROM progress_notes
-      WHERE organisationId = ?
-    `;
-
+    const conditions = ["organisation_id = $1"];
     const params = [req.user.organisationId];
+    let idx = 2;
 
     // Worker: only their own notes
     if (req.user.role === "WORKER") {
-      baseQuery += " AND workerUserId = ?";
+      conditions.push(`worker_user_id = $${idx}`);
       params.push(req.user.id);
+      idx++;
     }
 
     if (participant && participant.trim()) {
-      baseQuery += " AND participantName LIKE ?";
+      conditions.push(`participant_name ILIKE $${idx}`);
       params.push(`%${participant.trim()}%`);
+      idx++;
     }
 
     if (hasIncident === "true") {
-      baseQuery += " AND incidentFlag = 1";
+      conditions.push("incident_flag = TRUE");
     } else if (hasIncident === "false") {
-      baseQuery += " AND incidentFlag = 0";
+      conditions.push("incident_flag = FALSE");
     }
 
-    baseQuery += " ORDER BY createdAt DESC LIMIT 50";
+    const sql = `
+      SELECT
+        id,
+        participant_name      AS "participantName",
+        worker_name           AS "workerName",
+        date,
+        start_time            AS "startTime",
+        end_time              AS "endTime",
+        location,
+        incident_flag         AS "incidentFlag",
+        created_at            AS "createdAt",
+        finalised_at          AS "finalisedAt",
+        reviewed_flag         AS "reviewedFlag"
+      FROM progress_notes
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY created_at DESC
+      LIMIT 50
+    `;
 
-    const stmt = db.prepare(baseQuery);
-    const rows = stmt.all(...params);
+    const { rows } = await query(sql, params);
 
     return res.json({ notes: rows });
   } catch (err) {
@@ -83,10 +87,10 @@ router.get("/notes", (req, res) => {
   }
 });
 
-
-
+// -----------------------------------------------------
 // GET /api/notes/:id  (single note, org-scoped)
-router.get("/notes/:id", (req, res) => {
+// -----------------------------------------------------
+router.get("/notes/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -97,21 +101,48 @@ router.get("/notes/:id", (req, res) => {
       return res.status(403).json({ error: "Owners cannot access notes API" });
     }
 
-    let query = `
-      SELECT *
-      FROM progress_notes
-      WHERE id = ?
-        AND organisationId = ?
-    `;
+    const conditions = ["id = $1", "organisation_id = $2"];
     const params = [id, req.user.organisationId];
+    let idx = 3;
 
     if (req.user.role === "WORKER") {
-      query += " AND workerUserId = ?";
+      conditions.push(`worker_user_id = $${idx}`);
       params.push(req.user.id);
+      idx++;
     }
 
-    const stmt = db.prepare(query);
-    const row = stmt.get(...params);
+    const sql = `
+      SELECT
+        id,
+        organisation_id         AS "organisationId",
+        worker_user_id          AS "workerUserId",
+        participant_name        AS "participantName",
+        worker_name             AS "workerName",
+        date,
+        start_time              AS "startTime",
+        end_time                AS "endTime",
+        location,
+        activities_and_supports AS "activitiesAndSupports",
+        participant_presentation AS "participantPresentation",
+        goals_worked_on         AS "goalsWorkedOn",
+        incidents_or_risks      AS "incidentsOrRisks",
+        follow_up_actions       AS "followUpActions",
+        note_text               AS "noteText",
+        incident_flag           AS "incidentFlag",
+        created_at              AS "createdAt",
+        final_note_text         AS "finalNoteText",
+        finalised_at            AS "finalisedAt",
+        finalised_by            AS "finalisedBy",
+        reviewed_flag           AS "reviewedFlag",
+        reviewed_at             AS "reviewedAt",
+        reviewed_by             AS "reviewedBy"
+      FROM progress_notes
+      WHERE ${conditions.join(" AND ")}
+      LIMIT 1
+    `;
+
+    const { rows } = await query(sql, params);
+    const row = rows[0];
 
     if (!row) {
       return res.status(404).json({ error: "Note not found" });
@@ -124,10 +155,10 @@ router.get("/notes/:id", (req, res) => {
   }
 });
 
-
+// -----------------------------------------------------
 // POST /api/notes/:id/finalise
-
-router.post("/notes/:id/finalise", (req, res) => {
+// -----------------------------------------------------
+router.post("/notes/:id/finalise", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -141,61 +172,57 @@ router.post("/notes/:id/finalise", (req, res) => {
         .json({ error: "Owners cannot finalise notes" });
     }
 
-    const { finalNoteText } = req.body;
-
+    const { finalNoteText } = req.body || {};
     if (!finalNoteText || !finalNoteText.toString().trim()) {
       return res
         .status(400)
         .json({ error: "Final note text is required" });
     }
+    const trimmedText = finalNoteText.toString().trim();
 
-    // Always trust server-side user name
     const finalisedByName = req.user.fullName || "";
 
-    // Base query: same org + note id
-    let query = `
-      SELECT *
-      FROM progress_notes
-      WHERE id = ?
-        AND organisationId = ?
-    `;
+    // Check note exists & is in same org (and for workers, belongs to them)
+    const conditions = ["id = $1", "organisation_id = $2"];
     const params = [id, req.user.organisationId];
+    let idx = 3;
 
-    // Workers can only finalise their own notes
     if (req.user.role === "WORKER") {
-      query += " AND workerUserId = ?";
+      conditions.push(`worker_user_id = $${idx}`);
       params.push(req.user.id);
+      idx++;
     }
 
-    const stmtCheck = db.prepare(query);
-    const existing = stmtCheck.get(...params);
+    const checkSql = `
+      SELECT id
+      FROM progress_notes
+      WHERE ${conditions.join(" AND ")}
+      LIMIT 1
+    `;
 
-    if (!existing) {
+    const { rows: existingRows } = await query(checkSql, params);
+    if (!existingRows[0]) {
       return res.status(404).json({ error: "Note not found" });
     }
 
     const nowIso = new Date().toISOString();
 
-    const stmtUpdate = db.prepare(`
-      UPDATE progress_notes
-      SET finalNoteText = ?,
-          finalisedAt = ?,
-          finalisedBy = ?
-      WHERE id = ?
-    `);
-
-    stmtUpdate.run(
-      finalNoteText.toString().trim(),
-      nowIso,
-      finalisedByName,
-      id
+    await query(
+      `
+        UPDATE progress_notes
+        SET final_note_text = $1,
+            finalised_at   = $2,
+            finalised_by   = $3
+        WHERE id = $4
+      `,
+      [trimmedText, nowIso, finalisedByName, id]
     );
 
     return res.json({
       ok: true,
       finalisedAt: nowIso,
       finalisedBy: finalisedByName,
-      finalNoteText: finalNoteText.toString().trim(),
+      finalNoteText: trimmedText,
     });
   } catch (err) {
     console.error("Error finalising note:", err.message);
@@ -203,9 +230,10 @@ router.post("/notes/:id/finalise", (req, res) => {
   }
 });
 
-
+// -----------------------------------------------------
 // POST /api/notes/:id/review
-router.post("/notes/:id/review", (req, res) => {
+// -----------------------------------------------------
+router.post("/notes/:id/review", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -219,38 +247,42 @@ router.post("/notes/:id/review", (req, res) => {
         .json({ error: "Only admins can review notes" });
     }
 
-    const { reviewedFlag } = req.body;
-    const flag = reviewedFlag === false ? 0 : 1;
+    const { reviewedFlag } = req.body || {};
+    const flag = reviewedFlag === false ? false : true;
 
-    // Server-controlled reviewer name
     const reviewerName = req.user.fullName || "";
 
-    const stmtCheck = db.prepare(`
-      SELECT id
-      FROM progress_notes
-      WHERE id = ?
-        AND organisationId = ?
-    `);
-    const existing = stmtCheck.get(id, req.user.organisationId);
-    if (!existing) {
+    const { rows: existingRows } = await query(
+      `
+        SELECT id
+        FROM progress_notes
+        WHERE id = $1
+          AND organisation_id = $2
+        LIMIT 1
+      `,
+      [id, req.user.organisationId]
+    );
+
+    if (!existingRows[0]) {
       return res.status(404).json({ error: "Note not found" });
     }
 
     const nowIso = new Date().toISOString();
 
-    const stmtUpdate = db.prepare(`
-      UPDATE progress_notes
-      SET reviewedFlag = ?,
-          reviewedAt = ?,
-          reviewedBy = ?
-      WHERE id = ?
-    `);
-
-    stmtUpdate.run(
-      flag,
-      flag ? nowIso : null,
-      flag ? reviewerName : null,
-      id
+    await query(
+      `
+        UPDATE progress_notes
+        SET reviewed_flag = $1,
+            reviewed_at   = $2,
+            reviewed_by   = $3
+        WHERE id = $4
+      `,
+      [
+        flag,
+        flag ? nowIso : null,
+        flag ? reviewerName : null,
+        id,
+      ]
     );
 
     return res.json({
@@ -265,11 +297,11 @@ router.post("/notes/:id/review", (req, res) => {
   }
 });
 
-
+// -----------------------------------------------------
 // POST /api/generate-note  (org-scoped)
+// -----------------------------------------------------
 router.post("/generate-note", async (req, res) => {
   try {
-
     if (req.user.role === "OWNER") {
       return res.status(403).json({ error: "Owners cannot generate notes" });
     }
@@ -296,7 +328,6 @@ router.post("/generate-note", async (req, res) => {
       incidentOccurred,
     } = parsed.data;
 
-
     // 2. Date sanity
     const shiftDate = parseYyyyMmDd(date);
     if (!shiftDate) {
@@ -308,7 +339,7 @@ router.post("/generate-note", async (req, res) => {
 
     if (shiftDate > today) {
       return res.status(400).json({
-        error: "Date of support cannot be in the future."
+        error: "Date of support cannot be in the future.",
       });
     }
 
@@ -316,19 +347,19 @@ router.post("/generate-note", async (req, res) => {
     const startMins = timeToMinutes(startTime);
     const endMins = timeToMinutes(endTime);
 
-    if (process.env.NODE_ENV === "development") {
+    if (NODE_ENV === "development") {
       console.log("DEBUG times:", { startTime, endTime, startMins, endMins });
     }
 
     if (startMins === null || endMins === null) {
       return res.status(400).json({
-        error: "Invalid start or end time format."
+        error: "Invalid start or end time format.",
       });
     }
 
     if (endMins <= startMins) {
       return res.status(400).json({
-        error: "End time must be after start time for the shift."
+        error: "End time must be after start time for the shift.",
       });
     }
 
@@ -348,7 +379,7 @@ router.post("/generate-note", async (req, res) => {
       return res.status(400).json({
         error:
           "Some fields do not look like meaningful descriptions. Please rewrite: " +
-          junkFields.join(", ")
+          junkFields.join(", "),
       });
     }
 
@@ -447,7 +478,7 @@ NO INTRO LINES.
         stream: false,
       },
       {
-        timeout: 30_000, // 30s timeout so requests don't hang forever
+        timeout: 30_000,
       }
     );
 
@@ -468,7 +499,7 @@ NO INTRO LINES.
       `Date of Support: ${date}`,
       `Shift Time: ${shiftTime}`,
       `Location: ${safeLocation}`,
-      `Participant: ${participantName}`
+      `Participant: ${participantName}`,
     ].join("\n");
 
     const fullNote = `${header}\n\n${filteredBody}`;
@@ -482,50 +513,55 @@ NO INTRO LINES.
       incidentText.length > 0 &&
       !looksLikeNoIncident;
 
-
-    const insertStmt = db.prepare(`
-    INSERT INTO progress_notes (
-        organisationId,
-        workerUserId,
-        participantName,
-        workerName,
+    // Insert into Postgres
+    const insertSql = `
+      INSERT INTO progress_notes (
+        organisation_id,
+        worker_user_id,
+        participant_name,
+        worker_name,
         date,
-        startTime,
-        endTime,
+        start_time,
+        end_time,
         location,
-        activitiesAndSupports,
-        participantPresentation,
-        goalsWorkedOn,
-        incidentsOrRisks,
-        followUpActions,
-        noteText,
-        incidentFlag,
-        createdAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+        activities_and_supports,
+        participant_presentation,
+        goals_worked_on,
+        incidents_or_risks,
+        follow_up_actions,
+        note_text,
+        incident_flag
+      )
+      VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15
+      )
+      RETURNING id
+    `;
 
-    const info = insertStmt.run(
-    req.user.organisationId,
-    req.user.id, // logged-in worker
-    participantName,
-    workerName,
-    date,
-    startTime,
-    endTime,
-    safeLocation,
-    activitiesAndSupports,
-    participantPresentation,
-    goalsWorkedOn,
-    incidentsOrRisks,
-    followUpActions,
-    fullNote,
-    incidentFlag ? 1 : 0,
-    new Date().toISOString()
-    );
+    const { rows } = await query(insertSql, [
+      req.user.organisationId,
+      req.user.id,
+      participantName,
+      workerName,
+      date,
+      startTime,
+      endTime,
+      safeLocation,
+      activitiesAndSupports,
+      participantPresentation,
+      goalsWorkedOn,
+      incidentsOrRisks,
+      followUpActions,
+      fullNote,
+      incidentFlag,
+    ]);
 
-    return res.json({ note: fullNote, id: info.lastInsertRowid });
+    const newId = rows[0].id;
+
+    return res.json({ note: fullNote, id: newId });
   } catch (error) {
-    // More detailed logging server-side, but keep client message generic
     console.error("Error generating note:", {
       message: error.message,
       stack: error.stack,
