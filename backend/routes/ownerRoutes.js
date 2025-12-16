@@ -1,14 +1,14 @@
 // routes/ownerRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const sqliteDb = require("../db"); // used only when not on Postgres
 const { requireAuth, requireRole } = require("../authMiddleware");
 const {
   createProviderSchema,
   booleanFlagSchema,
   orgStatusSchema,
 } = require("../validation");
-const { query, isPostgres } = require("../dbAdapter");
+const { query } = require("../dbAdapter");
+const { pool } = require("../pgClient");
 
 const router = express.Router();
 
@@ -22,78 +22,45 @@ router.use(requireRole("OWNER"));
  */
 router.get("/overview", async (req, res) => {
   try {
-    if (isPostgres) {
-      // ----- Postgres path -----
-      const orgSql = `
-        SELECT
-          id,
-          name,
-          status,
-          created_at AS "createdAt"
-        FROM organisations
-        ORDER BY created_at DESC
-      `;
-      const { rows: orgs } = await query(orgSql);
+    const { rows: orgs } = await query(
+      `
+      SELECT
+        id,
+        name,
+        status,
+        created_at AS "createdAt"
+      FROM organisations
+      ORDER BY created_at DESC
+    `
+    );
 
-      const userSql = `
+    const results = [];
+    for (const org of orgs) {
+      const { rows: users } = await query(
+        `
         SELECT
           id,
           email,
-          full_name     AS "fullName",
+          full_name AS "fullName",
           role,
-          is_active     AS "isActive",
-          created_at    AS "createdAt",
-          organisation_id AS "organisationId"
+          is_active AS "isActive",
+          created_at AS "createdAt"
         FROM users
-        ORDER BY organisation_id, role DESC, created_at DESC
-      `;
-      const { rows: users } = await query(userSql);
+        WHERE organisation_id = $1
+        ORDER BY role DESC, created_at DESC
+      `,
+        [org.id]
+      );
 
-      const result = orgs.map((org) => {
-        const orgUsers = users
-          .filter((u) => u.organisationId === org.id)
-          .map(({ organisationId, ...rest }) => rest);
-
-        return {
-          ...org,
-          users: orgUsers,
-        };
-      });
-
-      return res.json({ organisations: result });
-    }
-
-    // ----- SQLite fallback -----
-    const orgs = sqliteDb
-      .prepare(
-        `
-        SELECT id, name, status, createdAt
-        FROM organisations
-        ORDER BY createdAt DESC
-      `
-      )
-      .all();
-
-    const userStmt = sqliteDb.prepare(
-      `
-        SELECT id, email, fullName, role, isActive, createdAt
-        FROM users
-        WHERE organisationId = ?
-        ORDER BY role DESC, createdAt DESC
-      `
-    );
-
-    const result = orgs.map((org) => {
-      const users = userStmt.all(org.id);
-      return {
+      results.push({
         ...org,
         users,
-      };
-    });
+      });
+    }
 
-    return res.json({ organisations: result });
+    return res.json({ organisations: results });
   } catch (err) {
-    console.error("Error in /api/owner/overview:", err.message);
+    console.error("Error in /api/owner/overview:", err);
     return res.status(500).json({ error: "Failed to load overview" });
   }
 });
@@ -101,7 +68,7 @@ router.get("/overview", async (req, res) => {
 /**
  * POST /api/owner/providers
  * body: { organisationName, adminEmail, adminFullName, adminPassword }
- * Creates an organisation + ADMIN user
+ * Creates an organisation + ADMIN user (transactional)
  */
 router.post("/providers", async (req, res) => {
   try {
@@ -127,157 +94,83 @@ router.post("/providers", async (req, res) => {
 
     const hash = bcrypt.hashSync(password, 10);
 
-    if (isPostgres) {
-      // ----- Postgres path -----
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-      // Check existing user by email
-      const { rows: existingUserRows } = await query(
+      // Existing user with same email?
+      const existingUser = await client.query(
         `SELECT id FROM users WHERE lower(email) = lower($1)`,
         [normalisedEmail]
       );
-      if (existingUserRows[0]) {
-        return res.status(400).json({
-          error: "A user with this email already exists",
-        });
+      if (existingUser.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res
+          .status(400)
+          .json({ error: "A user with this email already exists" });
       }
 
-      // Optional: prevent duplicate provider name
-      const { rows: existingOrgRows } = await query(
+      // Existing org with same name?
+      const existingOrg = await client.query(
         `SELECT id FROM organisations WHERE name = $1`,
         [trimmedOrgName]
       );
-      if (existingOrgRows[0]) {
-        return res.status(400).json({
-          error: "An organisation with this name already exists",
-        });
+      if (existingOrg.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res
+          .status(400)
+          .json({ error: "An organisation with this name already exists" });
       }
 
-      // Use a CTE to create org + admin atomically
-      const sql = `
-        WITH new_org AS (
-          INSERT INTO organisations (name, status, created_at)
-          VALUES ($1, 'ACTIVE', $2)
-          RETURNING id, name, status, created_at
-        ),
-        new_admin AS (
-          INSERT INTO users (
-            organisation_id,
-            email,
-            password_hash,
-            role,
-            full_name,
-            is_active,
-            created_at
-          )
-          SELECT
-            id,
-            $3,
-            $4,
-            'ADMIN',
-            $5,
-            TRUE,
-            $2
-          FROM new_org
-          RETURNING
-            id,
-            organisation_id,
-            email,
-            full_name,
-            role,
-            is_active,
-            created_at
+      // 1) Create org
+      const orgRes = await client.query(
+        `
+        INSERT INTO organisations (name, status, created_at)
+        VALUES ($1, 'ACTIVE', $2)
+        RETURNING id, name, status, created_at AS "createdAt"
+      `,
+        [trimmedOrgName, nowIso]
+      );
+      const organisation = orgRes.rows[0];
+
+      // 2) Create admin user
+      const adminRes = await client.query(
+        `
+        INSERT INTO users (
+          organisation_id,
+          email,
+          password_hash,
+          role,
+          full_name,
+          is_active,
+          created_at
         )
-        SELECT
-          row_to_json(new_org)   AS organisation,
-          row_to_json(new_admin) AS admin
-        FROM new_org, new_admin
-      `;
+        VALUES ($1, $2, $3, 'ADMIN', $4, TRUE, $5)
+        RETURNING
+          id,
+          organisation_id AS "organisationId",
+          email,
+          full_name AS "fullName",
+          role,
+          is_active AS "isActive",
+          created_at AS "createdAt"
+      `,
+        [organisation.id, normalisedEmail, hash, trimmedFullName, nowIso]
+      );
+      const admin = adminRes.rows[0];
 
-      const { rows } = await query(sql, [
-        trimmedOrgName,
-        nowIso,
-        normalisedEmail,
-        hash,
-        trimmedFullName,
-      ]);
-
-      const row = rows[0];
-      const organisation = row.organisation;
-      const admin = row.admin;
+      await client.query("COMMIT");
 
       return res.status(201).json({ organisation, admin });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error("Error creating provider:", err);
+      return res.status(500).json({ error: "Failed to create provider" });
+    } finally {
+      client.release();
     }
-
-    // ----- SQLite fallback -----
-
-    // Check for existing user with same email (any org)
-    const existingUser = sqliteDb
-      .prepare(`SELECT id FROM users WHERE email = ?`)
-      .get(normalisedEmail);
-
-    if (existingUser) {
-      return res.status(400).json({
-        error: "A user with this email already exists",
-      });
-    }
-
-    // Optional: prevent duplicate provider name
-    const existingOrg = sqliteDb
-      .prepare(`SELECT id FROM organisations WHERE name = ?`)
-      .get(trimmedOrgName);
-
-    if (existingOrg) {
-      return res.status(400).json({
-        error: "An organisation with this name already exists",
-      });
-    }
-
-    // Transaction so org + admin are created together
-    const createOrgAndAdmin = sqliteDb.transaction(() => {
-      const orgStmt = sqliteDb.prepare(`
-        INSERT INTO organisations (name, status, createdAt)
-        VALUES (?, 'ACTIVE', ?)
-      `);
-      const orgInfo = orgStmt.run(trimmedOrgName, nowIso);
-      const orgId = orgInfo.lastInsertRowid;
-
-      const userStmt = sqliteDb.prepare(`
-        INSERT INTO users (organisationId, email, passwordHash, role, fullName, isActive, createdAt)
-        VALUES (?, ?, ?, 'ADMIN', ?, 1, ?)
-      `);
-      const adminInfo = userStmt.run(
-        orgId,
-        normalisedEmail,
-        hash,
-        trimmedFullName,
-        nowIso
-      );
-
-      return { orgId, adminId: adminInfo.lastInsertRowid };
-    });
-
-    const { orgId, adminId } = createOrgAndAdmin();
-
-    const organisation = {
-      id: orgId,
-      name: trimmedOrgName,
-      status: "ACTIVE",
-      createdAt: nowIso,
-    };
-
-    const admin = {
-      id: adminId,
-      organisationId: orgId,
-      email: normalisedEmail,
-      fullName: trimmedFullName,
-      role: "ADMIN",
-      isActive: 1,
-      createdAt: nowIso,
-    };
-
-    return res.status(201).json({ organisation, admin });
   } catch (err) {
-    console.error("Error creating provider:", err);
+    console.error("Error in POST /api/owner/providers:", err);
     return res.status(500).json({ error: "Failed to create provider" });
   }
 });
@@ -293,7 +186,6 @@ router.patch("/organisations/:id/status", async (req, res) => {
       return res.status(400).json({ error: "Invalid organisation id" });
     }
 
-    // ✅ Validate body
     const parsed = orgStatusSchema.safeParse(req.body || {});
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
@@ -301,40 +193,20 @@ router.patch("/organisations/:id/status", async (req, res) => {
     }
     const { status } = parsed.data;
 
-    if (isPostgres) {
-      const { rows } = await query(
-        `SELECT id FROM organisations WHERE id = $1`,
-        [id]
-      );
-      if (!rows[0]) {
-        return res.status(404).json({ error: "Organisation not found" });
-      }
+    const { rowCount } = await query(
+      `UPDATE organisations SET status = $1 WHERE id = $2`,
+      [status, id]
+    );
 
-      await query(
-        `UPDATE organisations SET status = $1 WHERE id = $2`,
-        [status, id]
-      );
-
-      return res.json({ ok: true, id, status });
-    }
-
-    // SQLite fallback
-    const existing = sqliteDb
-      .prepare(`SELECT id FROM organisations WHERE id = ?`)
-      .get(id);
-    if (!existing) {
+    if (rowCount === 0) {
       return res.status(404).json({ error: "Organisation not found" });
     }
-
-    sqliteDb
-      .prepare(`UPDATE organisations SET status = ? WHERE id = ?`)
-      .run(status, id);
 
     return res.json({ ok: true, id, status });
   } catch (err) {
     console.error(
       "Error in PATCH /api/owner/organisations/:id/status:",
-      err.message
+      err
     );
     return res.status(500).json({ error: "Failed to update organisation status" });
   }
@@ -352,55 +224,18 @@ router.patch("/users/:id/status", async (req, res) => {
       return res.status(400).json({ error: "Invalid user id" });
     }
 
-    // ✅ Validate body
     const parsed = booleanFlagSchema.safeParse(req.body || {});
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
       return res.status(400).json({ error: msg || "Invalid status data" });
     }
     const { isActive } = parsed.data;
-    const activeFlag = !!isActive;
 
-    if (isPostgres) {
-      // Fetch user + role
-      const { rows } = await query(
-        `
-          SELECT id, role
-          FROM users
-          WHERE id = $1
-        `,
-        [id]
-      );
-
-      const existing = rows[0];
-      if (!existing) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      if (existing.role === "OWNER") {
-        return res
-          .status(400)
-          .json({ error: "You cannot change status of OWNER accounts" });
-      }
-
-      await query(
-        `UPDATE users SET is_active = $1 WHERE id = $2`,
-        [activeFlag, id]
-      );
-
-      return res.json({ ok: true, id, isActive: activeFlag ? 1 : 0 });
-    }
-
-    // SQLite fallback
-    const existing = sqliteDb
-      .prepare(
-        `
-        SELECT id, role
-        FROM users
-        WHERE id = ?
-      `
-      )
-      .get(id);
+    const { rows } = await query(
+      `SELECT id, role FROM users WHERE id = $1`,
+      [id]
+    );
+    const existing = rows[0];
 
     if (!existing) {
       return res.status(404).json({ error: "User not found" });
@@ -412,16 +247,14 @@ router.patch("/users/:id/status", async (req, res) => {
         .json({ error: "You cannot change status of OWNER accounts" });
     }
 
-    sqliteDb
-      .prepare(`UPDATE users SET isActive = ? WHERE id = ?`)
-      .run(activeFlag ? 1 : 0, id);
+    await query(`UPDATE users SET is_active = $1 WHERE id = $2`, [
+      isActive,
+      id,
+    ]);
 
-    return res.json({ ok: true, id, isActive: activeFlag ? 1 : 0 });
+    return res.json({ ok: true, id, isActive: isActive ? 1 : 0 });
   } catch (err) {
-    console.error(
-      "Error in PATCH /api/owner/users/:id/status:",
-      err.message
-    );
+    console.error("Error in PATCH /api/owner/users/:id/status:", err);
     return res.status(500).json({ error: "Failed to update user status" });
   }
 });

@@ -1,7 +1,16 @@
 // db.js
+const { NODE_ENV, DB_DRIVER } = require("./config/env");
+
+// If you're running with Postgres, this module is effectively disabled.
+// We keep it only for optional local SQLite experimentation.
+if (DB_DRIVER === "postgres") {
+  console.log("[db] DB_DRIVER=postgres – SQLite backend disabled.");
+  module.exports = null;
+  return;
+}
+
 const Database = require("better-sqlite3");
 const bcrypt = require("bcryptjs");
-const { NODE_ENV } = require("./config/env"); 
 
 // Decide which DB file to use (or use env override)
 const dbFileFromEnv = process.env.SQLITE_DB_FILE;
@@ -141,7 +150,7 @@ function seedDemoOrgAndAdmin() {
   console.log("  Password: demo1234");
 }
 
-// ⬅️ IMPORTANT CHANGE: only seed in NON-production
+// Only seed when SQLite is actually in use
 if (NODE_ENV !== "production") {
   seedDemoOrgAndAdmin();
 } else {
