@@ -411,12 +411,6 @@ STYLE, FORMAT & SAFETY RULES
 1a) The FIRST sentence of the FIRST paragraph MUST literally begin with:
     "The support worker..."
 
-    Do NOT begin with:
-    - “The participant…”
-    - “This shift…”
-    - “During the shift…”
-    - “These activities…”
-
 2) Be FACTUAL and OBSERVABLE.
    - Describe what occurred and what was observed.
    - Do NOT infer thoughts, emotions, intentions, or internal states unless explicitly stated in the input.
