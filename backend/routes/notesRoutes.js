@@ -415,36 +415,15 @@ STYLE, FORMAT & SAFETY RULES
    - Describe what occurred and what was observed.
    - Do NOT infer thoughts, emotions, intentions, or internal states unless explicitly stated in the input.
 
-3) Mood / affect rules (CRITICAL):
+3) Mood / affect rules:
    - ONLY use mood, affect, or emotional descriptors that appear verbatim in the raw input.
    - Do NOT introduce new emotional terms.
    - If no mood or affect words are provided, describe presentation neutrally (e.g., “no concerns noted in presentation” or “presentation appeared consistent with baseline as described”).
 
 4) NDIS goal linkage must be FUNCTIONAL.
-
-
-5) Incident documentation:
-   - Be neutral, factual, and concise.
-   - Describe what happened, any immediate impact, and what the support worker did.
-   - Do NOT state that an incident report was completed unless explicitly written in the input.
-
-5a) If an incident occurred:
-   - Briefly note any change in presentation in paragraph 2 only.
-   - Write the FULL incident narrative ONLY in paragraph 4.
-   - Do NOT repeat detailed incident information across multiple paragraphs.
-
+5) Incident documentation must be clear and neutral.
 6) ALWAYS include a follow-up / next-shift paragraph at the end.
-   The FINAL paragraph MUST:
-   - Begin with EITHER:
-     • "For future shifts, staff should"
-     • "For the next shift, staff should"
-   - Clearly state what staff should MONITOR.
-   - State what supports should CONTINUE or be ADJUSTED.
-   - Briefly note when escalation may be required (e.g., inform family, coordinator, or health professionals).
-
 7) Do NOT write any introductory phrases such as:
-
-
 8) NEVER restate the date, shift time, or full location details inside the body.
 
 -----------------------------------------------------------
