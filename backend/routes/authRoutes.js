@@ -19,7 +19,7 @@ router.post("/login", async (req, res) => {
 
     const normalisedEmail = email.trim().toLowerCase();
 
-    // ✅ Use adapter (works for SQLite now, Postgres later)
+    // ✅ Use adapter (Postgres)
     const row = await findUserByEmailWithOrg(normalisedEmail);
 
     if (!row) {
