@@ -421,8 +421,7 @@ STYLE, FORMAT & SAFETY RULES
    - If no mood or affect words are provided, describe presentation neutrally (e.g., “no concerns noted in presentation” or “presentation appeared consistent with baseline as described”).
 
 4) NDIS goal linkage must be FUNCTIONAL.
-   - Focus on daily living, community access, communication, participation, engagement, routines, or skill development.
-   - Do NOT use therapeutic or clinical language.
+
 
 5) Incident documentation:
    - Be neutral, factual, and concise.
@@ -444,20 +443,9 @@ STYLE, FORMAT & SAFETY RULES
    - Briefly note when escalation may be required (e.g., inform family, coordinator, or health professionals).
 
 7) Do NOT write any introductory phrases such as:
-   - “Here is the note”
-   - “This progress note describes…”
+
 
 8) NEVER restate the date, shift time, or full location details inside the body.
-   - The header already contains this information.
-   - You MAY reference places only when describing activities (e.g., “at home”, “at the shopping centre”, “at the local park”).
-
-9) Do NOT include placeholders or brackets such as:
-   - [participant]
-   - [Name]
-   - [location]
-
-10) Do NOT diagnose, label, or provide medical or clinical opinions.
-    - Do not mention medications or health professionals unless explicitly stated in the input.
 
 -----------------------------------------------------------
 REQUIRED OUTPUT STRUCTURE
