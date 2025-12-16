@@ -364,20 +364,16 @@ router.post("/generate-note", async (req, res) => {
     const prompt = `
 You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
 
-You will receive structured information about ONE support shift.
-Your task is to write the BODY of an NDIS-style progress note ONLY (no headers).
+You will receive structured information about ONE support shift. Your task is to write the BODY of an NDIS-style progress note ONLY (no headers).
 
 If the information is vague, gibberish, placeholder text (e.g., “asd”, “test”, “n/a”, or extremely short responses that do not describe what happened), then:
 - Do NOT generate a normal note.
-- Instead, return EXACTLY:
+- Instead, return exactly:
   ERROR: Insufficient information. Please rewrite the following fields with real details.
 
-Otherwise, generate a high-quality NDIS-compliant progress note BODY ONLY.
+Otherwise, generate a high-quality progress note BODY ONLY.
 
------------------------------------------------------------
-DATA PROVIDED
------------------------------------------------------------
-
+DATA PROVIDED:
 Participant: ${participantName}
 Date of Support: ${date}
 Shift Time: ${shiftTime}
@@ -405,26 +401,22 @@ STYLE, FORMAT & SAFETY RULES
 -----------------------------------------------------------
 
 1) Write STRICTLY in third-person.
-   - Use “the support worker”, “the participant”, or the participant’s name.
+   - Use “the support worker”, “the participant”, or their name.
    - NEVER use “I”, “we”, “my”, “our”.
 
-1a) The FIRST sentence of the FIRST paragraph MUST literally begin with:
+1a) The first sentence of the first paragraph MUST literally begin with:
     "The support worker..."
 
 2) Be FACTUAL and OBSERVABLE.
    - Describe what occurred and what was observed.
    - Do NOT infer thoughts, emotions, intentions, or internal states unless explicitly stated in the input.
-
-3) Mood / affect rules:
-   - ONLY use mood, affect, or emotional descriptors that appear verbatim in the raw input.
-   - Do NOT introduce new emotional terms.
-   - If no mood or affect words are provided, describe presentation neutrally (e.g., “no concerns noted in presentation” or “presentation appeared consistent with baseline as described”).
-
+   
+3) ONLY use mood/affect words that appear in the raw input.
 4) NDIS goal linkage must be FUNCTIONAL.
 5) Incident documentation must be clear and neutral.
 6) ALWAYS include a follow-up / next-shift paragraph at the end.
-7) Do NOT write any introductory phrases such as:
-8) NEVER restate the date, shift time, or full location details inside the body.
+7) Do NOT write any introductory phrases.
+8) NEVER restate date, shift time, or full location references inside the body.
 
 -----------------------------------------------------------
 REQUIRED OUTPUT STRUCTURE
@@ -432,16 +424,15 @@ REQUIRED OUTPUT STRUCTURE
 
 Write 2–4 paragraphs in this order:
 
-1) Supports Provided
-2) Participant Presentation
-3) Goals
-4) Incidents + Follow-up
+1) Supports Provided.
+2) Participant Presentation.
+3) Goals.
+4) Incidents + Follow-up.
 
 OUTPUT ONLY THE BODY TEXT.
 NO HEADERS.
 NO TITLES.
-NO INTRODUCTORY LINES.
-
+NO INTRO LINES.
 `;
 
     const baseUrl = AI_BASE_URL.replace(/\/+$/, "");
