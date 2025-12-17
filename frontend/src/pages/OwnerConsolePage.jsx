@@ -32,7 +32,7 @@ function OwnerConsolePage({ token, user }) {
     try {
       setLoading(true);
       setErrorMsg("");
-      const res = await fetch("http://localhost:5000/api/owner/overview", {
+      const res = await apiFetch("/api/owner/overview", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -137,7 +137,7 @@ function OwnerConsolePage({ token, user }) {
 
       setCreating(true);
 
-      const res = await fetch("http://localhost:5000/api/owner/providers", {
+      const res = await apiFetch("/api/owner/providers", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -20,7 +20,7 @@ function UsersAdminPage({ token, user }) {
       setLoading(true);
       setErrorMsg("");
 
-      const res = await fetch("http://localhost:5000/api/users", {
+      const res = await apiFetch("/api/users", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -58,7 +58,7 @@ function UsersAdminPage({ token, user }) {
 
       setCreating(true);
 
-      const res = await fetch("http://localhost:5000/api/users", {
+      const res = await apiFetch("/api/users", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

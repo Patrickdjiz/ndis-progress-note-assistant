@@ -24,7 +24,7 @@ function MyNotesPage({ token, user }) {
       setFinalSaveMsg("");
       setDetailError("");
 
-      const res = await fetch("http://localhost:5000/api/notes", {
+      const res = await apiFetch("/api/notes", {
         headers: {
           Authorization: `Bearer ${token}`,
         },

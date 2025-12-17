@@ -2,7 +2,9 @@
 import { useState, useEffect } from "react";
 
 function GenerateNotePage({ token, user }) {
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+  .toISOString()
+  .slice(0, 10);
 
   const [participantName, setParticipantName] = useState("");
   const [date, setDate] = useState(todayIso);
@@ -148,7 +150,7 @@ function GenerateNotePage({ token, user }) {
     setLatestNoteId(null);
 
     try {
-      const response = await fetch("http://localhost:5000/api/generate-note", {
+      const response = await apiFetch("/api/generate-note", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
