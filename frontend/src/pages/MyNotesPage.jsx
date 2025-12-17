@@ -1,5 +1,6 @@
 // src/pages/MyNotesPage.jsx
 import { useEffect, useState } from "react";
+import { apiFetch } from "../lib/apiFetch.js";
 
 const PRIMARY = "#111827";
 

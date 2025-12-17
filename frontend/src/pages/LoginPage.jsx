@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { apiFetch } from "../lib/apiFetch.js";
 
 function LoginPage({ onLoginSuccess }) {
   const [email, setEmail] = useState("admin@demo.local"); // dev default

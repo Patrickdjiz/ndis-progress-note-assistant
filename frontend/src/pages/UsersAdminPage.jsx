@@ -1,5 +1,6 @@
 // src/pages/UsersAdminPage.jsx
 import { useEffect, useState } from "react";
+import { apiFetch } from "../lib/apiFetch.js";
 
 function UsersAdminPage({ token, user }) {
   const PRIMARY = "#111827";

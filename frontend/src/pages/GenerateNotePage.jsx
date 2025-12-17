@@ -1,5 +1,6 @@
 // src/pages/GenerateNotePage.jsx
 import { useState, useEffect } from "react";
+import { apiFetch } from "../lib/apiFetch.js";
 
 function GenerateNotePage({ token, user }) {
   const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
