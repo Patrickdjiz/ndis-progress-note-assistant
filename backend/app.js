@@ -15,6 +15,11 @@ const notesRoutes = require("./routes/notesRoutes");
 
 const app = express();
 
+// If deployed behind a reverse proxy (Render/Railway/Fly/NGINX), this makes req.ip and rate-limit work correctly
+if (NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 // Basic security headers
 app.use(helmet());
 

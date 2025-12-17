@@ -22,9 +22,15 @@ pool.on("error", (err) => {
 });
 
 async function testConnection() {
-  const res = await pool.query("SELECT 1 AS ok");
-  return res.rows[0].ok === 1;
+  try {
+    const res = await pool.query("SELECT 1 AS ok");
+    return res.rows[0]?.ok === 1;
+  } catch (err) {
+    console.error("[pgClient] DB testConnection failed:", err.message);
+    return false;
+  }
 }
+
 
 // Small helper wrapper so later we can do: db.query(text, params)
 async function query(text, params) {

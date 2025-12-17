@@ -8,6 +8,8 @@ const { requireAuth } = require("../authMiddleware");
 const { generateNoteSchema, notesQuerySchema } = require("../validation");
 const { AI_BASE_URL, AI_MODEL } = require("../config/env");
 const { query } = require("../dbAdapter");
+const PDFDocument = require("pdfkit");
+
 
 const router = express.Router();
 
@@ -270,6 +272,11 @@ router.post("/generate-note", async (req, res) => {
       return res.status(403).json({ error: "Owners cannot generate notes" });
     }
 
+    if (req.user.role !== "WORKER") {
+      return res.status(403).json({ error: "Only workers can generate notes" });
+    }
+
+
     // ✅ Validate body with Zod
     const parsed = generateNoteSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -288,9 +295,11 @@ router.post("/generate-note", async (req, res) => {
       goalsWorkedOn,
       incidentsOrRisks,
       followUpActions,
-      workerName,
       incidentOccurred,
     } = parsed.data;
+
+    // Always take worker name from the logged-in user (prevents spoofing)
+    const workerName = (req.user.fullName || "").trim() || "Support Worker";
 
     // 2. Date sanity
     const shiftDate = parseYyyyMmDd(date);
@@ -410,7 +419,7 @@ STYLE, FORMAT & SAFETY RULES
 2) Be FACTUAL and OBSERVABLE.
    - Describe what occurred and what was observed.
    - Do NOT infer thoughts, emotions, intentions, or internal states unless explicitly stated in the input.
-   
+
 3) ONLY use mood/affect words that appear in the raw input.
 4) NDIS goal linkage must be FUNCTIONAL.
 5) Incident documentation must be clear and neutral.
@@ -542,5 +551,71 @@ NO INTRO LINES.
     });
   }
 });
+
+// GET /api/notes/:id/pdf  (download note as PDF, org-scoped)
+router.get("/notes/:id/pdf", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: "Invalid note id" });
+    }
+
+    if (req.user.role === "OWNER") {
+      return res.status(403).json({ error: "Owners cannot access notes API" });
+    }
+
+    let sql = `
+      SELECT
+        id,
+        organisation_id,
+        worker_user_id,
+        note_text,
+        final_note_text,
+        created_at
+      FROM progress_notes
+      WHERE id = $1
+        AND organisation_id = $2
+    `;
+    const params = [id, req.user.organisationId];
+    let idx = 3;
+
+    if (req.user.role === "WORKER") {
+      sql += ` AND worker_user_id = $${idx++}`;
+      params.push(req.user.id);
+    }
+
+    const { rows } = await query(sql, params);
+    const row = rows[0];
+    if (!row) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    const text = (row.final_note_text || row.note_text || "").toString();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="note-${row.id}.pdf"`
+    );
+
+    const doc = new PDFDocument({
+      size: "A4",
+      margins: { top: 50, bottom: 50, left: 50, right: 50 },
+    });
+
+    doc.pipe(res);
+
+    doc.fontSize(12).text(text, {
+      width: 495,
+      align: "left",
+    });
+
+    doc.end();
+  } catch (err) {
+    console.error("Error generating PDF:", err.message);
+    return res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+
 
 module.exports = router;

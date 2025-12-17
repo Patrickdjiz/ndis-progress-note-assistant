@@ -135,6 +135,64 @@ async function updateUserActiveFlag(userId, isActive) {
   await query(sql, [isActive, userId]);
 }
 
+async function getUserAuthById(userId) {
+  const { rows } = await query(
+    `
+    SELECT
+      id,
+      email,
+      password_hash AS "passwordHash",
+      full_name AS "fullName"
+    FROM users
+    WHERE id = $1
+  `,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
+async function updateUserPasswordHash(userId, passwordHash) {
+  await query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [
+    passwordHash,
+    userId,
+  ]);
+}
+
+async function updateUserProfile(userId, { email, fullName }) {
+  // Optional uniqueness check if email is changing
+  if (email) {
+    const { rows } = await query(
+      `SELECT id FROM users WHERE lower(email) = lower($1) AND id <> $2`,
+      [email, userId]
+    );
+    if (rows[0]) {
+      const err = new Error("A user with this email already exists");
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  const fields = [];
+  const params = [];
+  let idx = 1;
+
+  if (email) {
+    fields.push(`email = $${idx++}`);
+    params.push(email);
+  }
+  if (fullName) {
+    fields.push(`full_name = $${idx++}`);
+    params.push(fullName);
+  }
+
+  if (fields.length === 0) return;
+
+  params.push(userId);
+
+  await query(`UPDATE users SET ${fields.join(", ")} WHERE id = $${idx}`, params);
+}
+
+
 module.exports = {
   // flag
   isPostgres,
@@ -151,4 +209,7 @@ module.exports = {
   createWorkerUser,
   findUserByIdInOrg,
   updateUserActiveFlag,
+  getUserAuthById,
+  updateUserPasswordHash,
+  updateUserProfile,
 };

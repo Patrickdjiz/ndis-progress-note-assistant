@@ -117,6 +117,10 @@ function applyComplianceFilter(noteBody, rawCombined, workerName) {
     .filter((l) => l.length > 0)
     .join("\n\n");
 
+  // 6) Enforce required first words (prompt rule 1a)
+  body = body.replace(/^the support worker\b/, "The support worker");
+  body = body.replace(/^The Support Worker\b/, "The support worker"); // avoid weird title casing
+
   return body.trim();
 }
 

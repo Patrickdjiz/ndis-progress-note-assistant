@@ -2,20 +2,31 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const { generateToken, requireAuth } = require("../authMiddleware");
-const { findUserByEmailWithOrg } = require("../dbAdapter");
+const {
+  findUserByEmailWithOrg,
+  getUserAuthById,
+  updateUserPasswordHash,
+  updateUserProfile,
+} = require("../dbAdapter");
+const {
+  loginSchema,
+  updatePasswordSchema,
+  updateProfileSchema,
+} = require("../validation");
+
 
 const router = express.Router();
 
 // POST /api/login
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body || {};
-
-    if (!email || !password) {
-      return res
-        .status(400)
-        .json({ error: "Email and password are required" });
+    const parsed = loginSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid login data" });
     }
+
+    const { email, password } = parsed.data;
 
     const normalisedEmail = email.trim().toLowerCase();
 
@@ -78,5 +89,61 @@ router.get("/auth/me", requireAuth, (req, res) => {
     },
   });
 });
+
+// PATCH /api/auth/profile
+router.patch("/auth/profile", requireAuth, async (req, res) => {
+  try {
+    const parsed = updateProfileSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid profile data" });
+    }
+
+    const nextEmail = parsed.data.email?.trim().toLowerCase();
+    const nextFullName = parsed.data.fullName?.trim();
+
+    await updateUserProfile(req.user.id, {
+      email: nextEmail,
+      fullName: nextFullName,
+    });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Profile update error:", err.message);
+    return res.status(err.status || 500).json({ error: err.message || "Failed to update profile" });
+  }
+});
+
+// PATCH /api/auth/password
+router.patch("/auth/password", requireAuth, async (req, res) => {
+  try {
+    const parsed = updatePasswordSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid password data" });
+    }
+
+    const { currentPassword, newPassword } = parsed.data;
+
+    const user = await getUserAuthById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const ok = bcrypt.compareSync(currentPassword, user.passwordHash);
+    if (!ok) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    const hash = bcrypt.hashSync(newPassword, 10);
+    await updateUserPasswordHash(req.user.id, hash);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Password update error:", err.message);
+    return res.status(500).json({ error: "Failed to update password" });
+  }
+});
+
 
 module.exports = router;

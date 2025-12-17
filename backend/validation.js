@@ -82,6 +82,17 @@ const notesQuerySchema = z.object({
   hasIncident: z.enum(["true", "false", "all"]).optional(),
 });
 
+const updateProfileSchema = z.object({
+  fullName: nonEmptyString("fullName", 200).optional(),
+  email: emailSchema.optional(),
+});
+
+const updatePasswordSchema = z.object({
+  currentPassword: passwordSchema,
+  newPassword: passwordSchema,
+});
+
+
 module.exports = {
   loginSchema,
   generateNoteSchema,
@@ -90,4 +101,6 @@ module.exports = {
   booleanFlagSchema,
   orgStatusSchema,
   notesQuerySchema,
+  updateProfileSchema,
+  updatePasswordSchema,
 };

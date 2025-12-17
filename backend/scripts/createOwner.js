@@ -7,7 +7,7 @@ async function main() {
   try {
     const email = (process.env.OWNER_EMAIL || "").trim().toLowerCase();
     const password = process.env.OWNER_PASSWORD;
-    const fullName = process.env.OWNER_FULL_NAME || "Platform Owner";
+    const fullName = process.env.OWNER_FULLNAME || "Platform Owner";
 
     if (!email || !password) {
       console.error(
