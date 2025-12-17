@@ -1,6 +1,6 @@
 // src/pages/OwnerConsolePage.jsx
 import { useEffect, useState } from "react";
-import { apiFetch } from "../lib/apiFetch.js";
+import { apiFetch } from "../lib/api";
 
 function OwnerConsolePage({ token, user }) {
   const PRIMARY = "#111827";

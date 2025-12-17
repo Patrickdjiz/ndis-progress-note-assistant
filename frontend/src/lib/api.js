@@ -1,4 +1,3 @@
-// src/lib/api.js
 export const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -9,11 +8,13 @@ export async function apiFetch(path, options = {}) {
   try {
     data = await res.json();
   } catch {
-    // ignore
+    // ignore non-JSON
   }
 
   if (!res.ok) {
-    const msg = (data && (data.error || data.message)) || `Request failed (${res.status})`;
+    const msg =
+      (data && (data.error || data.message)) ||
+      `Request failed (${res.status})`;
     const err = new Error(msg);
     err.status = res.status;
     err.data = data;
