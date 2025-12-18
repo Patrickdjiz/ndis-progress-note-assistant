@@ -25,16 +25,11 @@ function MyNotesPage({ token, user }) {
       setFinalSaveMsg("");
       setDetailError("");
 
-      const res = await apiFetch("/api/notes", {
+      const data = await apiFetch("/api/notes", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to load notes");
-      }
 
       setNotes(Array.isArray(data.notes) ? data.notes : []);
     } catch (err) {
@@ -56,19 +51,13 @@ function MyNotesPage({ token, user }) {
       setDetailError("");
       setFinalSaveMsg("");
 
-      const res = await fetch(
-        `http://localhost:5000/api/notes/${noteSummary.id}`,
+      const data = await apiFetch(`/api/notes/${noteSummary.id}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         }
       );
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to fetch note");
-      }
 
       const fullNote = data.note;
       setSelectedNote(fullNote);
@@ -99,8 +88,7 @@ function MyNotesPage({ token, user }) {
         return;
       }
 
-      const res = await fetch(
-        `http://localhost:5000/api/notes/${selectedNote.id}/finalise`,
+      const data = await apiFetch(`/api/notes/${selectedNote.id}/finalise`,
         {
           method: "POST",
           headers: {
@@ -112,11 +100,6 @@ function MyNotesPage({ token, user }) {
           }),
         }
       );
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to save final note");
-      }
 
       // Update selected note with new final text + timestamps
       setSelectedNote((prev) =>

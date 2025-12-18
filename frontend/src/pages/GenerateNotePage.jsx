@@ -151,7 +151,7 @@ function GenerateNotePage({ token, user }) {
     setLatestNoteId(null);
 
     try {
-      const response = await apiFetch("/api/generate-note", {
+      const data = await apiFetch("/api/generate-note", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -172,11 +172,6 @@ function GenerateNotePage({ token, user }) {
           incidentOccurred,
         }),
       });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to generate note");
-      }
 
       setGeneratedNote(data.note || "");
       setFinalNoteText(data.note || "");
@@ -220,8 +215,7 @@ function GenerateNotePage({ token, user }) {
         return;
       }
 
-      const response = await fetch(
-        `http://localhost:5000/api/notes/${latestNoteId}/finalise`,
+      const data = await apiFetch(`/api/notes/${latestNoteId}/finalise`,
         {
           method: "POST",
           headers: {
@@ -233,11 +227,6 @@ function GenerateNotePage({ token, user }) {
           }),
         }
       );
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to save final note");
-      }
 
       setFinalSaveMsg("Final note saved.");
     } catch (err) {

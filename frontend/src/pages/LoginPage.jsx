@@ -12,17 +12,11 @@ function LoginPage({ onLoginSuccess }) {
     setError("");
     setLoading(true);
     try {
-      const res = await apiFetch("/api/login", {
+      const data = await apiFetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error((data && data.error) || "Login failed");
-      }
 
       onLoginSuccess(data);
     } catch (err) {

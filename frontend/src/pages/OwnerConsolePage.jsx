@@ -33,15 +33,12 @@ function OwnerConsolePage({ token, user }) {
     try {
       setLoading(true);
       setErrorMsg("");
-      const res = await apiFetch("/api/owner/overview", {
+      const data = await apiFetch("/api/owner/overview", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to load overview");
-      }
+
       setOrganisations(
         Array.isArray(data.organisations) ? data.organisations : []
       );
@@ -60,8 +57,7 @@ function OwnerConsolePage({ token, user }) {
 
       const newStatus = org.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
 
-      const res = await fetch(
-        `http://localhost:5000/api/owner/organisations/${org.id}/status`,
+      await apiFetch(`/api/owner/organisations/${org.id}/status`,
         {
           method: "PATCH",
           headers: {
@@ -71,11 +67,6 @@ function OwnerConsolePage({ token, user }) {
           body: JSON.stringify({ status: newStatus }),
         }
       );
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to update organisation status");
-      }
 
       await fetchOverview();
     } catch (err) {
@@ -89,8 +80,7 @@ function OwnerConsolePage({ token, user }) {
       setErrorMsg("");
       setCreateMsg("");
 
-      const res = await fetch(
-        `http://localhost:5000/api/owner/users/${userId}/status`,
+      await apiFetch(`/api/owner/users/${userId}/status`,
         {
           method: "PATCH",
           headers: {
@@ -100,11 +90,6 @@ function OwnerConsolePage({ token, user }) {
           body: JSON.stringify({ isActive: !currentIsActive }),
         }
       );
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to update user status");
-      }
 
       await fetchOverview();
     } catch (err) {
@@ -138,7 +123,7 @@ function OwnerConsolePage({ token, user }) {
 
       setCreating(true);
 
-      const res = await apiFetch("/api/owner/providers", {
+      const data = await apiFetch("/api/owner/providers", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -151,11 +136,6 @@ function OwnerConsolePage({ token, user }) {
           adminPassword: adminPassword.trim(),
         }),
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to create provider");
-      }
 
       setCreateMsg(
         `Created provider "${data.organisation.name}" with admin ${data.admin.email}.`

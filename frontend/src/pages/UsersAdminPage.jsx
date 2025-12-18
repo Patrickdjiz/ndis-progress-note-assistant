@@ -21,16 +21,11 @@ function UsersAdminPage({ token, user }) {
       setLoading(true);
       setErrorMsg("");
 
-      const res = await apiFetch("/api/users", {
+      const data = await apiFetch("/api/users", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to load users");
-      }
 
       setUsers(Array.isArray(data.users) ? data.users : []);
     } catch (err) {
@@ -59,7 +54,7 @@ function UsersAdminPage({ token, user }) {
 
       setCreating(true);
 
-      const res = await apiFetch("/api/users", {
+      const data = await apiFetch("/api/users", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -72,11 +67,6 @@ function UsersAdminPage({ token, user }) {
           // role is deliberately NOT sent / ignored by backend
         }),
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to create user");
-      }
 
       // Clear the form
       setNewEmail("");
@@ -102,8 +92,7 @@ function UsersAdminPage({ token, user }) {
     try {
       setErrorMsg("");
 
-      const res = await fetch(
-        `http://localhost:5000/api/users/${id}/status`,
+      const data = await apiFetch(`/api/users/${id}/status`,
         {
           method: "PATCH",
           headers: {
@@ -113,11 +102,6 @@ function UsersAdminPage({ token, user }) {
           body: JSON.stringify({ isActive: !isActive }),
         }
       );
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to update user status");
-      }
 
       setUsers((prev) =>
         prev.map((u) =>
