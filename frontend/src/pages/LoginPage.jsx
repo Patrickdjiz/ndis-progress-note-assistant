@@ -2,8 +2,8 @@ import React, { useState } from "react";
 import { apiFetch } from "../lib/api";
 
 function LoginPage({ onLoginSuccess }) {
-  const [email, setEmail] = useState("admin@demo.local"); // dev default
-  const [password, setPassword] = useState("demo1234");
+  const [email, setEmail] = useState(import.meta.env.DEV ? "admin@demo.local" : "");
+  const [password, setPassword] = useState(import.meta.env.DEV ? "demo1234" : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
