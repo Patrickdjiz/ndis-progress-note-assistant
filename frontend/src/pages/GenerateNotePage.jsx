@@ -141,6 +141,11 @@ function GenerateNotePage({ token, user }) {
       return;
     }
 
+    if (startTime && endTime && endTime <= startTime) {
+      setErrorMsg("End time must be after start time.");
+      return;
+    }
+
     setLoading(true);
     setErrorMsg("");
     setGeneratedNote("");

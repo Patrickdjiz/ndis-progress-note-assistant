@@ -15,9 +15,15 @@ const MUTED_TEXT = "#4b5563";
 function App() {
   // Load auth from localStorage if present
   const [auth, setAuth] = useState(() => {
+  try {
     const stored = localStorage.getItem("ndisAuth");
     return stored ? JSON.parse(stored) : null;
-  });
+  } catch {
+    localStorage.removeItem("ndisAuth");
+    return null;
+  }
+});
+
 
   const handleLoginSuccess = (data) => {
     const authData = {
