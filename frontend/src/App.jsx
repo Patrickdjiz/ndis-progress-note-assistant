@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Routes, Route, Navigate } from "react-router-dom";
 import GenerateNotePage from "./pages/GenerateNotePage.jsx";
 import NotesDashboardPage from "./pages/NotesDashboardPage.jsx";
@@ -24,8 +24,25 @@ function App() {
   }
 });
 
+const [authNotice, setAuthNotice] = useState("");
+useEffect(() => {
+  const onExpired = (e) => {
+    const msg =
+      e?.detail?.message || "Your session has expired. Please log in again.";
+
+    setAuthNotice(msg);
+    setAuth(null);
+    localStorage.removeItem("ndisAuth");
+  };
+
+  window.addEventListener("auth:expired", onExpired);
+  return () => window.removeEventListener("auth:expired", onExpired);
+}, []);
+
+
 
   const handleLoginSuccess = (data) => {
+    setAuthNotice(""); // clear banner
     const authData = {
       token: data.token,
       user: data.user,
@@ -35,6 +52,7 @@ function App() {
   };
 
   const handleLogout = () => {
+    setAuthNotice(""); // clear banner
     setAuth(null);
     localStorage.removeItem("ndisAuth");
   };
@@ -52,7 +70,24 @@ function App() {
           padding: "1rem",
         }}
       >
-        <LoginPage onLoginSuccess={handleLoginSuccess} />
+        <div style={{ width: "100%", maxWidth: 380 }}>
+          {authNotice && (
+            <div
+              style={{
+                marginBottom: "0.75rem",
+                padding: "0.6rem 0.75rem",
+                borderRadius: "0.75rem",
+                background: "#fffbeb",
+                border: "1px solid #fde68a",
+                color: "#92400e",
+                fontSize: "0.85rem",
+              }}
+            >
+              {authNotice}
+            </div>
+          )}
+          <LoginPage onLoginSuccess={handleLoginSuccess} />
+        </div>
       </div>
     );
   }

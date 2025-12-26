@@ -1,5 +1,6 @@
 // src/pages/NotesDashboardPage.jsx
 import { useEffect, useState } from "react";
+import { apiFetch } from "../lib/api";
 
 const PRIMARY = "#111827";
 
@@ -37,13 +38,12 @@ function NotesDashboardPage({ token, user }) {
         "http://localhost:5000/api/notes" +
         (params.toString() ? `?${params.toString()}` : "");
 
-      const response = await fetch(url, {
+      const data = await apiFetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
-      const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to load notes");
       }
@@ -74,13 +74,12 @@ function NotesDashboardPage({ token, user }) {
       setFinalSaveMsg("");
       setErrorMsg("");
 
-      const response = await fetch(`http://localhost:5000/api/notes/${id}`, {
+      const data = await apiFetch(`http://localhost:5000/api/notes/${id}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
-      const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch note");
       }
@@ -110,7 +109,7 @@ function NotesDashboardPage({ token, user }) {
         return;
       }
 
-      const response = await fetch(
+      const data = await apiFetch(
         `http://localhost:5000/api/notes/${selectedNote.id}/finalise`,
         {
           method: "POST",
@@ -126,7 +125,6 @@ function NotesDashboardPage({ token, user }) {
         }
       );
 
-      const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to save final note");
       }
@@ -161,7 +159,7 @@ function NotesDashboardPage({ token, user }) {
 
       const newFlag = !selectedNote.reviewedFlag;
 
-      const response = await fetch(
+      const data = await apiFetch(
         `http://localhost:5000/api/notes/${selectedNote.id}/review`,
         {
           method: "POST",
@@ -176,7 +174,6 @@ function NotesDashboardPage({ token, user }) {
         }
       );
 
-      const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to update review status");
       }
