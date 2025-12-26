@@ -103,43 +103,70 @@ router.get("/notes", async (req, res) => {
 });
 
 // GET /api/notes/:id  (single note, org-scoped)
-router.get("/notes/:id", async (req, res) => {
+// POST /api/notes/:id/review
+router.post("/notes/:id/review", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
       return res.status(400).json({ error: "Invalid note id" });
     }
 
-    if (req.user.role === "OWNER") {
-      return res.status(403).json({ error: "Owners cannot access notes API" });
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ error: "Only admins can review notes" });
     }
 
-    let sql = `
-      SELECT *
-      FROM progress_notes
-      WHERE id = $1
-        AND organisation_id = $2
-    `;
-    const params = [id, req.user.organisationId];
-    let idx = 3;
+    // boolean, default true unless explicitly false
+    const reviewedFlag = req.body.reviewedFlag === false ? false : true;
 
-    if (req.user.role === "WORKER") {
-      sql += ` AND worker_user_id = $${idx++}`;
-      params.push(req.user.id);
-    }
+    // optional: accept typed reviewerName, otherwise fallback to account name
+    const reviewerName =
+      (req.body.reviewerName && req.body.reviewerName.toString().trim()) ||
+      (req.user.fullName || "");
 
-    const { rows } = await query(sql, params);
-    const note = normaliseNoteRow(rows[0]);
-    if (!note) {
+    const nowIso = new Date().toISOString();
+
+    const { rows } = await query(
+      `
+        SELECT id
+        FROM progress_notes
+        WHERE id = $1
+          AND organisation_id = $2
+      `,
+      [id, req.user.organisationId]
+    );
+
+    if (!rows[0]) {
       return res.status(404).json({ error: "Note not found" });
     }
 
-    return res.json({ note });
+    await query(
+      `
+        UPDATE progress_notes
+        SET reviewed_flag = $1,
+            reviewed_at   = $2,
+            reviewed_by   = $3
+        WHERE id = $4
+      `,
+      [
+        reviewedFlag,
+        reviewedFlag ? nowIso : null,
+        reviewedFlag ? reviewerName : null,
+        id,
+      ]
+    );
+
+    return res.json({
+      ok: true,
+      reviewedFlag, // ✅ boolean now
+      reviewedAt: reviewedFlag ? nowIso : null,
+      reviewedBy: reviewedFlag ? reviewerName : null,
+    });
   } catch (err) {
-    console.error("Error fetching note:", err.message);
-    return res.status(500).json({ error: "Failed to fetch note" });
+    console.error("Error updating review status:", err.message);
+    return res.status(500).json({ error: "Failed to update review status" });
   }
 });
+
 
 // POST /api/notes/:id/finalise
 router.post("/notes/:id/finalise", async (req, res) => {

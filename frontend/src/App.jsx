@@ -24,25 +24,26 @@ function App() {
   }
 });
 
-const [authNotice, setAuthNotice] = useState("");
-useEffect(() => {
-  const onExpired = (e) => {
-    const msg =
-      e?.detail?.message || "Your session has expired. Please log in again.";
+const [logoutMsg, setLogoutMsg] = useState("");
 
-    setAuthNotice(msg);
-    setAuth(null);
-    localStorage.removeItem("ndisAuth");
-  };
+  useEffect(() => {
+    const handler = (e) => {
+      const msg =
+        e?.detail?.message || "Session expired. Please log in again.";
+      setAuth(null);
+      localStorage.removeItem("ndisAuth");
+      setLogoutMsg(msg);
+    };
 
-  window.addEventListener("auth:expired", onExpired);
-  return () => window.removeEventListener("auth:expired", onExpired);
-}, []);
+    window.addEventListener("ndis:unauthorized", handler);
+    return () => window.removeEventListener("ndis:unauthorized", handler);
+  }, []);
+
 
 
 
   const handleLoginSuccess = (data) => {
-    setAuthNotice(""); // clear banner
+    setLogoutMsg(""); // ✅ clear banner on success
     const authData = {
       token: data.token,
       user: data.user,
@@ -52,7 +53,7 @@ useEffect(() => {
   };
 
   const handleLogout = () => {
-    setAuthNotice(""); // clear banner
+    setLogoutMsg(""); // ✅ clear banner on success
     setAuth(null);
     localStorage.removeItem("ndisAuth");
   };
@@ -70,24 +71,22 @@ useEffect(() => {
           padding: "1rem",
         }}
       >
-        <div style={{ width: "100%", maxWidth: 380 }}>
-          {authNotice && (
-            <div
-              style={{
-                marginBottom: "0.75rem",
-                padding: "0.6rem 0.75rem",
-                borderRadius: "0.75rem",
-                background: "#fffbeb",
-                border: "1px solid #fde68a",
-                color: "#92400e",
-                fontSize: "0.85rem",
-              }}
-            >
-              {authNotice}
-            </div>
-          )}
-          <LoginPage onLoginSuccess={handleLoginSuccess} />
+          {logoutMsg && (
+        <div
+          style={{
+            color: "#92400e",
+            background: "#fffbeb",
+            border: "1px solid #fde68a",
+            borderRadius: "0.5rem",
+            padding: "0.35rem 0.6rem",
+            marginBottom: "0.75rem",
+            fontSize: "0.85rem",
+          }}
+        >
+          {logoutMsg}
         </div>
+      )}
+      <LoginPage onLoginSuccess={handleLoginSuccess} />
       </div>
     );
   }

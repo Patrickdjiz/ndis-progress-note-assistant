@@ -2,36 +2,26 @@
 export const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-function hasAuthHeader(headers) {
-  if (!headers) return false;
-
-  // Headers instance (fetch can accept this)
-  if (headers instanceof Headers) {
-    return headers.has("Authorization") || headers.has("authorization");
-  }
-
-  // Plain object
-  return Boolean(headers.Authorization || headers.authorization);
-}
-
 export async function apiFetch(path, options = {}) {
-  const res = await fetch(`${API_BASE_URL}${path}`, options);
+  const url = /^https?:\/\//i.test(path) ? path : `${API_BASE_URL}${path}`;
 
+  const res = await fetch(url, options);
+
+  // Try read JSON if possible
   let data = null;
   try {
-    data = await res.json();
+    data = await res.clone().json();
   } catch {
-    // ignore non-JSON
+    // ignore (non-JSON response)
   }
 
-  // ✅ Token expiry handling (only when request had an auth header)
-  if (res.status === 401 && hasAuthHeader(options.headers)) {
+  // ✅ 401 global hook
+  if (res.status === 401) {
     const msg =
       (data && (data.error || data.message)) ||
-      "Your session has expired. Please log in again.";
-
+      "Session expired. Please log in again.";
     window.dispatchEvent(
-      new CustomEvent("auth:expired", { detail: { message: msg } })
+      new CustomEvent("ndis:unauthorized", { detail: { message: msg } })
     );
   }
 
