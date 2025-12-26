@@ -16,7 +16,7 @@ function NotesDashboardPage({ token, user }) {
 
   const [finalNoteEditText, setFinalNoteEditText] = useState("");
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
-  const [reviewerName, setReviewerName] = useState("");
+  const [reviewerName, setReviewerName] = useState(user?.fullName || "");
 
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -27,26 +27,17 @@ function NotesDashboardPage({ token, user }) {
       setNotesError("");
 
       const params = new URLSearchParams();
-      if (filterParticipant.trim()) {
-        params.append("participant", filterParticipant.trim());
-      }
-      if (filterIncident !== "all") {
-        params.append("hasIncident", filterIncident);
-      }
+      if (filterParticipant.trim()) params.append("participant", filterParticipant.trim());
+      if (filterIncident !== "all") params.append("hasIncident", filterIncident);
 
-      const url =
-        "http://localhost:5000/api/notes" +
-        (params.toString() ? `?${params.toString()}` : "");
+      const path =
+        "/api/notes" + (params.toString() ? `?${params.toString()}` : "");
 
-      const data = await apiFetch(url, {
+      const data = await apiFetch(path, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to load notes");
-      }
 
       setNotes(Array.isArray(data.notes) ? data.notes : []);
       setSelectedNote(null);
@@ -74,19 +65,17 @@ function NotesDashboardPage({ token, user }) {
       setFinalSaveMsg("");
       setErrorMsg("");
 
-      const data = await apiFetch(`http://localhost:5000/api/notes/${id}`, {
+      const data = await apiFetch(`/api/notes/${id}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch note");
-      }
-
       setSelectedNote(data.note);
       setFinalNoteEditText(
-        data.note.finalNoteText ? data.note.finalNoteText : data.note.noteText
+        data.note.finalNoteText && data.note.finalNoteText.trim().length > 0
+          ? data.note.finalNoteText
+          : data.note.noteText
       );
     } catch (err) {
       console.error("Error fetching note:", err);
@@ -109,25 +98,17 @@ function NotesDashboardPage({ token, user }) {
         return;
       }
 
-      const data = await apiFetch(
-        `http://localhost:5000/api/notes/${selectedNote.id}/finalise`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            finalNoteText: finalNoteEditText,
-            // reviewerName is captured here if you decide to use it on backend
-            reviewerName: reviewerName || undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to save final note");
-      }
+      const data = await apiFetch(`/api/notes/${selectedNote.id}/finalise`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          finalNoteText: finalNoteEditText,
+          reviewerName: reviewerName || undefined,
+        }),
+      });
 
       setFinalSaveMsg("Final note saved for this shift.");
 
@@ -141,6 +122,7 @@ function NotesDashboardPage({ token, user }) {
             }
           : prev
       );
+
       fetchNotes();
     } catch (err) {
       console.error("Error saving final note:", err);
@@ -159,24 +141,17 @@ function NotesDashboardPage({ token, user }) {
 
       const newFlag = !selectedNote.reviewedFlag;
 
-      const data = await apiFetch(
-        `http://localhost:5000/api/notes/${selectedNote.id}/review`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            reviewedFlag: newFlag,
-            reviewerName: reviewerName || undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update review status");
-      }
+      const data = await apiFetch(`/api/notes/${selectedNote.id}/review`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          reviewedFlag: newFlag,
+          reviewerName: reviewerName || undefined,
+        }),
+      });
 
       setSelectedNote((prev) =>
         prev
