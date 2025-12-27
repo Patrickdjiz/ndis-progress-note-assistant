@@ -34,7 +34,7 @@ function buildTransportFromEnv() {
 }
 
 // POST /api/auth/forgot-password
-router.post("/auth/forgot-password", async (req, res) => {
+router.post("/forgot-password", async (req, res) => {
   try {
     const parsed = forgotPasswordSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -105,7 +105,7 @@ router.post("/auth/forgot-password", async (req, res) => {
 });
 
 // POST /api/auth/reset-password
-router.post("/auth/reset-password", async (req, res) => {
+router.post("/reset-password", async (req, res) => {
   try {
     const parsed = resetPasswordSchema.safeParse(req.body);
     if (!parsed.success) {

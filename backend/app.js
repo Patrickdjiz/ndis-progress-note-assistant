@@ -89,12 +89,12 @@ app.get("/api/health/db", async (req, res, next) => {
 });
 
 // Routes
+app.use("/api/auth", passwordResetRoutes);
 app.use("/api", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/owner", ownerRoutes);
 app.use("/api", notesRoutes);
 app.use("/api", accountRoutes);
-app.use("/api/auth", passwordResetRoutes);
 
 
 // -----------------------
