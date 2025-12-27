@@ -1,6 +1,8 @@
 // src/pages/MyNotesPage.jsx
 import { useEffect, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { apiFetch, apiFetchBlob } from "../lib/api";
+import { fmtShiftDate, fmtDateTime } from "../lib/dateFormat";
+
 
 const PRIMARY = "#111827";
 
@@ -14,6 +16,13 @@ function MyNotesPage({ token, user }) {
   const [finalNoteEditText, setFinalNoteEditText] = useState("");
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
   const [savingFinal, setSavingFinal] = useState(false);
+
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const safeFile = (s) =>
+  String(s || "")
+    .trim()
+    .replace(/[^\w\-]+/g, "_")
+    .slice(0, 80);
 
   // ---------- Load list of notes ----------
   const fetchNotes = async () => {
@@ -141,6 +150,38 @@ function MyNotesPage({ token, user }) {
       {label}
     </span>
   );
+
+  // ---------- savePDF ----------
+  const handleDownloadPdf = async () => {
+  try {
+    setErrorMsg("");
+    if (!selectedNote) {
+      setErrorMsg("No note selected.");
+      return;
+    }
+
+    setDownloadingPdf(true);
+
+    const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `NDIS_Note_${safeFile(selectedNote.date)}_${safeFile(
+      selectedNote.participantName
+    )}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    setErrorMsg(e?.message || "Failed to download PDF.");
+  } finally {
+    setDownloadingPdf(false);
+  }
+};
 
   return (
     <section>
@@ -295,7 +336,7 @@ function MyNotesPage({ token, user }) {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {note.date}
+                      {fmtShiftDate(note.date)}
                     </span>
                   </div>
 
@@ -381,7 +422,7 @@ function MyNotesPage({ token, user }) {
               >
                 <strong>Participant:</strong> {selectedNote.participantName}
                 <br />
-                <strong>Date:</strong> {selectedNote.date}{" "}
+                <strong>Date:</strong> {fmtShiftDate(selectedNote.date)}{" "}
                 {selectedNote.startTime && selectedNote.endTime
                   ? `(${selectedNote.startTime}–${selectedNote.endTime})`
                   : ""}
@@ -391,7 +432,7 @@ function MyNotesPage({ token, user }) {
                 <strong>Status:</strong>{" "}
                 {selectedNote.finalisedAt ? "Finalised" : "Draft"}
                 {selectedNote.finalisedAt && (
-                  <> (at {selectedNote.finalisedAt})</>
+                  <> (at {fmtDateTime(selectedNote.finalisedAt)})</>
                 )}
                 <br />
                 <strong>Incident:</strong>{" "}
@@ -447,6 +488,24 @@ function MyNotesPage({ token, user }) {
                 >
                   {savingFinal ? "Saving…" : "Save final note"}
                 </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={downloadingPdf || !selectedNote}
+                  style={{
+                    padding: "0.45rem 0.95rem",
+                    borderRadius: "999px",
+                    border: "1px solid #e5e7eb",
+                    background: "#ffffff",
+                    color: PRIMARY,
+                    fontSize: "0.8rem",
+                    fontWeight: 600,
+                    cursor: downloadingPdf ? "wait" : "pointer",
+                  }}
+                >
+                  {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
+                </button>
+
 
                 {finalSaveMsg && (
                   <span

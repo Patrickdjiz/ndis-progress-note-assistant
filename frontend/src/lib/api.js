@@ -40,3 +40,28 @@ export async function apiFetch(path, options = {}) {
   // Return parsed JSON or null
   return data;
 }
+
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
+export async function apiFetchBlob(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+  });
+
+  if (!res.ok) {
+    // try to read JSON error
+    let msg = `Request failed (${res.status})`;
+    try {
+      const data = await res.json();
+      msg = data?.error || data?.message || msg;
+    } catch {
+      try {
+        const txt = await res.text();
+        if (txt) msg = txt;
+      } catch {}
+    }
+    throw new Error(msg);
+  }
+
+  return res.blob();
+}

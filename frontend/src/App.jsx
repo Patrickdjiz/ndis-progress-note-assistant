@@ -10,28 +10,28 @@ import MyNotesPage from "./pages/MyNotesPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 
-const PRIMARY = "#111827";      // same as login button
+const PRIMARY = "#111827";
 const PRIMARY_TEXT = "#f9fafb";
 const MUTED_TEXT = "#4b5563";
 
 function App() {
-  // Load auth from localStorage if present
-  const [auth, setAuth] = useState(() => {
-  try {
-    const stored = localStorage.getItem("ndisAuth");
-    return stored ? JSON.parse(stored) : null;
-  } catch {
-    localStorage.removeItem("ndisAuth");
-    return null;
-  }
-});
+  const location = useLocation(); // ✅ move here (hooks must not be conditional)
 
-const [logoutMsg, setLogoutMsg] = useState("");
+  const [auth, setAuth] = useState(() => {
+    try {
+      const stored = localStorage.getItem("ndisAuth");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      localStorage.removeItem("ndisAuth");
+      return null;
+    }
+  });
+
+  const [logoutMsg, setLogoutMsg] = useState("");
 
   useEffect(() => {
     const handler = (e) => {
-      const msg =
-        e?.detail?.message || "Session expired. Please log in again.";
+      const msg = e?.detail?.message || "Session expired. Please log in again.";
       setAuth(null);
       localStorage.removeItem("ndisAuth");
       setLogoutMsg(msg);
@@ -41,36 +41,29 @@ const [logoutMsg, setLogoutMsg] = useState("");
     return () => window.removeEventListener("ndis:unauthorized", handler);
   }, []);
 
-
-
-
   const handleLoginSuccess = (data) => {
-    setLogoutMsg(""); // ✅ clear banner on success
-    const authData = {
-      token: data.token,
-      user: data.user,
-    };
+    setLogoutMsg("");
+    const authData = { token: data.token, user: data.user };
     setAuth(authData);
     localStorage.setItem("ndisAuth", JSON.stringify(authData));
   };
 
   const handleLogout = () => {
-    setLogoutMsg(""); // ✅ clear banner on success
+    setLogoutMsg("");
     setAuth(null);
     localStorage.removeItem("ndisAuth");
   };
 
   const patchAuthUser = (patch) => {
-  setAuth((prev) => {
-    if (!prev) return prev;
-    const next = { ...prev, user: { ...prev.user, ...patch } };
-    localStorage.setItem("ndisAuth", JSON.stringify(next));
-    return next;
-  });
-};
+    setAuth((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, user: { ...prev.user, ...patch } };
+      localStorage.setItem("ndisAuth", JSON.stringify(next));
+      return next;
+    });
+  };
 
-
-  // --------- Logged out: show centred login card ----------
+  // ✅ Logged out routes (this is the key change)
   if (!auth) {
     return (
       <div
@@ -83,30 +76,38 @@ const [logoutMsg, setLogoutMsg] = useState("");
           padding: "1rem",
         }}
       >
+        <div style={{ width: "100%", maxWidth: 420 }}>
           {logoutMsg && (
-        <div
-          style={{
-            color: "#92400e",
-            background: "#fffbeb",
-            border: "1px solid #fde68a",
-            borderRadius: "0.5rem",
-            padding: "0.35rem 0.6rem",
-            marginBottom: "0.75rem",
-            fontSize: "0.85rem",
-          }}
-        >
-          {logoutMsg}
+            <div
+              style={{
+                color: "#92400e",
+                background: "#fffbeb",
+                border: "1px solid #fde68a",
+                borderRadius: "0.5rem",
+                padding: "0.35rem 0.6rem",
+                marginBottom: "0.75rem",
+                fontSize: "0.85rem",
+              }}
+            >
+              {logoutMsg}
+            </div>
+          )}
+
+          <Routes>
+            <Route
+              path="/"
+              element={<LoginPage onLoginSuccess={handleLoginSuccess} />}
+            />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </div>
-      )}
-      <LoginPage onLoginSuccess={handleLoginSuccess} />
       </div>
     );
   }
 
   // --------- Logged in layout ----------
   const { user, token } = auth;
-
-  const location = useLocation();
 
   if (user?.mustChangePassword && location.pathname !== "/account") {
     return <Navigate to="/account" replace />;

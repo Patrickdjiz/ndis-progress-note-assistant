@@ -41,6 +41,9 @@ function normaliseNoteRow(row) {
     reviewedFlag: row.reviewed_flag,
     reviewedAt: row.reviewed_at,
     reviewedBy: row.reviewed_by,
+    archivedFlag: row.archived_flag,
+    archivedAt: row.archived_at,
+    archivedBy: row.archived_by,
   };
 }
 
@@ -58,6 +61,7 @@ router.get("/notes", async (req, res) => {
     const parsed = notesQuerySchema.safeParse({
       participant: req.query.participant,
       hasIncident: req.query.hasIncident,
+      archived: req.query.archived,
     });
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
@@ -65,6 +69,7 @@ router.get("/notes", async (req, res) => {
     }
 
     const { participant, hasIncident } = parsed.data;
+    const archived = parsed.data.archived ?? "false";
 
     let sql = `
       SELECT *
@@ -89,6 +94,12 @@ router.get("/notes", async (req, res) => {
       sql += " AND incident_flag = TRUE";
     } else if (hasIncident === "false") {
       sql += " AND incident_flag = FALSE";
+    }
+
+    if (archived === "true") {
+      sql += " AND archived_flag = TRUE";
+    } else if (archived === "false") {
+      sql += " AND archived_flag = FALSE";
     }
 
     sql += " ORDER BY created_at DESC LIMIT 50";
@@ -561,18 +572,178 @@ router.get("/notes/:id/pdf", async (req, res) => {
       return res.status(400).json({ error: "Invalid note id" });
     }
 
+    // Keep your existing rule
     if (req.user.role === "OWNER") {
       return res.status(403).json({ error: "Owners cannot access notes API" });
     }
 
     let sql = `
       SELECT
-        id,
-        organisation_id,
-        worker_user_id,
-        note_text,
-        final_note_text,
-        created_at
+        pn.id,
+        pn.organisation_id,
+        o.name AS organisation_name,
+
+        pn.worker_user_id,
+        pn.participant_name,
+        pn.worker_name,
+        pn.date,
+        pn.start_time,
+        pn.end_time,
+        pn.location,
+
+        pn.activities_and_supports,
+        pn.participant_presentation,
+        pn.goals_worked_on,
+        pn.incidents_or_risks,
+        pn.follow_up_actions,
+
+        pn.note_text,
+        pn.final_note_text,
+        pn.incident_flag,
+        pn.created_at,
+
+        pn.finalised_at,
+        pn.finalised_by,
+
+        pn.reviewed_flag,
+        pn.reviewed_at,
+        pn.reviewed_by
+      FROM progress_notes pn
+      JOIN organisations o ON o.id = pn.organisation_id
+      WHERE pn.id = $1
+        AND pn.organisation_id = $2
+    `;
+    const params = [id, req.user.organisationId];
+    let idx = 3;
+
+    // Same restriction you already have
+    if (req.user.role === "WORKER") {
+      sql += ` AND pn.worker_user_id = $${idx++}`;
+      params.push(req.user.id);
+    }
+
+    sql += ` LIMIT 1`;
+
+    const { rows } = await query(sql, params);
+    const row = rows[0];
+    if (!row) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    // Filename (safe-ish)
+    const fileDate = row.date ? String(row.date) : "note";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="NDIS-note-${row.id}-${fileDate}.pdf"`
+    );
+
+    const doc = new PDFDocument({
+      size: "A4",
+      margins: { top: 50, bottom: 50, left: 50, right: 50 },
+      info: {
+        Title: `NDIS Progress Note #${row.id}`,
+        Author: "NDIS AI Notes",
+      },
+    });
+
+    doc.pipe(res);
+
+    // Helpers
+    const labelValue = (label, value) => {
+      doc.font("Helvetica-Bold").text(`${label}: `, { continued: true });
+      doc.font("Helvetica").text(value || "-");
+    };
+
+    const section = (title, body) => {
+      doc.moveDown(0.6);
+      doc.font("Helvetica-Bold").fontSize(12).fillColor("#111827").text(title);
+      doc.moveDown(0.25);
+      doc.font("Helvetica").fontSize(11).fillColor("#111827").text(body || "-", {
+        align: "left",
+      });
+    };
+
+    const generated = new Date().toLocaleString("en-AU", {
+      timeZone: "Australia/Brisbane",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    // Header
+    doc.font("Helvetica-Bold").fontSize(18).fillColor("#111827").text("NDIS Progress Note");
+    doc.moveDown(0.2);
+    doc.font("Helvetica").fontSize(10).fillColor("#6b7280").text(`Generated: ${generated}`);
+
+    doc.moveDown(0.8);
+    doc.fontSize(11).fillColor("#111827");
+
+    labelValue("Organisation", row.organisation_name);
+    labelValue("Participant", row.participant_name);
+    labelValue("Worker", row.worker_name);
+
+    const shiftTime =
+      row.start_time && row.end_time ? `${row.start_time} – ${row.end_time}` : "-";
+    labelValue("Date", row.date ? String(row.date) : "-");
+    labelValue("Shift time", shiftTime);
+    labelValue("Location", row.location);
+
+    labelValue("Incident", row.incident_flag ? "Yes" : "No");
+    labelValue("Created", row.created_at ? String(row.created_at) : "-");
+
+    if (row.finalised_at) {
+      labelValue("Finalised", `${row.finalised_at}${row.finalised_by ? ` (by ${row.finalised_by})` : ""}`);
+    } else {
+      labelValue("Finalised", "No");
+    }
+
+    if (row.reviewed_flag) {
+      labelValue("Reviewed", `${row.reviewed_at || ""}${row.reviewed_by ? ` (by ${row.reviewed_by})` : ""}`.trim() || "Yes");
+    } else {
+      labelValue("Reviewed", "No");
+    }
+
+    // Divider
+    doc.moveDown(0.8);
+    doc.strokeColor("#e5e7eb").lineWidth(1).moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+
+    
+    // Final note (preferred)
+    section("Final note", (row.final_note_text || row.note_text || "").toString());
+
+    doc.end();
+  } catch (err) {
+    console.error("Error generating PDF:", err.message);
+    return res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+
+// POST /api/notes/:id/archive
+// Body: { archivedFlag: boolean, archivedBy?: string }
+router.post("/notes/:id/archive", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: "Invalid note id" });
+    }
+
+    if (req.user.role === "OWNER") {
+      return res.status(403).json({ error: "Owners cannot access notes API" });
+    }
+
+    const archivedFlag = !!req.body.archivedFlag;
+
+    const archivedBy =
+      (req.body.archivedBy && req.body.archivedBy.toString().trim()) ||
+      (req.user.fullName || "");
+
+    // Must exist in org (+ if WORKER, must be their own note)
+    let sqlCheck = `
+      SELECT id
       FROM progress_notes
       WHERE id = $1
         AND organisation_id = $2
@@ -581,40 +752,46 @@ router.get("/notes/:id/pdf", async (req, res) => {
     let idx = 3;
 
     if (req.user.role === "WORKER") {
-      sql += ` AND worker_user_id = $${idx++}`;
+      sqlCheck += ` AND worker_user_id = $${idx++}`;
       params.push(req.user.id);
     }
 
-    const { rows } = await query(sql, params);
-    const row = rows[0];
-    if (!row) {
+    const { rows: exists } = await query(sqlCheck, params);
+    if (!exists[0]) {
       return res.status(404).json({ error: "Note not found" });
     }
 
-    const text = (row.final_note_text || row.note_text || "").toString();
+    const nowIso = new Date().toISOString();
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="note-${row.id}.pdf"`
+    const { rows } = await query(
+      `
+      UPDATE progress_notes
+      SET
+        archived_flag = $1,
+        archived_at   = $2,
+        archived_by   = $3
+      WHERE id = $4
+        AND organisation_id = $5
+      RETURNING archived_flag, archived_at, archived_by
+      `,
+      [
+        archivedFlag,
+        archivedFlag ? nowIso : null,
+        archivedFlag ? archivedBy : null,
+        id,
+        req.user.organisationId,
+      ]
     );
 
-    const doc = new PDFDocument({
-      size: "A4",
-      margins: { top: 50, bottom: 50, left: 50, right: 50 },
+    return res.json({
+      ok: true,
+      archivedFlag: rows[0].archived_flag,
+      archivedAt: rows[0].archived_at,
+      archivedBy: rows[0].archived_by,
     });
-
-    doc.pipe(res);
-
-    doc.fontSize(12).text(text, {
-      width: 495,
-      align: "left",
-    });
-
-    doc.end();
   } catch (err) {
-    console.error("Error generating PDF:", err.message);
-    return res.status(500).json({ error: "Failed to generate PDF" });
+    console.error("Error archiving note:", err.message);
+    return res.status(500).json({ error: "Failed to update archive state" });
   }
 });
 

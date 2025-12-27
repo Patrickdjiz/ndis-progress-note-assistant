@@ -57,6 +57,14 @@ ALTER TABLE users
   ADD COLUMN password_changed_at TIMESTAMPTZ,
   ADD COLUMN reset_token_hash TEXT,
   ADD COLUMN reset_token_expires_at TIMESTAMPTZ;
+  
+ALTER TABLE progress_notes
+  ADD COLUMN IF NOT EXISTS archived_flag BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS archived_by TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_notes_org_archived ON progress_notes (organisation_id, archived_flag);
+
 
 -- Helpful indexes
 CREATE INDEX idx_users_org ON users (organisation_id);

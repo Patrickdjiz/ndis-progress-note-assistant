@@ -80,6 +80,7 @@ const orgStatusSchema = z.object({
 const notesQuerySchema = z.object({
   participant: z.string().trim().max(255).optional(),
   hasIncident: z.enum(["true", "false", "all"]).optional(),
+  archived: z.enum(["all", "true", "false"]).optional(),
 });
 
 const updateProfileSchema = z.object({

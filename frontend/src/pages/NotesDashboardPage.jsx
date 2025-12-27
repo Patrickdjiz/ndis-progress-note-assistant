@@ -1,6 +1,7 @@
 // src/pages/NotesDashboardPage.jsx
 import { useEffect, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { apiFetch, apiFetchBlob } from "../lib/api";
+import { fmtShiftDate, fmtDateTime } from "../lib/dateFormat";
 
 const PRIMARY = "#111827";
 
@@ -11,6 +12,7 @@ function NotesDashboardPage({ token, user }) {
 
   const [filterParticipant, setFilterParticipant] = useState("");
   const [filterIncident, setFilterIncident] = useState("all"); // all | true | false
+  const [archiving, setArchiving] = useState(false);
 
   const [selectedNote, setSelectedNote] = useState(null);
 
@@ -19,6 +21,14 @@ function NotesDashboardPage({ token, user }) {
   const [reviewerName, setReviewerName] = useState(user?.fullName || "");
 
   const [errorMsg, setErrorMsg] = useState("");
+
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const safeFile = (s) =>
+  String(s || "")
+    .trim()
+    .replace(/[^\w\-]+/g, "_")
+    .slice(0, 80);
+
 
   // ---------- Load notes list ----------
   const fetchNotes = async () => {
@@ -29,6 +39,9 @@ function NotesDashboardPage({ token, user }) {
     const params = new URLSearchParams();
     if (filterParticipant.trim()) params.append("participant", filterParticipant.trim());
     if (filterIncident !== "all") params.append("hasIncident", filterIncident);
+
+    if (filterArchived !== "all") params.append("archived", filterArchived);
+    else params.append("archived", "all");
 
     const path =
       "/api/notes" + (params.toString() ? `?${params.toString()}` : "");
@@ -179,6 +192,78 @@ function NotesDashboardPage({ token, user }) {
     </span>
   );
 
+  // ---------- savePDF ----------
+  const handleDownloadPdf = async () => {
+  try {
+    setErrorMsg("");
+    if (!selectedNote) {
+      setErrorMsg("No note selected.");
+      return;
+    }
+
+    setDownloadingPdf(true);
+
+    const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `NDIS_Note_${safeFile(selectedNote.date)}_${safeFile(
+      selectedNote.participantName
+    )}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    setErrorMsg(e?.message || "Failed to download PDF.");
+  } finally {
+    setDownloadingPdf(false);
+  }
+};
+
+const handleToggleArchive = async () => {
+  try {
+    setErrorMsg("");
+    if (!selectedNote) return;
+
+    setArchiving(true);
+    const next = !selectedNote.archivedFlag;
+
+    const data = await apiFetch(`/api/notes/${selectedNote.id}/archive`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        archivedFlag: next,
+        archivedBy: reviewerName || undefined,
+      }),
+    });
+
+    setSelectedNote((prev) =>
+      prev
+        ? {
+            ...prev,
+            archivedFlag: data.archivedFlag,
+            archivedAt: data.archivedAt,
+            archivedBy: data.archivedBy,
+          }
+        : prev
+    );
+
+    fetchNotes();
+  } catch (e) {
+    setErrorMsg(e?.message || "Failed to update archive state.");
+  } finally {
+    setArchiving(false);
+  }
+};
+
+
   return (
     <section>
       <div style={{ marginBottom: "0.75rem" }}>
@@ -266,6 +351,21 @@ function NotesDashboardPage({ token, user }) {
             <option value="false">Notes without incidents</option>
           </select>
         </div>
+        <div>
+          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, color: "#374151", marginBottom: "0.2rem" }}>
+            Archived
+          </label>
+          <select
+            value={filterArchived}
+            onChange={(e) => setFilterArchived(e.target.value)}
+            style={{ padding: "0.45rem 0.6rem", borderRadius: "0.5rem", border: "1px solid #d1d5db", fontSize: "0.85rem" }}
+          >
+            <option value="false">Hide archived</option>
+            <option value="true">Archived only</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+
 
         <button
           type="button"
@@ -398,7 +498,7 @@ function NotesDashboardPage({ token, user }) {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {n.date}
+                        {fmtShiftDate(n.date)}
                       </td>
                       <td
                         style={{
@@ -457,6 +557,8 @@ function NotesDashboardPage({ token, user }) {
                             bg: "#fef3c7",
                             color: "#92400e",
                           })}
+                          {!!n.archivedFlag &&
+                            badge("Archived", { bg: "#f3f4f6", color: "#111827" })}
                       </td>
                     </tr>
                   );
@@ -510,7 +612,7 @@ function NotesDashboardPage({ token, user }) {
                 <br />
                 <strong>Worker:</strong> {selectedNote.workerName}
                 <br />
-                <strong>Date:</strong> {selectedNote.date}{" "}
+                <strong>Date:</strong> {fmtShiftDate(selectedNote.date)}
                 {selectedNote.startTime && selectedNote.endTime
                   ? `(${selectedNote.startTime}–${selectedNote.endTime})`
                   : ""}
@@ -523,13 +625,13 @@ function NotesDashboardPage({ token, user }) {
                 <strong>Status:</strong>{" "}
                 {selectedNote.finalisedAt ? "Finalised" : "Draft"}
                 {selectedNote.finalisedAt && (
-                  <> (at {selectedNote.finalisedAt})</>
+                  <> (at {fmtDateTime(selectedNote.finalisedAt)})</>
                 )}
                 <br />
                 <strong>Reviewed:</strong>{" "}
                 {selectedNote.reviewedFlag ? "Yes" : "No"}
                 {selectedNote.reviewedAt && (
-                  <> (at {selectedNote.reviewedAt})</>
+                  <> (at {fmtDateTime(selectedNote.reviewedAt)})</>
                 )}
               </p>
 
@@ -617,7 +719,40 @@ function NotesDashboardPage({ token, user }) {
                 >
                   Save final note for this shift
                 </button>
-
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={downloadingPdf || !selectedNote}
+                  style={{
+                    padding: "0.45rem 0.95rem",
+                    borderRadius: "999px",
+                    border: "1px solid #e5e7eb",
+                    background: "#ffffff",
+                    color: PRIMARY,
+                    fontSize: "0.8rem",
+                    fontWeight: 600,
+                    cursor: downloadingPdf ? "wait" : "pointer",
+                  }}
+                >
+                  {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleArchive}
+                  disabled={archiving || !selectedNote}
+                  style={{
+                    padding: "0.45rem 0.95rem",
+                    borderRadius: "999px",
+                    border: "1px solid #e5e7eb",
+                    background: selectedNote?.archivedFlag ? "#111827" : "#ffffff",
+                    color: selectedNote?.archivedFlag ? "#ffffff" : PRIMARY,
+                    fontSize: "0.8rem",
+                    fontWeight: 600,
+                    cursor: archiving ? "wait" : "pointer",
+                  }}
+                >
+                  {archiving ? "Updating…" : selectedNote?.archivedFlag ? "Restore" : "Archive"}
+                </button>
                 <label
                   style={{
                     display: "inline-flex",
