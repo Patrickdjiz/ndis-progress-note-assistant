@@ -26,12 +26,14 @@ async function findUserByEmailWithOrg(email) {
       u.password_hash AS "passwordHash",
       u.role,
       u.full_name AS "fullName",
-      u.is_active AS "isActive",
       u.organisation_id AS "organisationId",
+      u.is_active AS "isActive",
+      u.must_change_password AS "mustChangePassword",
       o.status AS "orgStatus"
     FROM users u
-    JOIN organisations o ON u.organisation_id = o.id
-    WHERE lower(u.email) = lower($1)
+    JOIN organisations o ON o.id = u.organisation_id
+    WHERE u.email = $1
+    LIMIT 1
   `;
   const { rows } = await query(sql, [email]);
   return rows[0] || null;
@@ -78,8 +80,6 @@ async function getOrgUsersForAdmin(orgId, adminId) {
  * Returns a normalised user object.
  */
 async function createWorkerUser({ orgId, email, fullName, passwordHash }) {
-  const nowIso = new Date().toISOString();
-
   const sql = `
     INSERT INTO users (
       organisation_id,
@@ -88,28 +88,23 @@ async function createWorkerUser({ orgId, email, fullName, passwordHash }) {
       role,
       full_name,
       is_active,
-      created_at
+      must_change_password
     )
-    VALUES ($1, $2, $3, 'WORKER', $4, TRUE, $5)
+    VALUES ($1, $2, $3, 'WORKER', $4, TRUE, TRUE)
     RETURNING
       id,
       email,
       full_name AS "fullName",
       role,
       is_active AS "isActive",
+      must_change_password AS "mustChangePassword",
       created_at AS "createdAt"
   `;
 
-  const { rows } = await query(sql, [
-    orgId,
-    email,
-    passwordHash,
-    fullName,
-    nowIso,
-  ]);
-
+  const { rows } = await query(sql, [orgId, email, passwordHash, fullName]);
   return rows[0];
 }
+
 
 /**
  * Find a user by id + organisation (used before toggling status).

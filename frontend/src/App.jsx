@@ -1,12 +1,14 @@
 // src/App.jsx
 import { useEffect, useState } from "react";
-import { NavLink, Routes, Route, Navigate } from "react-router-dom";
+import { NavLink, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import GenerateNotePage from "./pages/GenerateNotePage.jsx";
 import NotesDashboardPage from "./pages/NotesDashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import UsersAdminPage from "./pages/UsersAdminPage.jsx";
 import OwnerConsolePage from "./pages/OwnerConsolePage.jsx";
 import MyNotesPage from "./pages/MyNotesPage.jsx";
+import AccountPage from "./pages/AccountPage.jsx";
+
 
 const PRIMARY = "#111827";      // same as login button
 const PRIMARY_TEXT = "#f9fafb";
@@ -58,6 +60,16 @@ const [logoutMsg, setLogoutMsg] = useState("");
     localStorage.removeItem("ndisAuth");
   };
 
+  const patchAuthUser = (patch) => {
+  setAuth((prev) => {
+    if (!prev) return prev;
+    const next = { ...prev, user: { ...prev.user, ...patch } };
+    localStorage.setItem("ndisAuth", JSON.stringify(next));
+    return next;
+  });
+};
+
+
   // --------- Logged out: show centred login card ----------
   if (!auth) {
     return (
@@ -93,6 +105,13 @@ const [logoutMsg, setLogoutMsg] = useState("");
 
   // --------- Logged in layout ----------
   const { user, token } = auth;
+
+  const location = useLocation();
+
+  if (user?.mustChangePassword && location.pathname !== "/account") {
+    return <Navigate to="/account" replace />;
+  }
+
 
   const linkStyle = ({ isActive }) => ({
     padding: "0.4rem 0.9rem",
@@ -219,6 +238,10 @@ const [logoutMsg, setLogoutMsg] = useState("");
                   Owner console
                 </NavLink>
               )}
+              {/* All users: Account page */}
+              <NavLink to="/account" style={linkStyle}>
+                Account
+              </NavLink>
             </nav>
 
             <button
@@ -276,10 +299,13 @@ const [logoutMsg, setLogoutMsg] = useState("");
                   />
                 </>
               )}
-
               <Route path="*" element={<Navigate to="/" replace />} />
             </>
           )}
+          <Route
+            path="/account"
+            element={<AccountPage token={token} user={user} onAuthUserPatch={patchAuthUser} />}
+          />
         </Routes>
       </div>
     </div>

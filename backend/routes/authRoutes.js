@@ -68,6 +68,7 @@ router.post("/login", async (req, res) => {
         role: row.role,
         fullName: row.fullName,
         organisationId: row.organisationId,
+        mustChangePassword: !!row.mustChangePassword,
       },
     });
   } catch (err) {

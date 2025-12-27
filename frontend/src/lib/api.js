@@ -1,27 +1,29 @@
-// src/lib/api.js
 export const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export async function apiFetch(path, options = {}) {
-  const url = /^https?:\/\//i.test(path) ? path : `${API_BASE_URL}${path}`;
+  const res = await fetch(`${API_BASE_URL}${path}`, options);
 
-  const res = await fetch(url, options);
-
-  // Try read JSON if possible
   let data = null;
-  try {
-    data = await res.clone().json();
-  } catch {
-    // ignore (non-JSON response)
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
   }
 
-  // ✅ 401 global hook
+  // ✅ token expiry / unauthorized handling
   if (res.status === 401) {
-    const msg =
-      (data && (data.error || data.message)) ||
-      "Session expired. Please log in again.";
     window.dispatchEvent(
-      new CustomEvent("ndis:unauthorized", { detail: { message: msg } })
+      new CustomEvent("ndis:unauthorized", {
+        detail: {
+          message:
+            (data && (data.error || data.message)) ||
+            "Session expired. Please log in again.",
+        },
+      })
     );
   }
 
@@ -35,5 +37,6 @@ export async function apiFetch(path, options = {}) {
     throw err;
   }
 
+  // Return parsed JSON or null
   return data;
 }

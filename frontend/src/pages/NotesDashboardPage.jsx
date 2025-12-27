@@ -22,34 +22,33 @@ function NotesDashboardPage({ token, user }) {
 
   // ---------- Load notes list ----------
   const fetchNotes = async () => {
-    try {
-      setNotesLoading(true);
-      setNotesError("");
+  try {
+    setNotesLoading(true);
+    setNotesError("");
 
-      const params = new URLSearchParams();
-      if (filterParticipant.trim()) params.append("participant", filterParticipant.trim());
-      if (filterIncident !== "all") params.append("hasIncident", filterIncident);
+    const params = new URLSearchParams();
+    if (filterParticipant.trim()) params.append("participant", filterParticipant.trim());
+    if (filterIncident !== "all") params.append("hasIncident", filterIncident);
 
-      const path =
-        "/api/notes" + (params.toString() ? `?${params.toString()}` : "");
+    const path =
+      "/api/notes" + (params.toString() ? `?${params.toString()}` : "");
 
-      const data = await apiFetch(path, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+    const data = await apiFetch(path, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-      setNotes(Array.isArray(data.notes) ? data.notes : []);
-      setSelectedNote(null);
-      setFinalNoteEditText("");
-      setFinalSaveMsg("");
-    } catch (err) {
-      console.error("Error loading notes:", err);
-      setNotesError(err?.message || "Failed to load notes");
-    } finally {
-      setNotesLoading(false);
-    }
-  };
+    setNotes(Array.isArray(data.notes) ? data.notes : []);
+    setSelectedNote(null);
+    setFinalNoteEditText("");
+    setFinalSaveMsg("");
+  } catch (err) {
+    console.error("Error loading notes:", err);
+    setNotesError(err?.message || "Failed to load notes");
+  } finally {
+    setNotesLoading(false);
+  }
+};
+
 
   useEffect(() => {
     fetchNotes();
@@ -58,30 +57,27 @@ function NotesDashboardPage({ token, user }) {
 
   // ---------- Select a note ----------
   const handleSelectNote = async (id) => {
-    try {
-      setNotesError("");
-      setSelectedNote(null);
-      setFinalNoteEditText("");
-      setFinalSaveMsg("");
-      setErrorMsg("");
+  try {
+    setNotesError("");
+    setSelectedNote(null);
+    setFinalNoteEditText("");
+    setFinalSaveMsg("");
+    setErrorMsg("");
 
-      const data = await apiFetch(`/api/notes/${id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+    const data = await apiFetch(`/api/notes/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-      setSelectedNote(data.note);
-      setFinalNoteEditText(
-        data.note.finalNoteText && data.note.finalNoteText.trim().length > 0
-          ? data.note.finalNoteText
-          : data.note.noteText
-      );
-    } catch (err) {
-      console.error("Error fetching note:", err);
-      setNotesError(err?.message || "Failed to fetch note");
-    }
-  };
+    setSelectedNote(data.note);
+    setFinalNoteEditText(
+      data.note.finalNoteText ? data.note.finalNoteText : data.note.noteText
+    );
+  } catch (err) {
+    console.error("Error fetching note:", err);
+    setNotesError(err?.message || "Failed to fetch note");
+  }
+};
+
 
   // ---------- Save final note ----------
   const handleSaveFinalNoteForSelected = async () => {
@@ -99,31 +95,29 @@ function NotesDashboardPage({ token, user }) {
       }
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/finalise`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          finalNoteText: finalNoteEditText,
-          reviewerName: reviewerName || undefined,
-        }),
-      });
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        finalNoteText: finalNoteEditText,
+        reviewerName: reviewerName || undefined,
+      }),
+    });
 
-      setFinalSaveMsg("Final note saved for this shift.");
-
-      setSelectedNote((prev) =>
-        prev
-          ? {
-              ...prev,
-              finalNoteText: data.finalNoteText,
-              finalisedAt: data.finalisedAt,
-              finalisedBy: data.finalisedBy,
-            }
-          : prev
-      );
-
-      fetchNotes();
+    setFinalSaveMsg("Final note saved for this shift.");
+    setSelectedNote((prev) =>
+      prev
+        ? {
+            ...prev,
+            finalNoteText: data.finalNoteText,
+            finalisedAt: data.finalisedAt,
+            finalisedBy: data.finalisedBy,
+          }
+        : prev
+    );
+    fetchNotes();
     } catch (err) {
       console.error("Error saving final note:", err);
       setErrorMsg(err?.message || "Failed to save final note");
@@ -139,32 +133,29 @@ function NotesDashboardPage({ token, user }) {
         return;
       }
 
-      const newFlag = !selectedNote.reviewedFlag;
-
       const data = await apiFetch(`/api/notes/${selectedNote.id}/review`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          reviewedFlag: newFlag,
-          reviewerName: reviewerName || undefined,
-        }),
-      });
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        reviewedFlag: !selectedNote.reviewedFlag,
+        reviewerName: reviewerName || undefined,
+      }),
+    });
 
-      setSelectedNote((prev) =>
-        prev
-          ? {
-              ...prev,
-              reviewedFlag: data.reviewedFlag,
-              reviewedAt: data.reviewedAt,
-              reviewedBy: data.reviewedBy,
-            }
-          : prev
-      );
-
-      fetchNotes();
+    setSelectedNote((prev) =>
+      prev
+        ? {
+            ...prev,
+            reviewedFlag: data.reviewedFlag,
+            reviewedAt: data.reviewedAt,
+            reviewedBy: data.reviewedBy,
+          }
+        : prev
+    );
+    fetchNotes();
     } catch (err) {
       console.error("Error updating review status:", err);
       setErrorMsg(err?.message || "Failed to update review status");

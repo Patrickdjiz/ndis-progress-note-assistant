@@ -52,6 +52,12 @@ CREATE TABLE progress_notes (
   reviewed_by TEXT
 );
 
+ALTER TABLE users
+  ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN password_changed_at TIMESTAMPTZ,
+  ADD COLUMN reset_token_hash TEXT,
+  ADD COLUMN reset_token_expires_at TIMESTAMPTZ;
+
 -- Helpful indexes
 CREATE INDEX idx_users_org ON users (organisation_id);
 CREATE INDEX idx_notes_org_created ON progress_notes (organisation_id, created_at DESC);
