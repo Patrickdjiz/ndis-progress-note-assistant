@@ -25,7 +25,7 @@ export default function ForgotPasswordPage() {
 
       // In DEV you can return a resetLink to speed testing
       setMsg(data?.message || "If that email exists, a reset link has been sent.");
-      if (data?.resetLink) setMsg(`DEV reset link: ${data.resetLink}`);
+      if (data?.resetLink) setMsg(data?.message || "If that email exists, a reset link has been sent.");
     } catch (e2) {
       setErr(e2?.message || "Failed to request reset.");
     } finally {

@@ -93,6 +93,15 @@ const updatePasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
+const forgotPasswordSchema = z.object({
+  email: emailSchema,
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(20, "Invalid reset token"),
+  newPassword: passwordSchema,
+});
+
 
 module.exports = {
   loginSchema,
@@ -104,4 +113,6 @@ module.exports = {
   notesQuerySchema,
   updateProfileSchema,
   updatePasswordSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 };

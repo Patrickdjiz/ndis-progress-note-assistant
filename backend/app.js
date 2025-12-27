@@ -13,6 +13,7 @@ const userRoutes = require("./routes/userRoutes");
 const ownerRoutes = require("./routes/ownerRoutes");
 const notesRoutes = require("./routes/notesRoutes");
 const accountRoutes = require("./routes/accountRoutes");
+const passwordResetRoutes = require("./routes/passwordResetRoutes");
 
 const app = express();
 
@@ -93,6 +94,8 @@ app.use("/api/users", userRoutes);
 app.use("/api/owner", ownerRoutes);
 app.use("/api", notesRoutes);
 app.use("/api", accountRoutes);
+app.use("/api/auth", passwordResetRoutes);
+
 
 // -----------------------
 // 404 handler

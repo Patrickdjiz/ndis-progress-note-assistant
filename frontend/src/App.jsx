@@ -9,6 +9,7 @@ import OwnerConsolePage from "./pages/OwnerConsolePage.jsx";
 import MyNotesPage from "./pages/MyNotesPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
+import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
 
 const PRIMARY = "#111827";
 const PRIMARY_TEXT = "#f9fafb";
@@ -94,11 +95,9 @@ function App() {
           )}
 
           <Routes>
-            <Route
-              path="/"
-              element={<LoginPage onLoginSuccess={handleLoginSuccess} />}
-            />
+            <Route path="/" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
