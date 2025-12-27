@@ -8,7 +8,7 @@ import UsersAdminPage from "./pages/UsersAdminPage.jsx";
 import OwnerConsolePage from "./pages/OwnerConsolePage.jsx";
 import MyNotesPage from "./pages/MyNotesPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
-
+import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 
 const PRIMARY = "#111827";      // same as login button
 const PRIMARY_TEXT = "#f9fafb";

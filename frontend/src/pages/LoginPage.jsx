@@ -1,4 +1,6 @@
+// LoginPage.jsx
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
 function LoginPage({ onLoginSuccess }) {
@@ -71,13 +73,7 @@ function LoginPage({ onLoginSuccess }) {
 
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: "0.75rem" }}>
         <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: "0.8rem",
-              marginBottom: "0.25rem",
-            }}
-          >
+          <label style={{ display: "block", fontSize: "0.8rem", marginBottom: "0.25rem" }}>
             Email
           </label>
           <input
@@ -96,13 +92,7 @@ function LoginPage({ onLoginSuccess }) {
         </div>
 
         <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: "0.8rem",
-              marginBottom: "0.25rem",
-            }}
-          >
+          <label style={{ display: "block", fontSize: "0.8rem", marginBottom: "0.25rem" }}>
             Password
           </label>
           <input
@@ -118,29 +108,32 @@ function LoginPage({ onLoginSuccess }) {
             type="password"
             autoComplete="current-password"
           />
+
+          {/* NEW */}
+          <div style={{ marginTop: "0.35rem", textAlign: "right" }}>
+            <Link
+              to="/forgot-password"
+              style={{
+                fontSize: "0.78rem",
+                color: "#2563eb",
+                textDecoration: "none",
+              }}
+            >
+              Forgot password?
+            </Link>
+          </div>
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          style={{
-            marginTop: "0.5rem",
-            width: "100%",
-            justifyContent: "center",
-          }}
+          style={{ marginTop: "0.5rem", width: "100%", justifyContent: "center" }}
         >
           {loading ? "Logging in..." : "Login"}
         </button>
       </form>
 
-      <p
-        style={{
-          marginTop: "0.9rem",
-          fontSize: "0.75rem",
-          color: "#6b7280",
-          textAlign: "center",
-        }}
-      >
+      <p style={{ marginTop: "0.9rem", fontSize: "0.75rem", color: "#6b7280", textAlign: "center" }}>
         Use dev demo: admin@demo.local / demo1234
       </p>
     </div>
