@@ -13,6 +13,8 @@ function NotesDashboardPage({ token, user }) {
   const [filterParticipant, setFilterParticipant] = useState("");
   const [filterIncident, setFilterIncident] = useState("all"); // all | true | false
   const [archiving, setArchiving] = useState(false);
+  const [filterArchived, setFilterArchived] = useState("false");
+
 
   const [selectedNote, setSelectedNote] = useState(null);
 
@@ -29,7 +31,7 @@ function NotesDashboardPage({ token, user }) {
     .replace(/[^\w\-]+/g, "_")
     .slice(0, 80);
 
-
+    
   // ---------- Load notes list ----------
   const fetchNotes = async () => {
   try {
