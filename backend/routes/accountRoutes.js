@@ -1,7 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const { query } = require("../dbAdapter");
-const requireAuth = require("../middleware/requireAuth"); // adjust path/name to your project
+const requireAuth = require("../authMiddleware"); // adjust path/name to your project
 
 const router = express.Router();
 
