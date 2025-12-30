@@ -107,6 +107,7 @@ router.get("/notes", async (req, res) => {
     // add to your parsed query (see validation note below)
     const limit = parsed.data.limit ?? 50;
     const cursor = parsed.data.cursor; // base64 "createdAt|id"
+    const take = limit + 1;
 
     // cursor filter
     if (cursor) {
@@ -134,13 +135,16 @@ router.get("/notes", async (req, res) => {
 
 
     const { rows } = await query(sql, params);
-    const notes = rows.map(normaliseNoteRow);
+
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+
+    const notes = pageRows.map(normaliseNoteRow);
 
     let nextCursor = null;
-    if (rows.length === limit) {
-      const last = rows[rows.length - 1];
-      const lastCreatedAt =
-        last.created_at instanceof Date ? last.created_at.toISOString() : String(last.created_at);
+    if (hasMore) {
+      const last = pageRows[pageRows.length - 1];
+      const lastCreatedAt = last.created_at instanceof Date ? last.created_at.toISOString() : String(last.created_at);
       nextCursor = Buffer.from(`${lastCreatedAt}|${last.id}`, "utf8").toString("base64");
     }
 
