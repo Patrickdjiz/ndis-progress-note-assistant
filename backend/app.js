@@ -35,9 +35,11 @@ if (NODE_ENV !== "production") {
 // CORS – only allow known frontend origin
 const allowedOrigins = new Set([
   FRONTEND_ORIGIN,
+  "https://www.ndisnotes.com",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
 ]);
+
 
 app.use(
   cors({
