@@ -33,7 +33,7 @@ function buildTransportFromEnv() {
   });
 }
 
-// POST /api/auth/forgot-password
+// POST /api/forgot-password
 router.post("/forgot-password", async (req, res) => {
   try {
     const parsed = forgotPasswordSchema.safeParse(req.body);
@@ -104,7 +104,7 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
-// POST /api/auth/reset-password
+// POST /api/reset-password
 router.post("/reset-password", async (req, res) => {
   try {
     const parsed = resetPasswordSchema.safeParse(req.body);
