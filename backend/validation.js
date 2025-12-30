@@ -77,10 +77,17 @@ const orgStatusSchema = z.object({
 });
 
 // Minimal query validation for /api/notes
-const notesQuerySchema = z.object({
-  participant: z.string().trim().max(255).optional(),
-  hasIncident: z.enum(["true", "false", "all"]).optional(),
-  archived: z.enum(["all", "true", "false"]).optional(),
+export const notesQuerySchema = z.object({
+  participant: z.string().optional(),
+  hasIncident: z.enum(["true", "false"]).optional(),
+  archived: z.enum(["true", "false", "all"]).optional(),
+
+  limit: z.preprocess(
+    (v) => (v === undefined ? undefined : Number(v)),
+    z.number().int().min(1).max(200)
+  ).optional(),
+
+  cursor: z.string().optional(),
 });
 
 const updateProfileSchema = z.object({

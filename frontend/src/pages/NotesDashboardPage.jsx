@@ -376,7 +376,7 @@ const handleToggleArchive = async () => {
 
         <button
           type="button"
-          onClick={fetchNotes}
+          onClick={() => fetchNotes()}
           disabled={notesLoading}
           style={{
             padding: "0.5rem 1.2rem",
@@ -432,7 +432,7 @@ const handleToggleArchive = async () => {
             }}
           >
             <span style={{ fontWeight: 600, color: PRIMARY }}>
-              “Recent notes” + “Showing {notes.length}”
+              Recent notes — showing {notes.length}
             </span>
             <span style={{ color: "#9ca3af", fontSize: "0.75rem" }}>
               Click a row to review

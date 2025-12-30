@@ -62,6 +62,8 @@ router.get("/notes", async (req, res) => {
       participant: req.query.participant,
       hasIncident: req.query.hasIncident,
       archived: req.query.archived,
+      limit: req.query.limit,
+      cursor: req.query.cursor,
     });
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
