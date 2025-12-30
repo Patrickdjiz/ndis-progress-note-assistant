@@ -85,8 +85,9 @@ router.post("/forgot-password", async (req, res) => {
     const from = process.env.SMTP_FROM || "no-reply@ndis-ai-notes.local";
 
     if (!transport) {
-      // Dev fallback: log the link
-      console.log("PASSWORD RESET LINK (dev):", resetLink);
+      if (process.env.NODE_ENV !== "production") {
+        console.log("PASSWORD RESET LINK (dev):", resetLink);
+      }
       return res.json(okResponse);
     }
 
