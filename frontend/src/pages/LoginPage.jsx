@@ -132,10 +132,6 @@ function LoginPage({ onLoginSuccess }) {
           {loading ? "Logging in..." : "Login"}
         </button>
       </form>
-
-      <p style={{ marginTop: "0.9rem", fontSize: "0.75rem", color: "#6b7280", textAlign: "center" }}>
-        Use dev demo: admin@demo.local / demo1234
-      </p>
     </div>
   );
 }
