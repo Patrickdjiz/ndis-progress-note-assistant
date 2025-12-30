@@ -102,11 +102,47 @@ router.get("/notes", async (req, res) => {
       sql += " AND archived_flag = FALSE";
     }
 
-    sql += " ORDER BY created_at DESC LIMIT 50";
+    // add to your parsed query (see validation note below)
+    const limit = parsed.data.limit ?? 50;
+    const cursor = parsed.data.cursor; // base64 "createdAt|id"
+
+    // cursor filter
+    if (cursor) {
+      let decoded = "";
+      try {
+        decoded = Buffer.from(cursor, "base64").toString("utf8");
+      } catch {
+        return res.status(400).json({ error: "Invalid cursor" });
+      }
+
+      const [createdAtStr, idStr] = decoded.split("|");
+      const cursorCreatedAt = new Date(createdAtStr);
+      const cursorId = Number(idStr);
+
+      if (!createdAtStr || !Number.isInteger(cursorId) || Number.isNaN(cursorCreatedAt.getTime())) {
+        return res.status(400).json({ error: "Invalid cursor" });
+      }
+
+      sql += ` AND (created_at, id) < ($${idx++}, $${idx++})`;
+      params.push(cursorCreatedAt.toISOString(), cursorId);
+    }
+
+    sql += ` ORDER BY created_at DESC, id DESC LIMIT $${idx++}`;
+    params.push(limit);
+
 
     const { rows } = await query(sql, params);
     const notes = rows.map(normaliseNoteRow);
-    return res.json({ notes });
+
+    let nextCursor = null;
+    if (rows.length === limit) {
+      const last = rows[rows.length - 1];
+      const lastCreatedAt =
+        last.created_at instanceof Date ? last.created_at.toISOString() : String(last.created_at);
+      nextCursor = Buffer.from(`${lastCreatedAt}|${last.id}`, "utf8").toString("base64");
+    }
+
+    return res.json({ notes, nextCursor });
   } catch (err) {
     console.error("Error listing notes:", err.message);
     return res.status(500).json({ error: "Failed to list notes" });

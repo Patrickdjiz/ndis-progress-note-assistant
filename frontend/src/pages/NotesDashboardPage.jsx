@@ -22,6 +22,9 @@ function NotesDashboardPage({ token, user }) {
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
   const [reviewerName, setReviewerName] = useState(user?.fullName || "");
 
+  const [nextCursor, setNextCursor] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const [errorMsg, setErrorMsg] = useState("");
 
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -33,36 +36,38 @@ function NotesDashboardPage({ token, user }) {
 
     
   // ---------- Load notes list ----------
-  const fetchNotes = async () => {
+  const fetchNotes = async ({ append = false, cursor = null } = {}) => {
   try {
-    setNotesLoading(true);
+    append ? setLoadingMore(true) : setNotesLoading(true);
     setNotesError("");
 
     const params = new URLSearchParams();
     if (filterParticipant.trim()) params.append("participant", filterParticipant.trim());
     if (filterIncident !== "all") params.append("hasIncident", filterIncident);
+    params.append("archived", filterArchived);
+    params.append("limit", "50");
+    if (cursor) params.append("cursor", cursor);
 
-    if (filterArchived !== "all") params.append("archived", filterArchived);
-    else params.append("archived", "all");
-
-    const path =
-      "/api/notes" + (params.toString() ? `?${params.toString()}` : "");
-
-    const data = await apiFetch(path, {
+    const data = await apiFetch(`/api/notes?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    setNotes(Array.isArray(data.notes) ? data.notes : []);
-    setSelectedNote(null);
-    setFinalNoteEditText("");
-    setFinalSaveMsg("");
+    const incoming = Array.isArray(data.notes) ? data.notes : [];
+    setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
+    setNextCursor(data.nextCursor || null);
+
+    if (!append) {
+      setSelectedNote(null);
+      setFinalNoteEditText("");
+      setFinalSaveMsg("");
+    }
   } catch (err) {
-    console.error("Error loading notes:", err);
     setNotesError(err?.message || "Failed to load notes");
   } finally {
-    setNotesLoading(false);
+    append ? setLoadingMore(false) : setNotesLoading(false);
   }
 };
+
 
 
   useEffect(() => {
@@ -427,7 +432,7 @@ const handleToggleArchive = async () => {
             }}
           >
             <span style={{ fontWeight: 600, color: PRIMARY }}>
-              Recent notes (max 50)
+              “Recent notes” + “Showing {notes.length}”
             </span>
             <span style={{ color: "#9ca3af", fontSize: "0.75rem" }}>
               Click a row to review
@@ -568,6 +573,27 @@ const handleToggleArchive = async () => {
               </tbody>
             </table>
           </div>
+          {nextCursor && (
+            <div style={{ padding: "0.6rem 0.8rem", borderTop: "1px solid #e5e7eb" }}>
+              <button
+                type="button"
+                onClick={() => fetchNotes({ append: true, cursor: nextCursor })}
+                disabled={loadingMore}
+                style={{
+                  padding: "0.45rem 0.95rem",
+                  borderRadius: "999px",
+                  border: "1px solid #e5e7eb",
+                  background: "#ffffff",
+                  color: PRIMARY,
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  cursor: loadingMore ? "wait" : "pointer",
+                }}
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Selected note details card */}
