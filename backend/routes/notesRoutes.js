@@ -127,7 +127,7 @@ router.get("/notes", async (req, res) => {
       }
 
       sql += ` AND (created_at, id) < ($${idx++}, $${idx++})`;
-      params.push(cursorCreatedAt.toISOString(), cursorId);
+      params.push(cursorCreatedAt, cursorId);
     }
 
     sql += ` ORDER BY created_at DESC, id DESC LIMIT $${idx++}`;

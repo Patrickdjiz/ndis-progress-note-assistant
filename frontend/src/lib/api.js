@@ -1,15 +1,18 @@
+// src/lib/api.js
 export const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-export async function apiFetch(path, options = {}) {
-  const res = await fetch(`${API_BASE_URL}${path}`, options);
-
-  let data = null;
+async function parseJsonSafe(res) {
   const contentType = res.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
-    try { data = await res.json(); } catch { data = null; }
+  if (!contentType.includes("application/json")) return null;
+  try {
+    return await res.json();
+  } catch {
+    return null;
   }
+}
 
+function maybeDispatchUnauthorized(res, options, data) {
   const authHeader =
     options?.headers &&
     (options.headers.Authorization || options.headers.authorization);
@@ -17,13 +20,25 @@ export async function apiFetch(path, options = {}) {
   if (res.status === 401 && authHeader) {
     window.dispatchEvent(
       new CustomEvent("ndis:unauthorized", {
-        detail: { message: (data && (data.error || data.message)) || "Session expired. Please log in again." },
+        detail: {
+          message:
+            (data && (data.error || data.message)) ||
+            "Session expired. Please log in again.",
+        },
       })
     );
   }
+}
+
+export async function apiFetch(path, options = {}) {
+  const res = await fetch(`${API_BASE_URL}${path}`, options);
+  const data = await parseJsonSafe(res);
+
+  maybeDispatchUnauthorized(res, options, data);
 
   if (!res.ok) {
-    const msg = (data && (data.error || data.message)) || `Request failed (${res.status})`;
+    const msg =
+      (data && (data.error || data.message)) || `Request failed (${res.status})`;
     const err = new Error(msg);
     err.status = res.status;
     err.data = data;
@@ -33,25 +48,16 @@ export async function apiFetch(path, options = {}) {
   return data;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
-
 export async function apiFetchBlob(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-  });
+  const res = await fetch(`${API_BASE_URL}${path}`, options);
+
+  // try json error first
+  const data = await parseJsonSafe(res);
+  maybeDispatchUnauthorized(res, options, data);
 
   if (!res.ok) {
-    // try to read JSON error
-    let msg = `Request failed (${res.status})`;
-    try {
-      const data = await res.json();
-      msg = data?.error || data?.message || msg;
-    } catch {
-      try {
-        const txt = await res.text();
-        if (txt) msg = txt;
-      } catch {}
-    }
+    const msg =
+      (data && (data.error || data.message)) || `Request failed (${res.status})`;
     throw new Error(msg);
   }
 

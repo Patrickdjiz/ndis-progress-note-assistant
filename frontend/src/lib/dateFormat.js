@@ -1,5 +1,5 @@
 // src/lib/dateFormat.js
-export const TZ = "Australia/Brisbane";
+export const TZ = "Australia/Sydney";
 
 // For shift dates stored as YYYY-MM-DD (Postgres DATE)
 export const fmtShiftDate = (yyyyMmDd) => {

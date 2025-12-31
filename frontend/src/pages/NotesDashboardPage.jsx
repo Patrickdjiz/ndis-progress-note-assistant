@@ -75,6 +75,14 @@ function NotesDashboardPage({ token, user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    setNextCursor(null);
+    setSelectedNote(null);
+    setFinalNoteEditText("");
+    setFinalSaveMsg("");
+    // optional: setNotes([]); // only if you want the table to clear immediately
+  }, [filterParticipant, filterIncident, filterArchived]);
+
   // ---------- Select a note ----------
   const handleSelectNote = async (id) => {
   try {

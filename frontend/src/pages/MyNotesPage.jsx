@@ -17,6 +17,10 @@ function MyNotesPage({ token, user }) {
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
   const [savingFinal, setSavingFinal] = useState(false);
 
+  const [nextCursor, setNextCursor] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const safeFile = (s) =>
   String(s || "")
@@ -24,28 +28,37 @@ function MyNotesPage({ token, user }) {
     .replace(/[^\w\-]+/g, "_")
     .slice(0, 80);
 
-  // ---------- Load list of notes ----------
-  const fetchNotes = async () => {
+  // ---------- Load list of notes (cursor pagination) ----------
+  const fetchNotes = async ({ append = false, cursor = null } = {}) => {
     try {
-      setLoadingList(true);
+      append ? setLoadingMore(true) : setLoadingList(true);
       setErrorMsg("");
-      setSelectedNote(null);
-      setFinalNoteEditText("");
-      setFinalSaveMsg("");
-      setDetailError("");
 
-      const data = await apiFetch("/api/notes", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      // Only reset selection/editor when doing a full refresh (not "load more")
+      if (!append) {
+        setSelectedNote(null);
+        setFinalNoteEditText("");
+        setFinalSaveMsg("");
+        setDetailError("");
+        setNextCursor(null); // hide old cursor if this refresh fails
+      }
+
+      const params = new URLSearchParams();
+      params.append("limit", "50");
+      if (cursor) params.append("cursor", cursor);
+
+      const data = await apiFetch(`/api/notes?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      setNotes(Array.isArray(data.notes) ? data.notes : []);
+      const incoming = Array.isArray(data.notes) ? data.notes : [];
+      setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
+      setNextCursor(data.nextCursor || null);
     } catch (err) {
       console.error("Error loading my notes:", err);
       setErrorMsg(err?.message || "Failed to load notes");
     } finally {
-      setLoadingList(false);
+      append ? setLoadingMore(false) : setLoadingList(false);
     }
   };
 
@@ -222,7 +235,7 @@ function MyNotesPage({ token, user }) {
         </span>
         <button
           type="button"
-          onClick={fetchNotes}
+          onClick={() => fetchNotes()}
           disabled={loadingList}
           style={{
             padding: "0.45rem 1.1rem",
@@ -375,6 +388,27 @@ function MyNotesPage({ token, user }) {
               );
             })}
           </div>
+          {nextCursor && (
+            <div style={{ marginTop: "0.6rem" }}>
+              <button
+                type="button"
+                onClick={() => fetchNotes({ append: true, cursor: nextCursor })}
+                disabled={loadingMore}
+                style={{
+                  padding: "0.45rem 0.95rem",
+                  borderRadius: "999px",
+                  border: "1px solid #e5e7eb",
+                  background: "#ffffff",
+                  color: PRIMARY,
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  cursor: loadingMore ? "wait" : "pointer",
+                }}
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Note details + finalise */}
