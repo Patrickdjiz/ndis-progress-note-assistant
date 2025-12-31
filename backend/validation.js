@@ -10,7 +10,7 @@ const emailSchema = z
 
 const passwordSchema = z
   .string()
-  .min(8, "Password must be at least 8 characters")
+  .min(10, "Password must be at least 10 characters")
   .max(200);
 
 const nonEmptyString = (fieldName, max = 1000) =>
@@ -48,7 +48,6 @@ const generateNoteSchema = z.object({
   goalsWorkedOn: nonEmptyString("goalsWorkedOn", 4000),
   incidentsOrRisks: nonEmptyString("incidentsOrRisks", 4000),
   followUpActions: nonEmptyString("followUpActions", 4000),
-  workerName: nonEmptyString("workerName", 200),
   incidentOccurred: z.boolean(),
 });
 
@@ -77,18 +76,17 @@ const orgStatusSchema = z.object({
 });
 
 // Minimal query validation for /api/notes
-export const notesQuerySchema = z.object({
+const notesQuerySchema = z.object({
   participant: z.string().optional(),
   hasIncident: z.enum(["true", "false"]).optional(),
   archived: z.enum(["true", "false", "all"]).optional(),
-
   limit: z.preprocess(
     (v) => (v === undefined ? undefined : Number(v)),
     z.number().int().min(1).max(200)
   ).optional(),
-
   cursor: z.string().optional(),
 });
+
 
 const updateProfileSchema = z.object({
   fullName: nonEmptyString("fullName", 200).optional(),

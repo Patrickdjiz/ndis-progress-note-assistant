@@ -7,31 +7,6 @@ const { updateUserProfile, query } = require("../dbAdapter"); // updateUserProfi
 
 const router = express.Router();
 
-// GET /api/me
-router.get("/me", requireAuth, async (req, res) => {
-  try {
-    const { rows } = await query(
-      `
-      SELECT
-        id,
-        email,
-        role,
-        full_name AS "fullName",
-        organisation_id AS "organisationId",
-        must_change_password AS "mustChangePassword"
-      FROM users
-      WHERE id = $1
-      `,
-      [req.user.id]
-    );
-
-    if (!rows[0]) return res.status(404).json({ error: "User not found" });
-    return res.json({ user: rows[0] });
-  } catch (err) {
-    console.error("GET /me error:", err);
-    return res.status(500).json({ error: "Failed to load profile" });
-  }
-});
 
 // POST /api/account/change-password
 router.post("/account/change-password", requireAuth, async (req, res) => {

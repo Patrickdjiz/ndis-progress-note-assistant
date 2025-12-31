@@ -131,7 +131,7 @@ router.get("/notes", async (req, res) => {
     }
 
     sql += ` ORDER BY created_at DESC, id DESC LIMIT $${idx++}`;
-    params.push(limit);
+    params.push(take);
 
 
     const { rows } = await query(sql, params);
