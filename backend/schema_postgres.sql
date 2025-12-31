@@ -72,3 +72,6 @@ CREATE INDEX idx_notes_org_created ON progress_notes (organisation_id, created_a
 CREATE INDEX idx_notes_org_worker ON progress_notes (organisation_id, worker_user_id);
 CREATE INDEX idx_notes_org_participant ON progress_notes (organisation_id, participant_name);
 CREATE INDEX idx_notes_org_incident ON progress_notes (organisation_id, incident_flag);
+CREATE INDEX IF NOT EXISTS idx_notes_org_created_id ON progress_notes (organisation_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_notes_org_worker_created_id ON progress_notes (organisation_id, worker_user_id, created_at DESC, id DESC);
+
