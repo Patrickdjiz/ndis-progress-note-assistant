@@ -254,6 +254,10 @@ CREATE INDEX idx_notes_org_worker ON public.progress_notes USING btree (organisa
 CREATE INDEX idx_users_org ON public.users USING btree (organisation_id);
 
 
+
+CREATE INDEX IF NOT EXISTS idx_notes_org_created_id ON progress_notes (organisation_id, created_at DESC, id DESC);
+
+
 --
 -- Name: progress_notes progress_notes_organisation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
