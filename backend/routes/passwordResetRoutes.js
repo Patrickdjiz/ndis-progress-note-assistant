@@ -3,7 +3,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 
-const { sendMail } = require("../lib/mailer");
+const { sendMail } = require("../mailer");
 
 const { query } = require("../dbAdapter");
 const { forgotPasswordSchema, resetPasswordSchema } = require("../validation");
