@@ -20,7 +20,7 @@ async function runpodChat({ messages, temperature = 0.2, max_tokens = 700 }) {
   const url = `${baseUrl}/chat/completions`;
 
   // Cold starts can be > 60s (you saw ~80s). Give it headroom.
-  const { signal, cancel } = withTimeout(180_000);
+  const { signal, cancel } = withTimeout(240_000);
 
   try {
     const resp = await fetch(url, {

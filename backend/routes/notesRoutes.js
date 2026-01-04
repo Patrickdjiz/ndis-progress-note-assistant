@@ -343,6 +343,9 @@ router.post("/notes/:id/finalise", async (req, res) => {
 
 // POST /api/generate-note  (org-scoped)
 router.post("/generate-note", async (req, res) => {
+  req.setTimeout(260_000);
+  res.setTimeout(260_000);
+
   try {
     if (req.user.role === "OWNER") {
       return res.status(403).json({ error: "Owners cannot generate notes" });
