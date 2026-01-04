@@ -1,12 +1,11 @@
 // routes/notesRoutes.js
 const express = require("express");
-const axios = require("axios");
+const { chatLLM } = require("../llmClient");
 
 const applyComplianceFilter = require("../compliance");
 const { timeToMinutes, parseYyyyMmDd, looksLikeJunk } = require("../utils");
 const { requireAuth } = require("../authMiddleware");
 const { generateNoteSchema, notesQuerySchema } = require("../validation");
-const { AI_BASE_URL, AI_MODEL } = require("../config/env");
 const { query } = require("../dbAdapter");
 const PDFDocument = require("pdfkit");
 
@@ -498,21 +497,92 @@ NO TITLES.
 NO INTRO LINES.
 `;
 
-    const baseUrl = AI_BASE_URL.replace(/\/+$/, "");
+    const systemPrompt = `
+    You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
 
-    const ollamaResponse = await axios.post(
-      `${baseUrl}/api/generate`,
-      {
-        model: AI_MODEL,
-        prompt,
-        stream: false,
-      },
-      {
-        timeout: 30_000, // 30s timeout so requests don't hang forever
-      }
-    );
+    You will receive structured information about ONE support shift. Your task is to write the BODY of an NDIS-style progress note ONLY (no headers).
 
-    let modelText = (ollamaResponse.data.response || "").trim();
+    If the information is vague, gibberish, placeholder text (e.g., “asd”, “test”, “n/a”, or extremely short responses that do not describe what happened), then:
+    - Do NOT generate a normal note.
+    - Instead, return exactly:
+      ERROR: Insufficient information. Please rewrite the following fields with real details.
+
+    Otherwise, generate a high-quality progress note BODY ONLY.
+
+    -----------------------------------------------------------
+    STYLE, FORMAT & SAFETY RULES
+    -----------------------------------------------------------
+
+    1) Write STRICTLY in third-person.
+      - Use “the support worker”, “the participant”, or their name.
+      - NEVER use “I”, “we”, “my”, “our”.
+
+    1a) The first sentence of the first paragraph MUST literally begin with:
+        "The support worker..."
+
+    2) Be FACTUAL and OBSERVABLE.
+      - Describe what occurred and what was observed.
+      - Do NOT infer thoughts, emotions, intentions, or internal states unless explicitly stated in the input.
+
+    3) ONLY use mood/affect words that appear in the raw input.
+    4) NDIS goal linkage must be FUNCTIONAL.
+    5) Incident documentation must be clear and neutral.
+    6) ALWAYS include a follow-up / next-shift paragraph at the end.
+    7) Do NOT write any introductory phrases.
+    8) NEVER restate date, shift time, or full location references inside the body.
+
+    -----------------------------------------------------------
+    REQUIRED OUTPUT STRUCTURE
+    -----------------------------------------------------------
+
+    Write 2–4 paragraphs in this order:
+    1) Supports Provided.
+    2) Participant Presentation.
+    3) Goals.
+    4) Incidents + Follow-up.
+
+    OUTPUT ONLY THE BODY TEXT.
+    NO HEADERS.
+    NO TITLES.
+    NO INTRO LINES.
+    `.trim();
+
+    const userPrompt = `
+    DATA PROVIDED:
+    Participant: ${participantName}
+    Date of Support: ${date}
+    Shift Time: ${shiftTime}
+    Location: ${safeLocation}
+
+    Raw input – Activities & Supports:
+    ${activitiesAndSupports}
+
+    Raw input – Participant Presentation (mood/behaviour/health/communication):
+    ${participantPresentation}
+
+    Raw input – Goals Worked On:
+    ${goalsWorkedOn}
+
+    Raw input – Incidents, Risks, Changes:
+    ${incidentsOrRisks}
+
+    Raw input – Follow-up / Next Steps:
+    ${followUpActions}
+
+    Support worker: ${workerName}
+    `.trim();
+
+    const { text: modelOut } = await chatLLM({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.2,
+      max_tokens: 900,
+    });
+
+    let modelText = (modelOut || "").trim();
+
 
     if (modelText.startsWith("ERROR:")) {
       return res.status(400).json({ error: modelText });
@@ -593,11 +663,7 @@ NO INTRO LINES.
 
     return res.json({ note: fullNote, id: newId });
   } catch (error) {
-    console.error("Error generating note:", {
-      message: error.message,
-      stack: error.stack,
-      axios: error.response?.data,
-    });
+    console.error("Error generating note:", error?.message || error);
 
     return res.status(500).json({
       error:
