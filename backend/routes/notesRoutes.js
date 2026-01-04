@@ -578,7 +578,7 @@ NO INTRO LINES.
         { role: "user", content: userPrompt },
       ],
       temperature: 0.2,
-      max_tokens: 900,
+      max_tokens: 700,
     });
 
     let modelText = (modelOut || "").trim();
