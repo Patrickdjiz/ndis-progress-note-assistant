@@ -18,6 +18,22 @@ function clip(s, max = 1500) {
   return str.length > max ? str.slice(0, max) + "…" : str;
 }
 
+function tidyModelText(s) {
+  let t = String(s || "").trim();
+
+  // Fix "The support worker, provided..." at start of note OR start of a paragraph
+  // (avoid removing comma when followed by "who/which/that")
+  t = t.replace(/(^|\n\s*\n)\s*The support worker,\s+(?!who\b|which\b|that\b)/gi, "$1The support worker ");
+
+  // Fix lowercase "the support worker" at start, after blank lines, or after sentence endings
+  t = t.replace(/(^|\n\s*\n|[.!?]\s+)\s*the support worker\b/gi, "$1The support worker");
+
+  // Clean double spaces
+  t = t.replace(/[ \t]{2,}/g, " ");
+
+  return t.trim();
+}
+
 
 // Helper: normalise a Postgres note row to the old camelCase shape
 function normaliseNoteRow(row) {
@@ -506,7 +522,6 @@ router.post("/generate-note", async (req, res) => {
     Support worker: ${clip(workerName, 120)}
     `.trim();
 
-
     const { text: modelOut } = await chatLLM({
       messages: [
         { role: "system", content: systemPrompt },
@@ -516,18 +531,13 @@ router.post("/generate-note", async (req, res) => {
       max_tokens: 700,
     });
 
-    let modelText = (modelOut || "").trim();
-
+    let modelText = tidyModelText(modelOut);
 
     if (modelText.startsWith("ERROR:")) {
       return res.status(400).json({ error: modelText });
     }
 
-    const filteredBody = applyComplianceFilter(
-      modelText,
-      rawCombined,
-      workerName
-    );
+    const filteredBody = applyComplianceFilter(modelText, rawCombined, workerName);
 
     const header = [
       `Support Worker: ${workerName}`,
