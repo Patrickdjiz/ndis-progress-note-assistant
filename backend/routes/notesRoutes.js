@@ -34,6 +34,54 @@ function tidyModelText(s) {
   return t.trim();
 }
 
+//pdf generation helper
+const TZ = "Australia/Sydney";
+
+const fmtDateOnly = (v) => {
+  if (!v) return "-";
+
+  // If Postgres DATE comes back as "YYYY-MM-DD", format without timezone issues
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const [y, m, d] = v.split("-");
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${d} ${months[Number(m) - 1]} ${y}`;
+  }
+
+  const dt = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(dt.getTime())) return String(v);
+
+  return dt.toLocaleDateString("en-AU", {
+    timeZone: TZ,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const fmtDateTimeSydney = (v) => {
+  if (!v) return "-";
+  const dt = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(dt.getTime())) return String(v);
+
+  return dt.toLocaleString("en-AU", {
+    timeZone: TZ,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+const ymdForFilename = (v) => {
+  if (!v) return "note";
+  const s = String(v);
+  const m = s.match(/\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : "note";
+};
+
+
 
 // Helper: normalise a Postgres note row to the old camelCase shape
 function normaliseNoteRow(row) {
@@ -687,12 +735,12 @@ router.get("/notes/:id/pdf", async (req, res) => {
     }
 
     // Filename (safe-ish)
-    const fileDate = row.date ? String(row.date) : "note";
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="NDIS-note-${row.id}-${fileDate}.pdf"`
-    );
+    const fileDate = ymdForFilename(row.date);
+res.setHeader(
+  "Content-Disposition",
+  `attachment; filename="NDIS-note-${row.id}-${fileDate}.pdf"`
+);
+
 
     const doc = new PDFDocument({
       size: "A4",
@@ -721,14 +769,15 @@ router.get("/notes/:id/pdf", async (req, res) => {
     };
 
     const generated = new Date().toLocaleString("en-AU", {
-      timeZone: "Australia/Brisbane",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+  timeZone: TZ,
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
 
     // Header
     doc.font("Helvetica-Bold").fontSize(18).fillColor("#111827").text("NDIS Progress Note");
@@ -744,24 +793,29 @@ router.get("/notes/:id/pdf", async (req, res) => {
 
     const shiftTime =
       row.start_time && row.end_time ? `${row.start_time} – ${row.end_time}` : "-";
-    labelValue("Date", row.date ? String(row.date) : "-");
+    labelValue("Date", fmtDateOnly(row.date));
     labelValue("Shift time", shiftTime);
     labelValue("Location", row.location);
 
     labelValue("Incident", row.incident_flag ? "Yes" : "No");
-    labelValue("Created", row.created_at ? String(row.created_at) : "-");
+    labelValue("Created", fmtDateTimeSydney(row.created_at));
 
     if (row.finalised_at) {
-      labelValue("Finalised", `${row.finalised_at}${row.finalised_by ? ` (by ${row.finalised_by})` : ""}`);
-    } else {
-      labelValue("Finalised", "No");
-    }
+  labelValue(
+    "Finalised",
+    `${fmtDateTimeSydney(row.finalised_at)}${row.finalised_by ? ` (by ${row.finalised_by})` : ""}`
+  );
+} else {
+  labelValue("Finalised", "No");
+}
 
-    if (row.reviewed_flag) {
-      labelValue("Reviewed", `${row.reviewed_at || ""}${row.reviewed_by ? ` (by ${row.reviewed_by})` : ""}`.trim() || "Yes");
-    } else {
-      labelValue("Reviewed", "No");
-    }
+if (row.reviewed_flag) {
+  const reviewedText =
+    `${row.reviewed_at ? fmtDateTimeSydney(row.reviewed_at) : ""}${row.reviewed_by ? ` (by ${row.reviewed_by})` : ""}`.trim();
+  labelValue("Reviewed", reviewedText || "Yes");
+} else {
+  labelValue("Reviewed", "No");
+}
 
     // Divider
     doc.moveDown(0.8);

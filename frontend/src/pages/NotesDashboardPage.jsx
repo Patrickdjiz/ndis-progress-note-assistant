@@ -208,7 +208,15 @@ function NotesDashboardPage({ token, user }) {
   );
 
   // ---------- savePDF ----------
-  const handleDownloadPdf = async () => {
+  // inside NotesDashboardPage.jsx
+
+const fileDate = (d) => {
+  const s = String(d || "");
+  const m = s.match(/\d{4}-\d{2}-\d{2}/); // grabs 2026-01-04 even if it's ISO
+  return m ? m[0] : "date";
+};
+
+const handleDownloadPdf = async () => {
   try {
     setErrorMsg("");
     if (!selectedNote) {
@@ -225,9 +233,11 @@ function NotesDashboardPage({ token, user }) {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `NDIS_Note_${safeFile(selectedNote.date)}_${safeFile(
+
+    a.download = `NDIS_Note_${safeFile(fileDate(selectedNote.date))}_${safeFile(
       selectedNote.participantName
     )}.pdf`;
+
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -238,6 +248,7 @@ function NotesDashboardPage({ token, user }) {
     setDownloadingPdf(false);
   }
 };
+
 
 const handleToggleArchive = async () => {
   try {
