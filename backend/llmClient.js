@@ -7,7 +7,7 @@ function withTimeout(ms) {
   return { signal: ctrl.signal, cancel: () => clearTimeout(t) };
 }
 
-async function runpodChat({ messages, temperature = 0.2, max_tokens = 900 }) {
+async function runpodChat({ messages, temperature = 0.2, max_tokens = 700 }) {
   const endpointId = process.env.RUNPOD_ENDPOINT_ID;
   const apiKey = process.env.RUNPOD_API_KEY;
   const model = process.env.AI_MODEL;

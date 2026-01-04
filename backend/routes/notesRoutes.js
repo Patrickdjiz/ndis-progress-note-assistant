@@ -12,6 +12,13 @@ const PDFDocument = require("pdfkit");
 
 const router = express.Router();
 
+function clip(s, max = 1500) {
+  if (!s) return "";
+  const str = String(s);
+  return str.length > max ? str.slice(0, max) + "…" : str;
+}
+
+
 // Helper: normalise a Postgres note row to the old camelCase shape
 function normaliseNoteRow(row) {
   if (!row) return null;
@@ -423,79 +430,6 @@ router.post("/generate-note", async (req, res) => {
       " " +
       (followUpActions || "");
 
-    const prompt = `
-You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
-
-You will receive structured information about ONE support shift. Your task is to write the BODY of an NDIS-style progress note ONLY (no headers).
-
-If the information is vague, gibberish, placeholder text (e.g., “asd”, “test”, “n/a”, or extremely short responses that do not describe what happened), then:
-- Do NOT generate a normal note.
-- Instead, return exactly:
-  ERROR: Insufficient information. Please rewrite the following fields with real details.
-
-Otherwise, generate a high-quality progress note BODY ONLY.
-
-DATA PROVIDED:
-Participant: ${participantName}
-Date of Support: ${date}
-Shift Time: ${shiftTime}
-Location: ${safeLocation}
-
-Raw input – Activities & Supports:
-${activitiesAndSupports}
-
-Raw input – Participant Presentation (mood/behaviour/health/communication):
-${participantPresentation}
-
-Raw input – Goals Worked On:
-${goalsWorkedOn}
-
-Raw input – Incidents, Risks, Changes:
-${incidentsOrRisks}
-
-Raw input – Follow-up / Next Steps:
-${followUpActions}
-
-Support worker: ${workerName}
-
------------------------------------------------------------
-STYLE, FORMAT & SAFETY RULES
------------------------------------------------------------
-
-1) Write STRICTLY in third-person.
-   - Use “the support worker”, “the participant”, or their name.
-   - NEVER use “I”, “we”, “my”, “our”.
-
-1a) The first sentence of the first paragraph MUST literally begin with:
-    "The support worker..."
-
-2) Be FACTUAL and OBSERVABLE.
-   - Describe what occurred and what was observed.
-   - Do NOT infer thoughts, emotions, intentions, or internal states unless explicitly stated in the input.
-
-3) ONLY use mood/affect words that appear in the raw input.
-4) NDIS goal linkage must be FUNCTIONAL.
-5) Incident documentation must be clear and neutral.
-6) ALWAYS include a follow-up / next-shift paragraph at the end.
-7) Do NOT write any introductory phrases.
-8) NEVER restate date, shift time, or full location references inside the body.
-
------------------------------------------------------------
-REQUIRED OUTPUT STRUCTURE
------------------------------------------------------------
-
-Write 2–4 paragraphs in this order:
-
-1) Supports Provided.
-2) Participant Presentation.
-3) Goals.
-4) Incidents + Follow-up.
-
-OUTPUT ONLY THE BODY TEXT.
-NO HEADERS.
-NO TITLES.
-NO INTRO LINES.
-`;
 
     const systemPrompt = `
     You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
@@ -549,28 +483,29 @@ NO INTRO LINES.
 
     const userPrompt = `
     DATA PROVIDED:
-    Participant: ${participantName}
-    Date of Support: ${date}
-    Shift Time: ${shiftTime}
-    Location: ${safeLocation}
+    Participant: ${clip(participantName, 120)}
+    Date of Support: ${clip(date, 20)}
+    Shift Time: ${clip(shiftTime, 20)}
+    Location: ${clip(safeLocation, 120)}
 
     Raw input – Activities & Supports:
-    ${activitiesAndSupports}
+    ${clip(activitiesAndSupports, 2000)}
 
-    Raw input – Participant Presentation (mood/behaviour/health/communication):
-    ${participantPresentation}
+    Raw input – Participant Presentation:
+    ${clip(participantPresentation, 2000)}
 
     Raw input – Goals Worked On:
-    ${goalsWorkedOn}
+    ${clip(goalsWorkedOn, 2000)}
 
     Raw input – Incidents, Risks, Changes:
-    ${incidentsOrRisks}
+    ${clip(incidentsOrRisks, 2000)}
 
     Raw input – Follow-up / Next Steps:
-    ${followUpActions}
+    ${clip(followUpActions, 2000)}
 
-    Support worker: ${workerName}
+    Support worker: ${clip(workerName, 120)}
     `.trim();
+
 
     const { text: modelOut } = await chatLLM({
       messages: [

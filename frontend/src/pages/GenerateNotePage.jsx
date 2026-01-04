@@ -548,7 +548,7 @@ function GenerateNotePage({ token, user }) {
             disabled={loading}
             style={primaryButtonStyle}
           >
-            {loading ? "Generating note..." : "Generate note"}
+            {loading ? "Wait a few minutes..." : "Generate note"}
           </button>
           <button
             type="button"
