@@ -34,7 +34,14 @@ function NotesDashboardPage({ token, user }) {
     .replace(/[^\w\-]+/g, "_")
     .slice(0, 80);
 
-    
+  const ymdOnly = (v) => {
+  const s = String(v || "");
+  const m = s.match(/\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : "date";
+};
+
+  
+
   // ---------- Load notes list ----------
   const fetchNotes = async ({ append = false, cursor = null } = {}) => {
   try {
@@ -234,9 +241,9 @@ const handleDownloadPdf = async () => {
     const a = document.createElement("a");
     a.href = url;
 
-    a.download = `NDIS_Note_${safeFile(fileDate(selectedNote.date))}_${safeFile(
-      selectedNote.participantName
-    )}.pdf`;
+    a.download = `NDIS_Note_${ymdOnly(selectedNote.date)}_${safeFile(selectedNote.participantName)}.pdf`;
+
+
 
     document.body.appendChild(a);
     a.click();

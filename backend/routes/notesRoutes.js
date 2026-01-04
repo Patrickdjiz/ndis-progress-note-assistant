@@ -34,36 +34,31 @@ function tidyModelText(s) {
   return t.trim();
 }
 
-//pdf generation helper
-const TZ = "Australia/Sydney";
+// ---------------- PDF helpers ----------------
+const TZ = process.env.APP_TZ || "Australia/Sydney";
 
-const fmtDateOnly = (v) => {
-  if (!v) return "-";
-
-  // If Postgres DATE comes back as "YYYY-MM-DD", format without timezone issues
-  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
-    const [y, m, d] = v.split("-");
-    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    return `${d} ${months[Number(m) - 1]} ${y}`;
-  }
-
-  const dt = v instanceof Date ? v : new Date(v);
-  if (Number.isNaN(dt.getTime())) return String(v);
-
-  return dt.toLocaleDateString("en-AU", {
-    timeZone: TZ,
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+const ymdForFilename = (v) => {
+  if (!v) return "note";
+  const s = String(v);
+  const m = s.match(/\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : "note";
 };
 
-const fmtDateTimeSydney = (v) => {
-  if (!v) return "-";
-  const dt = v instanceof Date ? v : new Date(v);
-  if (Number.isNaN(dt.getTime())) return String(v);
+const hm = (t) => (t ? String(t).slice(0, 5) : ""); // "16:09:00" -> "16:09"
 
-  return dt.toLocaleString("en-AU", {
+const fmtDateOnly = (v) => {
+  const ymd = String(v || "").match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  if (!ymd) return "-";
+  const [y, m, d] = ymd.split("-");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${d} ${months[Number(m) - 1]} ${y}`;
+};
+
+const fmtDateTimeTz = (v) => {
+  if (!v) return "-";
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleString("en-AU", {
     timeZone: TZ,
     day: "2-digit",
     month: "short",
@@ -74,12 +69,26 @@ const fmtDateTimeSydney = (v) => {
   });
 };
 
-const ymdForFilename = (v) => {
-  if (!v) return "note";
-  const s = String(v);
-  const m = s.match(/\d{4}-\d{2}-\d{2}/);
-  return m ? m[0] : "note";
+const tzInfoForDate = (dateVal) => {
+  try {
+    // midday UTC avoids DST edge weirdness
+    const ymd = String(dateVal || "").match(/\d{4}-\d{2}-\d{2}/)?.[0];
+    const base = ymd ? new Date(`${ymd}T12:00:00.000Z`) : new Date();
+
+    const getTzPart = (timeZoneName) =>
+      new Intl.DateTimeFormat("en-AU", { timeZone: TZ, timeZoneName })
+        .formatToParts(base)
+        .find((p) => p.type === "timeZoneName")?.value;
+
+    const abbr = getTzPart("short") || TZ; // AEDT/AEST
+    const offset = (getTzPart("shortOffset") || "").replace(/^GMT/, "UTC"); // UTC+11
+
+    return { abbr, offset };
+  } catch {
+    return { abbr: TZ, offset: "" };
+  }
 };
+// ---------------- end PDF helpers ----------------
 
 
 
@@ -734,12 +743,13 @@ router.get("/notes/:id/pdf", async (req, res) => {
       return res.status(404).json({ error: "Note not found" });
     }
 
-    // Filename (safe-ish)
     const fileDate = ymdForFilename(row.date);
-res.setHeader(
-  "Content-Disposition",
-  `attachment; filename="NDIS-note-${row.id}-${fileDate}.pdf"`
-);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="NDIS-note-${row.id}-${fileDate}.pdf"`
+    );
 
 
     const doc = new PDFDocument({
@@ -768,21 +778,15 @@ res.setHeader(
       });
     };
 
-    const generated = new Date().toLocaleString("en-AU", {
-  timeZone: TZ,
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  hour12: true,
-});
+    const generated = fmtDateTimeTz(new Date());
+    const { abbr, offset } = tzInfoForDate(row.date);
 
-
-    // Header
+    // Header (print ONCE)
     doc.font("Helvetica-Bold").fontSize(18).fillColor("#111827").text("NDIS Progress Note");
     doc.moveDown(0.2);
     doc.font("Helvetica").fontSize(10).fillColor("#6b7280").text(`Generated: ${generated}`);
+    doc.font("Helvetica").fontSize(10).fillColor("#6b7280")
+      .text(`Times shown in ${TZ} (${abbr}${offset ? `, ${offset}` : ""})`);
 
     doc.moveDown(0.8);
     doc.fontSize(11).fillColor("#111827");
@@ -792,30 +796,30 @@ res.setHeader(
     labelValue("Worker", row.worker_name);
 
     const shiftTime =
-      row.start_time && row.end_time ? `${row.start_time} – ${row.end_time}` : "-";
+      row.start_time && row.end_time ? `${hm(row.start_time)}–${hm(row.end_time)}` : "-";
+
     labelValue("Date", fmtDateOnly(row.date));
     labelValue("Shift time", shiftTime);
     labelValue("Location", row.location);
 
     labelValue("Incident", row.incident_flag ? "Yes" : "No");
-    labelValue("Created", fmtDateTimeSydney(row.created_at));
+    labelValue("Created", fmtDateTimeTz(row.created_at));
 
     if (row.finalised_at) {
-  labelValue(
-    "Finalised",
-    `${fmtDateTimeSydney(row.finalised_at)}${row.finalised_by ? ` (by ${row.finalised_by})` : ""}`
-  );
-} else {
-  labelValue("Finalised", "No");
-}
+      labelValue("Finalised", `${fmtDateTimeTz(row.finalised_at)}${row.finalised_by ? ` (by ${row.finalised_by})` : ""}`);
+    } else {
+      labelValue("Finalised", "No");
+    }
 
-if (row.reviewed_flag) {
-  const reviewedText =
-    `${row.reviewed_at ? fmtDateTimeSydney(row.reviewed_at) : ""}${row.reviewed_by ? ` (by ${row.reviewed_by})` : ""}`.trim();
-  labelValue("Reviewed", reviewedText || "Yes");
-} else {
-  labelValue("Reviewed", "No");
-}
+    if (row.reviewed_flag) {
+      const reviewedText =
+        `${row.reviewed_at ? fmtDateTimeTz(row.reviewed_at) : ""}${row.reviewed_by ? ` (by ${row.reviewed_by})` : ""}`.trim();
+      labelValue("Reviewed", reviewedText || "Yes");
+    } else {
+      labelValue("Reviewed", "No");
+    }
+
+
 
     // Divider
     doc.moveDown(0.8);
