@@ -19,6 +19,7 @@ function LoginPage({ onLoginSuccess }) {
     e.preventDefault();
     setError("");
     setLoading(true);
+
     try {
       const data = await apiFetch("/api/login", {
         method: "POST",
@@ -26,7 +27,7 @@ function LoginPage({ onLoginSuccess }) {
         body: JSON.stringify({ email, password }),
       });
 
-      onLoginSuccess(data);
+      onLoginSuccess(data); // keep your existing flow
     } catch (err) {
       console.error("Login error:", err);
       setError(err.message || "Login failed");

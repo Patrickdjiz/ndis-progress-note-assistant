@@ -10,23 +10,24 @@ import MyNotesPage from "./pages/MyNotesPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
+import { sessionStore } from "./lib/sessionStore";
+import { getJwtExpMs } from "./lib/jwt";
+
 
 const PRIMARY = "#111827";
 const PRIMARY_TEXT = "#f9fafb";
 const MUTED_TEXT = "#4b5563";
+const IDLE_MS = 30 * 60 * 1000; // 30 minutes
 
 function App() {
   const location = useLocation(); // ✅ move here (hooks must not be conditional)
 
   const [auth, setAuth] = useState(() => {
-    try {
-      const stored = localStorage.getItem("ndisAuth");
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      localStorage.removeItem("ndisAuth");
-      return null;
-    }
+    const token = sessionStore.getToken();
+    const user = sessionStore.getUser();
+    return token && user ? { token, user } : null;
   });
+
 
   const [logoutMsg, setLogoutMsg] = useState("");
 
@@ -34,7 +35,7 @@ function App() {
     const handler = (e) => {
       const msg = e?.detail?.message || "Session expired. Please log in again.";
       setAuth(null);
-      localStorage.removeItem("ndisAuth");
+      sessionStore.clearAll();
       setLogoutMsg(msg);
     };
 
@@ -42,27 +43,85 @@ function App() {
     return () => window.removeEventListener("ndis:unauthorized", handler);
   }, []);
 
+
+  useEffect(() => {
+    if (!auth?.token) return;
+
+    let timer = null;
+
+    const reset = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        setAuth(null);
+        sessionStore.clearAll();
+        setLogoutMsg("You were logged out due to inactivity.");
+      }, IDLE_MS);
+    };
+
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+    events.forEach((ev) => window.addEventListener(ev, reset, { passive: true }));
+
+    reset(); // start timer immediately
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      events.forEach((ev) => window.removeEventListener(ev, reset));
+    };
+  }, [auth?.token]);
+
+
+  useEffect(() => {
+    if (!auth?.token) return;
+
+    const expMs = getJwtExpMs(auth.token);
+    if (!expMs) return;
+
+    const now = Date.now();
+    if (expMs <= now) {
+      setAuth(null);
+      sessionStore.clearAll();
+      setLogoutMsg("Session expired. Please log in again.");
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setAuth(null);
+      sessionStore.clearAll();
+      setLogoutMsg("Session expired. Please log in again.");
+    }, expMs - now);
+
+    return () => clearTimeout(timeoutId);
+  }, [auth?.token]);
+
+
+
   const handleLoginSuccess = (data) => {
     setLogoutMsg("");
     const authData = { token: data.token, user: data.user };
     setAuth(authData);
-    localStorage.setItem("ndisAuth", JSON.stringify(authData));
+
+    // ✅ tab-only persistence
+    sessionStore.setToken(data.token);
+    sessionStore.setUser(data.user);
   };
+
 
   const handleLogout = () => {
     setLogoutMsg("");
     setAuth(null);
-    localStorage.removeItem("ndisAuth");
+    sessionStore.clearAll();
   };
+
 
   const patchAuthUser = (patch) => {
     setAuth((prev) => {
       if (!prev) return prev;
       const next = { ...prev, user: { ...prev.user, ...patch } };
-      localStorage.setItem("ndisAuth", JSON.stringify(next));
+      sessionStore.setUser(next.user);
       return next;
     });
   };
+
 
   // ✅ Logged out routes (this is the key change)
   if (!auth) {

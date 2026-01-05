@@ -1,4 +1,5 @@
-// src/lib/api.js
+import { sessionStore } from "./sessionStore";
+
 export const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -12,12 +13,8 @@ async function parseJsonSafe(res) {
   }
 }
 
-function maybeDispatchUnauthorized(res, options, data) {
-  const authHeader =
-    options?.headers &&
-    (options.headers.Authorization || options.headers.authorization);
-
-  if (res.status === 401 && authHeader) {
+function maybeDispatchUnauthorized(res, hasAuth, data) {
+  if (res.status === 401 && hasAuth) {
     window.dispatchEvent(
       new CustomEvent("ndis:unauthorized", {
         detail: {
@@ -30,11 +27,30 @@ function maybeDispatchUnauthorized(res, options, data) {
   }
 }
 
+function withAuth(options = {}) {
+  const token = sessionStore.getToken();
+  const headers = new Headers(options.headers || {});
+
+  // If caller already provided Authorization, keep it.
+  const alreadyHasAuth = headers.has("Authorization") || headers.has("authorization");
+
+  if (token && !alreadyHasAuth) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  return {
+    options: { ...options, headers },
+    hasAuth: !!token || alreadyHasAuth,
+  };
+}
+
 export async function apiFetch(path, options = {}) {
-  const res = await fetch(`${API_BASE_URL}${path}`, options);
+  const { options: opts, hasAuth } = withAuth(options);
+
+  const res = await fetch(`${API_BASE_URL}${path}`, opts);
   const data = await parseJsonSafe(res);
 
-  maybeDispatchUnauthorized(res, options, data);
+  maybeDispatchUnauthorized(res, !!hasAuth, data);
 
   if (!res.ok) {
     const msg =
@@ -49,11 +65,12 @@ export async function apiFetch(path, options = {}) {
 }
 
 export async function apiFetchBlob(path, options = {}) {
-  const res = await fetch(`${API_BASE_URL}${path}`, options);
+  const { options: opts, hasAuth } = withAuth(options);
 
-  // try json error first
+  const res = await fetch(`${API_BASE_URL}${path}`, opts);
+
   const data = await parseJsonSafe(res);
-  maybeDispatchUnauthorized(res, options, data);
+  maybeDispatchUnauthorized(res, !!hasAuth, data);
 
   if (!res.ok) {
     const msg =
