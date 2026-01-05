@@ -303,17 +303,6 @@ const handleToggleArchive = async () => {
         <h2 style={{ margin: 0, fontSize: "1.15rem", color: PRIMARY }}>
           Saved notes
         </h2>
-        <p
-          style={{
-            fontSize: "0.85rem",
-            color: "#6b7280",
-            marginTop: "0.25rem",
-          }}
-        >
-          Review and finalise progress notes created by your team. This prototype
-          stores data locally (SQLite) – for production use you&apos;ll need
-          secure, Australian-hosted infrastructure and formal policies in place.
-        </p>
       </div>
 
       {/* Filters bar */}
