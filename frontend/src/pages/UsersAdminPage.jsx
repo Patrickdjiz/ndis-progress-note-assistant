@@ -5,8 +5,23 @@ import { apiFetch } from "../lib/api";
 function UsersAdminPage({ token, user }) {
   const PRIMARY = "#111827";
 
+  // ✅ UI-only: detect mobile so we can stack layouts + improve tap targets
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 760px)");
+    const apply = () => setIsMobile(!!mq.matches);
+    apply();
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else mq.addListener(apply);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", apply);
+      else mq.removeListener(apply);
+    };
+  }, []);
+
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(false);   // for fetching users
+  const [loading, setLoading] = useState(false); // for fetching users
   const [errorMsg, setErrorMsg] = useState("");
 
   // new user form
@@ -74,9 +89,7 @@ function UsersAdminPage({ token, user }) {
       setNewPassword("");
 
       const workerEmail = data?.user?.email || newEmail.trim();
-      setCreateMsg(
-        workerEmail ? `Worker ${workerEmail} created.` : "Worker created."
-      );
+      setCreateMsg(workerEmail ? `Worker ${workerEmail} created.` : "Worker created.");
 
       // reload from backend
       await fetchUsers();
@@ -92,22 +105,16 @@ function UsersAdminPage({ token, user }) {
     try {
       setErrorMsg("");
 
-      const data = await apiFetch(`/api/users/${id}/status`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ isActive: !isActive }),
-        }
-      );
+      const data = await apiFetch(`/api/users/${id}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive: !isActive }),
+      });
 
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === id ? { ...u, isActive: data.isActive } : u
-        )
-      );
+      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, isActive: data.isActive } : u)));
     } catch (err) {
       console.error("Error updating user status:", err);
       setErrorMsg(err?.message || "Failed to update user status");
@@ -136,8 +143,19 @@ function UsersAdminPage({ token, user }) {
     );
   };
 
+  // ✅ UI-only: slightly larger tap targets on mobile (no visual redesign)
+  const inputStyle = {
+    width: "100%",
+    padding: "0.5rem 0.55rem",
+    borderRadius: "0.6rem",
+    border: "1px solid #d1d5db",
+    fontSize: "0.9rem",
+    boxSizing: "border-box",
+    minHeight: isMobile ? 44 : undefined,
+  };
+
   return (
-    <section>
+    <section style={{ width: "100%", boxSizing: "border-box" }}>
       {/* Header */}
       <div style={{ marginBottom: "0.75rem" }}>
         <h2
@@ -154,15 +172,16 @@ function UsersAdminPage({ token, user }) {
             fontSize: "0.9rem",
             color: "#4b5563",
             marginTop: "0.25rem",
+            lineHeight: 1.45,
           }}
         >
-          As an {user.role}, you can invite workers to your organisation,
-          and deactivate accounts that are no longer in use.
+          As an {user.role}, you can invite workers to your organisation, and deactivate accounts that are no longer in
+          use.
         </p>
       </div>
 
       {errorMsg && (
-        <p style={{ color: "red", marginTop: "0.2rem", marginBottom: "0.4rem" }}>
+        <p style={{ color: "red", marginTop: "0.2rem", marginBottom: "0.4rem", wordBreak: "break-word" }}>
           {errorMsg}
         </p>
       )}
@@ -172,14 +191,16 @@ function UsersAdminPage({ token, user }) {
         onSubmit={handleCreateUser}
         style={{
           marginTop: "0.75rem",
-          padding: "0.9rem 1rem",
+          padding: isMobile ? "0.9rem" : "0.9rem 1rem",
           border: "1px solid #e5e7eb",
           borderRadius: "0.75rem",
           background: "#ffffff",
           display: "grid",
-          gridTemplateColumns: "1.2fr 1.4fr 1.1fr auto",
+          // ✅ Mobile: stack fields + full-width button
+          gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1.4fr 1.1fr auto",
           gap: "0.7rem",
           alignItems: "flex-end",
+          boxSizing: "border-box",
         }}
       >
         <div>
@@ -196,14 +217,9 @@ function UsersAdminPage({ token, user }) {
             type="text"
             value={newFullName}
             onChange={(e) => setNewFullName(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.5rem 0.55rem",
-              borderRadius: "0.6rem",
-              border: "1px solid #d1d5db",
-              fontSize: "0.9rem",
-            }}
+            style={inputStyle}
             placeholder="e.g. Fatima Khan"
+            autoComplete="name"
           />
         </div>
 
@@ -221,14 +237,10 @@ function UsersAdminPage({ token, user }) {
             type="email"
             value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.5rem 0.55rem",
-              borderRadius: "0.6rem",
-              border: "1px solid #d1d5db",
-              fontSize: "0.9rem",
-            }}
+            style={inputStyle}
             placeholder="e.g. worker@provider.com"
+            autoComplete="email"
+            inputMode="email"
           />
         </div>
 
@@ -246,14 +258,9 @@ function UsersAdminPage({ token, user }) {
             type="text"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.5rem 0.55rem",
-              borderRadius: "0.6rem",
-              border: "1px solid #d1d5db",
-              fontSize: "0.9rem",
-            }}
+            style={inputStyle}
             placeholder="e.g. send this to the worker"
+            autoComplete="new-password"
           />
         </div>
 
@@ -269,6 +276,9 @@ function UsersAdminPage({ token, user }) {
             color: "#f9fafb",
             fontSize: "0.9rem",
             fontWeight: 500,
+            // ✅ Mobile: button becomes easy to tap
+            minHeight: isMobile ? 44 : undefined,
+            width: isMobile ? "100%" : undefined,
           }}
           disabled={creating}
         >
@@ -282,6 +292,7 @@ function UsersAdminPage({ token, user }) {
             marginTop: "0.45rem",
             fontSize: "0.85rem",
             color: "#047857",
+            wordBreak: "break-word",
           }}
         >
           {createMsg}
@@ -310,12 +321,23 @@ function UsersAdminPage({ token, user }) {
         >
           Users in your organisation
         </div>
-        <div style={{ maxHeight: "380px", overflowY: "auto" }}>
+
+        {/* ✅ Mobile: allow horizontal swipe if needed (keeps the same table UI) */}
+        <div
+          style={{
+            maxHeight: "380px",
+            overflowY: "auto",
+            overflowX: isMobile ? "auto" : "hidden",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
           <table
             style={{
               width: "100%",
               borderCollapse: "collapse",
               fontSize: "0.9rem",
+              // keep columns readable on small screens, enable swipe
+              minWidth: isMobile ? 720 : undefined,
             }}
           >
             <thead>
@@ -342,32 +364,29 @@ function UsersAdminPage({ token, user }) {
                   </td>
                 </tr>
               )}
+
               {users.map((u) => {
                 const isCurrentUser = u.id === user.id;
                 return (
                   <tr key={u.id} style={{ background: "#ffffff" }}>
                     <td style={tdStyle}>{u.fullName}</td>
-                    <td style={tdStyle}>{u.email}</td>
+                    <td style={{ ...tdStyle, wordBreak: "break-word" }}>{u.email}</td>
                     <td
                       style={{
                         ...tdStyle,
                         fontWeight: u.role === "ADMIN" ? 600 : 400,
-                        color:
-                          u.role === "ADMIN" ? "#111827" : "#4b5563",
+                        color: u.role === "ADMIN" ? "#111827" : "#4b5563",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {u.role}
                     </td>
-                    <td style={tdStyle}>
-                      {statusBadge(u.isActive, isCurrentUser)}
-                    </td>
+                    <td style={tdStyle}>{statusBadge(u.isActive, isCurrentUser)}</td>
                     <td style={tdStyle}>
                       {!isCurrentUser && (
                         <button
                           type="button"
-                          onClick={() =>
-                            handleToggleActive(u.id, !!u.isActive)
-                          }
+                          onClick={() => handleToggleActive(u.id, !!u.isActive)}
                           style={{
                             padding: "0.3rem 0.8rem",
                             fontSize: "0.8rem",
@@ -377,6 +396,7 @@ function UsersAdminPage({ token, user }) {
                             background: "#f9fafb",
                             color: PRIMARY,
                             fontWeight: 500,
+                            minHeight: isMobile ? 40 : undefined,
                           }}
                         >
                           {u.isActive ? "Deactivate" : "Activate"}
@@ -386,6 +406,7 @@ function UsersAdminPage({ token, user }) {
                   </tr>
                 );
               })}
+
               {loading && (
                 <tr>
                   <td
@@ -414,6 +435,7 @@ const thStyle = {
   borderBottom: "1px solid #e5e7eb",
   fontWeight: 600,
   color: "#111827",
+  whiteSpace: "nowrap",
 };
 
 const tdStyle = {

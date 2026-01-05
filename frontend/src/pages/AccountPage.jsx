@@ -1,5 +1,5 @@
 // src/pages/AccountPage.jsx
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { apiFetch } from "../lib/api";
 
 const PRIMARY = "#111827";
@@ -20,20 +20,40 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
   const [pwErr, setPwErr] = useState("");
   const [savingPw, setSavingPw] = useState(false);
 
+  // ✅ UI-only: responsive helper (no business logic changes)
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 760px)");
+    const apply = () => setIsMobile(!!mq.matches);
+    apply();
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else mq.addListener(apply);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", apply);
+      else mq.removeListener(apply);
+    };
+  }, []);
+
   const cardStyle = {
     borderRadius: "0.75rem",
     border: "1px solid #e5e7eb",
     background: "#ffffff",
     padding: "0.9rem",
+    boxSizing: "border-box",
+    minWidth: 0,
   };
 
   const labelStyle = { fontSize: "0.85rem", color: "#374151" };
   const inputStyle = {
     width: "100%",
-    padding: "0.55rem",
+    padding: "0.6rem 0.7rem",
     borderRadius: "0.6rem",
     border: "1px solid #d1d5db",
     fontSize: "0.9rem",
+    boxSizing: "border-box",
+    // ✅ Mobile: better tap target without changing visuals
+    minHeight: isMobile ? 44 : undefined,
   };
 
   const roleLabel = useMemo(() => {
@@ -110,11 +130,35 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
     }
   };
 
+  const pillButton = (overrides = {}) => ({
+    marginTop: "0.25rem",
+    padding: "0.55rem 1.1rem",
+    borderRadius: "999px",
+    border: "none",
+    background: PRIMARY,
+    color: "#f9fafb",
+    cursor: "pointer",
+    width: "fit-content",
+    fontWeight: 600,
+    minHeight: isMobile ? 44 : undefined,
+    ...(isMobile ? { width: "100%" } : {}),
+    ...overrides,
+  });
+
   return (
-    <section style={{ maxWidth: 760 }}>
+    <section style={{ maxWidth: 760, width: "100%", boxSizing: "border-box" }}>
       <div style={{ marginBottom: "0.75rem" }}>
-        <h2 style={{ margin: 0, fontSize: "1.2rem", color: PRIMARY }}>Account</h2>
-        <p style={{ color: "#4b5563", marginTop: "0.25rem", marginBottom: 0 }}>
+        <h2 style={{ margin: 0, fontSize: "1.2rem", color: PRIMARY }}>
+          Account
+        </h2>
+        <p
+          style={{
+            color: "#4b5563",
+            marginTop: "0.25rem",
+            marginBottom: 0,
+            lineHeight: 1.45,
+          }}
+        >
           Manage your profile and security settings.
         </p>
       </div>
@@ -129,6 +173,8 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
             border: "1px solid #fde68a",
             color: "#92400e",
             fontSize: "0.9rem",
+            lineHeight: 1.45,
+            wordBreak: "break-word",
           }}
         >
           You must change your password before continuing.
@@ -138,27 +184,64 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
       <div style={{ display: "grid", gap: "1rem" }}>
         {/* Profile */}
         <div style={cardStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" }}>
-            <div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: "0.75rem",
+              flexWrap: "wrap",
+              alignItems: "flex-start",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, color: PRIMARY }}>Profile</div>
-              <div style={{ fontSize: "0.85rem", color: "#6b7280", marginTop: "0.15rem" }}>
+              <div
+                style={{
+                  fontSize: "0.85rem",
+                  color: "#6b7280",
+                  marginTop: "0.15rem",
+                  wordBreak: "break-word",
+                }}
+              >
                 Role: <strong>{roleLabel}</strong>
               </div>
             </div>
           </div>
 
-          {profileErr && <p style={{ color: "red", marginTop: "0.75rem" }}>{profileErr}</p>}
-          {profileMsg && <p style={{ color: "#047857", marginTop: "0.75rem" }}>{profileMsg}</p>}
+          {profileErr && (
+            <p style={{ color: "red", marginTop: "0.75rem", wordBreak: "break-word" }}>
+              {profileErr}
+            </p>
+          )}
+          {profileMsg && (
+            <p style={{ color: "#047857", marginTop: "0.75rem", wordBreak: "break-word" }}>
+              {profileMsg}
+            </p>
+          )}
 
-          <form onSubmit={saveProfile} style={{ marginTop: "0.8rem", display: "grid", gap: "0.65rem" }}>
+          <form
+            onSubmit={saveProfile}
+            style={{ marginTop: "0.8rem", display: "grid", gap: "0.65rem" }}
+          >
             <div>
               <label style={labelStyle}>Full name</label>
-              <input value={fullName} onChange={(e) => setFullName(e.target.value)} style={inputStyle} />
+              <input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                style={inputStyle}
+                autoComplete="name"
+              />
             </div>
 
             <div>
               <label style={labelStyle}>Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={inputStyle}
+                autoComplete="email"
+              />
               <div style={{ fontSize: "0.78rem", color: "#6b7280", marginTop: "0.35rem" }}>
                 This email is used for login and password reset.
               </div>
@@ -167,17 +250,10 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
             <button
               type="submit"
               disabled={savingProfile}
-              style={{
-                marginTop: "0.25rem",
-                padding: "0.55rem 1.1rem",
-                borderRadius: "999px",
-                border: "none",
-                background: PRIMARY,
-                color: "#f9fafb",
+              style={pillButton({
                 cursor: savingProfile ? "wait" : "pointer",
-                width: "fit-content",
-                fontWeight: 600,
-              }}
+                opacity: savingProfile ? 0.9 : 1,
+              })}
             >
               {savingProfile ? "Saving…" : "Save changes"}
             </button>
@@ -187,14 +263,32 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
         {/* Security */}
         <div style={cardStyle}>
           <div style={{ fontWeight: 700, color: PRIMARY }}>Security</div>
-          <div style={{ fontSize: "0.85rem", color: "#6b7280", marginTop: "0.15rem" }}>
+          <div
+            style={{
+              fontSize: "0.85rem",
+              color: "#6b7280",
+              marginTop: "0.15rem",
+              lineHeight: 1.45,
+            }}
+          >
             Change your password regularly and keep it strong.
           </div>
 
-          {pwErr && <p style={{ color: "red", marginTop: "0.75rem" }}>{pwErr}</p>}
-          {pwMsg && <p style={{ color: "#047857", marginTop: "0.75rem" }}>{pwMsg}</p>}
+          {pwErr && (
+            <p style={{ color: "red", marginTop: "0.75rem", wordBreak: "break-word" }}>
+              {pwErr}
+            </p>
+          )}
+          {pwMsg && (
+            <p style={{ color: "#047857", marginTop: "0.75rem", wordBreak: "break-word" }}>
+              {pwMsg}
+            </p>
+          )}
 
-          <form onSubmit={changePassword} style={{ marginTop: "0.8rem", display: "grid", gap: "0.65rem" }}>
+          <form
+            onSubmit={changePassword}
+            style={{ marginTop: "0.8rem", display: "grid", gap: "0.65rem" }}
+          >
             <div>
               <label style={labelStyle}>Current password</label>
               <input
@@ -202,6 +296,7 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 style={inputStyle}
+                autoComplete="current-password"
               />
             </div>
 
@@ -212,6 +307,7 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 style={inputStyle}
+                autoComplete="new-password"
               />
               <div style={{ fontSize: "0.78rem", color: "#6b7280", marginTop: "0.35rem" }}>
                 Minimum 8 characters.
@@ -220,23 +316,22 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
 
             <div>
               <label style={labelStyle}>Confirm new password</label>
-              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} style={inputStyle} />
+              <input
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                style={inputStyle}
+                autoComplete="new-password"
+              />
             </div>
 
             <button
               type="submit"
               disabled={savingPw}
-              style={{
-                marginTop: "0.25rem",
-                padding: "0.55rem 1.1rem",
-                borderRadius: "999px",
-                border: "none",
-                background: PRIMARY,
-                color: "#f9fafb",
+              style={pillButton({
                 cursor: savingPw ? "wait" : "pointer",
-                width: "fit-content",
-                fontWeight: 600,
-              }}
+                opacity: savingPw ? 0.9 : 1,
+              })}
             >
               {savingPw ? "Saving…" : "Update password"}
             </button>

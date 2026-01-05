@@ -1,5 +1,5 @@
 // LoginPage.jsx
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
@@ -8,6 +8,12 @@ function LoginPage({ onLoginSuccess }) {
   const [password, setPassword] = useState(import.meta.env.DEV ? "demo1234" : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // ✅ Purely UI: detect small screens so we can adjust padding/width without changing desktop look
+  const isMobile = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia && window.matchMedia("(max-width: 480px)").matches;
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,12 +39,16 @@ function LoginPage({ onLoginSuccess }) {
     <div
       style={{
         width: "100%",
-        maxWidth: 380,
+        // ✅ Mobile: allow it to expand nearly full width with comfortable side padding
+        maxWidth: isMobile ? "100%" : 380,
         background: "#ffffff",
-        padding: "1.75rem 1.5rem",
+        // ✅ Mobile: slightly reduce padding so it fits without feeling cramped
+        padding: isMobile ? "1.25rem 1rem" : "1.75rem 1.5rem",
         borderRadius: "0.75rem",
         boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
         border: "1px solid #e5e7eb",
+        // ✅ Mobile usability: ensure it never overflows horizontally
+        boxSizing: "border-box",
       }}
     >
       <h2 style={{ margin: 0, marginBottom: "0.25rem", fontSize: "1.25rem" }}>
@@ -50,6 +60,8 @@ function LoginPage({ onLoginSuccess }) {
           marginBottom: "1.25rem",
           fontSize: "0.85rem",
           color: "#6b7280",
+          // ✅ Mobile: avoid awkward line breaks / overflow
+          lineHeight: 1.35,
         }}
       >
         Sign in to access your organisation&apos;s shift notes assistant.
@@ -65,6 +77,8 @@ function LoginPage({ onLoginSuccess }) {
             padding: "0.35rem 0.6rem",
             marginBottom: "0.75rem",
             fontSize: "0.85rem",
+            // ✅ Mobile: long error messages wrap nicely
+            wordBreak: "break-word",
           }}
         >
           {error}
@@ -79,15 +93,19 @@ function LoginPage({ onLoginSuccess }) {
           <input
             style={{
               width: "100%",
-              padding: "0.45rem 0.5rem",
+              padding: isMobile ? "0.65rem 0.65rem" : "0.45rem 0.5rem",
               borderRadius: "0.5rem",
               border: "1px solid #d1d5db",
               fontSize: "0.9rem",
+              // ✅ Mobile: prevent iOS zoom / improve tap target without changing desktop look
+              minHeight: isMobile ? 44 : undefined,
+              boxSizing: "border-box",
             }}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
             autoComplete="email"
+            inputMode="email"
           />
         </div>
 
@@ -98,10 +116,12 @@ function LoginPage({ onLoginSuccess }) {
           <input
             style={{
               width: "100%",
-              padding: "0.45rem 0.5rem",
+              padding: isMobile ? "0.65rem 0.65rem" : "0.45rem 0.5rem",
               borderRadius: "0.5rem",
               border: "1px solid #d1d5db",
               fontSize: "0.9rem",
+              minHeight: isMobile ? 44 : undefined,
+              boxSizing: "border-box",
             }}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -117,6 +137,9 @@ function LoginPage({ onLoginSuccess }) {
                 fontSize: "0.78rem",
                 color: "#2563eb",
                 textDecoration: "none",
+                // ✅ Mobile: slightly larger tap area without changing visual styling
+                display: "inline-block",
+                padding: isMobile ? "0.35rem 0" : 0,
               }}
             >
               Forgot password?
@@ -127,7 +150,13 @@ function LoginPage({ onLoginSuccess }) {
         <button
           type="submit"
           disabled={loading}
-          style={{ marginTop: "0.5rem", width: "100%", justifyContent: "center" }}
+          style={{
+            marginTop: "0.5rem",
+            width: "100%",
+            justifyContent: "center",
+            // ✅ Mobile: better tap target while keeping same look
+            minHeight: isMobile ? 44 : undefined,
+          }}
         >
           {loading ? "Logging in..." : "Login"}
         </button>

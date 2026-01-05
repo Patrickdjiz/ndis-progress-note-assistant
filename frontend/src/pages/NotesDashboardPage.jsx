@@ -15,7 +15,6 @@ function NotesDashboardPage({ token, user }) {
   const [archiving, setArchiving] = useState(false);
   const [filterArchived, setFilterArchived] = useState("false");
 
-
   const [selectedNote, setSelectedNote] = useState(null);
 
   const [finalNoteEditText, setFinalNoteEditText] = useState("");
@@ -28,54 +27,67 @@ function NotesDashboardPage({ token, user }) {
   const [errorMsg, setErrorMsg] = useState("");
 
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  // ✅ UI-only: responsive helper (no business logic changes)
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 760px)");
+    const apply = () => setIsMobile(!!mq.matches);
+    apply();
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else mq.addListener(apply);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", apply);
+      else mq.removeListener(apply);
+    };
+  }, []);
+
   const safeFile = (s) =>
-  String(s || "")
-    .trim()
-    .replace(/[^\w\-]+/g, "_")
-    .slice(0, 80);
+    String(s || "")
+      .trim()
+      .replace(/[^\w\-]+/g, "_")
+      .slice(0, 80);
 
   const ymdOnly = (v) => {
-  const s = String(v || "");
-  const m = s.match(/\d{4}-\d{2}-\d{2}/);
-  return m ? m[0] : "date";
-};
-
-  
+    const s = String(v || "");
+    const m = s.match(/\d{4}-\d{2}-\d{2}/);
+    return m ? m[0] : "date";
+  };
 
   // ---------- Load notes list ----------
   const fetchNotes = async ({ append = false, cursor = null } = {}) => {
-  try {
-    append ? setLoadingMore(true) : setNotesLoading(true);
-    setNotesError("");
+    try {
+      append ? setLoadingMore(true) : setNotesLoading(true);
+      setNotesError("");
 
-    const params = new URLSearchParams();
-    if (filterParticipant.trim()) params.append("participant", filterParticipant.trim());
-    if (filterIncident !== "all") params.append("hasIncident", filterIncident);
-    params.append("archived", filterArchived);
-    params.append("limit", "50");
-    if (cursor) params.append("cursor", cursor);
+      const params = new URLSearchParams();
+      if (filterParticipant.trim())
+        params.append("participant", filterParticipant.trim());
+      if (filterIncident !== "all") params.append("hasIncident", filterIncident);
+      params.append("archived", filterArchived);
+      params.append("limit", "50");
+      if (cursor) params.append("cursor", cursor);
 
-    const data = await apiFetch(`/api/notes?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+      const data = await apiFetch(`/api/notes?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-    const incoming = Array.isArray(data.notes) ? data.notes : [];
-    setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
-    setNextCursor(data.nextCursor || null);
+      const incoming = Array.isArray(data.notes) ? data.notes : [];
+      setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
+      setNextCursor(data.nextCursor || null);
 
-    if (!append) {
-      setSelectedNote(null);
-      setFinalNoteEditText("");
-      setFinalSaveMsg("");
+      if (!append) {
+        setSelectedNote(null);
+        setFinalNoteEditText("");
+        setFinalSaveMsg("");
+      }
+    } catch (err) {
+      setNotesError(err?.message || "Failed to load notes");
+    } finally {
+      append ? setLoadingMore(false) : setNotesLoading(false);
     }
-  } catch (err) {
-    setNotesError(err?.message || "Failed to load notes");
-  } finally {
-    append ? setLoadingMore(false) : setNotesLoading(false);
-  }
-};
-
-
+  };
 
   useEffect(() => {
     fetchNotes();
@@ -92,27 +104,26 @@ function NotesDashboardPage({ token, user }) {
 
   // ---------- Select a note ----------
   const handleSelectNote = async (id) => {
-  try {
-    setNotesError("");
-    setSelectedNote(null);
-    setFinalNoteEditText("");
-    setFinalSaveMsg("");
-    setErrorMsg("");
+    try {
+      setNotesError("");
+      setSelectedNote(null);
+      setFinalNoteEditText("");
+      setFinalSaveMsg("");
+      setErrorMsg("");
 
-    const data = await apiFetch(`/api/notes/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+      const data = await apiFetch(`/api/notes/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-    setSelectedNote(data.note);
-    setFinalNoteEditText(
-      data.note.finalNoteText ? data.note.finalNoteText : data.note.noteText
-    );
-  } catch (err) {
-    console.error("Error fetching note:", err);
-    setNotesError(err?.message || "Failed to fetch note");
-  }
-};
-
+      setSelectedNote(data.note);
+      setFinalNoteEditText(
+        data.note.finalNoteText ? data.note.finalNoteText : data.note.noteText
+      );
+    } catch (err) {
+      console.error("Error fetching note:", err);
+      setNotesError(err?.message || "Failed to fetch note");
+    }
+  };
 
   // ---------- Save final note ----------
   const handleSaveFinalNoteForSelected = async () => {
@@ -130,29 +141,29 @@ function NotesDashboardPage({ token, user }) {
       }
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/finalise`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        finalNoteText: finalNoteEditText,
-        reviewerName: reviewerName || undefined,
-      }),
-    });
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          finalNoteText: finalNoteEditText,
+          reviewerName: reviewerName || undefined,
+        }),
+      });
 
-    setFinalSaveMsg("Final note saved for this shift.");
-    setSelectedNote((prev) =>
-      prev
-        ? {
-            ...prev,
-            finalNoteText: data.finalNoteText,
-            finalisedAt: data.finalisedAt,
-            finalisedBy: data.finalisedBy,
-          }
-        : prev
-    );
-    fetchNotes();
+      setFinalSaveMsg("Final note saved for this shift.");
+      setSelectedNote((prev) =>
+        prev
+          ? {
+              ...prev,
+              finalNoteText: data.finalNoteText,
+              finalisedAt: data.finalisedAt,
+              finalisedBy: data.finalisedBy,
+            }
+          : prev
+      );
+      fetchNotes();
     } catch (err) {
       console.error("Error saving final note:", err);
       setErrorMsg(err?.message || "Failed to save final note");
@@ -169,28 +180,28 @@ function NotesDashboardPage({ token, user }) {
       }
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/review`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        reviewedFlag: !selectedNote.reviewedFlag,
-        reviewerName: reviewerName || undefined,
-      }),
-    });
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          reviewedFlag: !selectedNote.reviewedFlag,
+          reviewerName: reviewerName || undefined,
+        }),
+      });
 
-    setSelectedNote((prev) =>
-      prev
-        ? {
-            ...prev,
-            reviewedFlag: data.reviewedFlag,
-            reviewedAt: data.reviewedAt,
-            reviewedBy: data.reviewedBy,
-          }
-        : prev
-    );
-    fetchNotes();
+      setSelectedNote((prev) =>
+        prev
+          ? {
+              ...prev,
+              reviewedFlag: data.reviewedFlag,
+              reviewedAt: data.reviewedAt,
+              reviewedBy: data.reviewedBy,
+            }
+          : prev
+      );
+      fetchNotes();
     } catch (err) {
       console.error("Error updating review status:", err);
       setErrorMsg(err?.message || "Failed to update review status");
@@ -208,6 +219,7 @@ function NotesDashboardPage({ token, user }) {
         fontWeight: 600,
         background: bg,
         color,
+        whiteSpace: "nowrap",
       }}
     >
       {label}
@@ -215,90 +227,114 @@ function NotesDashboardPage({ token, user }) {
   );
 
   // ---------- savePDF ----------
-  // inside NotesDashboardPage.jsx
+  const fileDate = (d) => {
+    const s = String(d || "");
+    const m = s.match(/\d{4}-\d{2}-\d{2}/); // grabs 2026-01-04 even if it's ISO
+    return m ? m[0] : "date";
+  };
 
-const fileDate = (d) => {
-  const s = String(d || "");
-  const m = s.match(/\d{4}-\d{2}-\d{2}/); // grabs 2026-01-04 even if it's ISO
-  return m ? m[0] : "date";
-};
+  const handleDownloadPdf = async () => {
+    try {
+      setErrorMsg("");
+      if (!selectedNote) {
+        setErrorMsg("No note selected.");
+        return;
+      }
 
-const handleDownloadPdf = async () => {
-  try {
-    setErrorMsg("");
-    if (!selectedNote) {
-      setErrorMsg("No note selected.");
-      return;
+      setDownloadingPdf(true);
+
+      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+
+      a.download = `NDIS_Note_${ymdOnly(selectedNote.date)}_${safeFile(
+        selectedNote.participantName
+      )}.pdf`;
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setErrorMsg(e?.message || "Failed to download PDF.");
+    } finally {
+      setDownloadingPdf(false);
     }
+  };
 
-    setDownloadingPdf(true);
+  const handleToggleArchive = async () => {
+    try {
+      setErrorMsg("");
+      if (!selectedNote) return;
 
-    const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+      setArchiving(true);
+      const next = !selectedNote.archivedFlag;
 
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
+      const data = await apiFetch(`/api/notes/${selectedNote.id}/archive`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          archivedFlag: next,
+          archivedBy: reviewerName || undefined,
+        }),
+      });
 
-    a.download = `NDIS_Note_${ymdOnly(selectedNote.date)}_${safeFile(selectedNote.participantName)}.pdf`;
+      setSelectedNote((prev) =>
+        prev
+          ? {
+              ...prev,
+              archivedFlag: data.archivedFlag,
+              archivedAt: data.archivedAt,
+              archivedBy: data.archivedBy,
+            }
+          : prev
+      );
 
+      fetchNotes();
+    } catch (e) {
+      setErrorMsg(e?.message || "Failed to update archive state.");
+    } finally {
+      setArchiving(false);
+    }
+  };
 
+  // ✅ Shared input sizing for mobile tap targets (UI-only)
+  const inputBase = {
+    width: "100%",
+    padding: "0.4rem 0.5rem",
+    borderRadius: "0.5rem",
+    border: "1px solid #d1d5db",
+    fontSize: "0.85rem",
+    boxSizing: "border-box",
+    minHeight: isMobile ? 44 : undefined,
+  };
 
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (e) {
-    setErrorMsg(e?.message || "Failed to download PDF.");
-  } finally {
-    setDownloadingPdf(false);
-  }
-};
+  const selectBase = {
+    padding: "0.45rem 0.6rem",
+    borderRadius: "0.5rem",
+    border: "1px solid #d1d5db",
+    fontSize: "0.85rem",
+    minHeight: isMobile ? 44 : undefined,
+  };
 
-
-const handleToggleArchive = async () => {
-  try {
-    setErrorMsg("");
-    if (!selectedNote) return;
-
-    setArchiving(true);
-    const next = !selectedNote.archivedFlag;
-
-    const data = await apiFetch(`/api/notes/${selectedNote.id}/archive`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        archivedFlag: next,
-        archivedBy: reviewerName || undefined,
-      }),
-    });
-
-    setSelectedNote((prev) =>
-      prev
-        ? {
-            ...prev,
-            archivedFlag: data.archivedFlag,
-            archivedAt: data.archivedAt,
-            archivedBy: data.archivedBy,
-          }
-        : prev
-    );
-
-    fetchNotes();
-  } catch (e) {
-    setErrorMsg(e?.message || "Failed to update archive state.");
-  } finally {
-    setArchiving(false);
-  }
-};
-
+  const pillBtn = (overrides = {}) => ({
+    padding: "0.5rem 1.2rem",
+    borderRadius: "999px",
+    fontSize: "0.85rem",
+    fontWeight: 500,
+    ...(isMobile ? { width: "100%", minHeight: 44 } : {}),
+    ...overrides,
+  });
 
   return (
-    <section>
+    <section style={{ width: "100%", boxSizing: "border-box" }}>
       <div style={{ marginBottom: "0.75rem" }}>
         <h2 style={{ margin: 0, fontSize: "1.15rem", color: PRIMARY }}>
           Saved notes
@@ -315,11 +351,16 @@ const handleToggleArchive = async () => {
           background: "#f9fafb",
           display: "flex",
           flexWrap: "wrap",
-          gap: "0.9rem",
+          gap: isMobile ? "0.6rem" : "0.9rem",
           alignItems: "flex-end",
         }}
       >
-        <div style={{ minWidth: "210px" }}>
+        <div
+          style={{
+            minWidth: isMobile ? "0" : "210px",
+            flex: isMobile ? "1 1 100%" : "0 0 auto",
+          }}
+        >
           <label
             style={{
               display: "block",
@@ -335,18 +376,12 @@ const handleToggleArchive = async () => {
             type="text"
             value={filterParticipant}
             onChange={(e) => setFilterParticipant(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.4rem 0.5rem",
-              borderRadius: "0.5rem",
-              border: "1px solid #d1d5db",
-              fontSize: "0.85rem",
-            }}
+            style={inputBase}
             placeholder="e.g. Ali"
           />
         </div>
 
-        <div>
+        <div style={{ flex: isMobile ? "1 1 100%" : "0 0 auto" }}>
           <label
             style={{
               display: "block",
@@ -362,10 +397,9 @@ const handleToggleArchive = async () => {
             value={filterIncident}
             onChange={(e) => setFilterIncident(e.target.value)}
             style={{
-              padding: "0.45rem 0.6rem",
-              borderRadius: "0.5rem",
-              border: "1px solid #d1d5db",
-              fontSize: "0.85rem",
+              ...selectBase,
+              width: isMobile ? "100%" : undefined,
+              boxSizing: "border-box",
             }}
           >
             <option value="all">All notes</option>
@@ -373,14 +407,27 @@ const handleToggleArchive = async () => {
             <option value="false">Notes without incidents</option>
           </select>
         </div>
-        <div>
-          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, color: "#374151", marginBottom: "0.2rem" }}>
+
+        <div style={{ flex: isMobile ? "1 1 100%" : "0 0 auto" }}>
+          <label
+            style={{
+              display: "block",
+              fontSize: "0.8rem",
+              fontWeight: 500,
+              color: "#374151",
+              marginBottom: "0.2rem",
+            }}
+          >
             Archived
           </label>
           <select
             value={filterArchived}
             onChange={(e) => setFilterArchived(e.target.value)}
-            style={{ padding: "0.45rem 0.6rem", borderRadius: "0.5rem", border: "1px solid #d1d5db", fontSize: "0.85rem" }}
+            style={{
+              ...selectBase,
+              width: isMobile ? "100%" : undefined,
+              boxSizing: "border-box",
+            }}
           >
             <option value="false">Hide archived</option>
             <option value="true">Archived only</option>
@@ -388,31 +435,30 @@ const handleToggleArchive = async () => {
           </select>
         </div>
 
-
         <button
           type="button"
           onClick={() => fetchNotes()}
           disabled={notesLoading}
-          style={{
-            padding: "0.5rem 1.2rem",
-            borderRadius: "999px",
+          style={pillBtn({
             border: "none",
             background: PRIMARY,
             color: "#f9fafb",
-            fontSize: "0.85rem",
-            fontWeight: 500,
             cursor: notesLoading ? "wait" : "pointer",
-          }}
+          })}
         >
           {notesLoading ? "Loading…" : "Refresh"}
         </button>
       </div>
 
       {notesError && (
-        <p style={{ color: "red", marginTop: "0.75rem" }}>{notesError}</p>
+        <p style={{ color: "red", marginTop: "0.75rem", wordBreak: "break-word" }}>
+          {notesError}
+        </p>
       )}
       {errorMsg && (
-        <p style={{ color: "red", marginTop: "0.4rem" }}>{errorMsg}</p>
+        <p style={{ color: "red", marginTop: "0.4rem", wordBreak: "break-word" }}>
+          {errorMsg}
+        </p>
       )}
 
       {/* Main layout */}
@@ -420,7 +466,9 @@ const handleToggleArchive = async () => {
         style={{
           marginTop: "1rem",
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.05fr) minmax(0, 1.1fr)",
+          gridTemplateColumns: isMobile
+            ? "minmax(0, 1fr)"
+            : "minmax(0, 1.05fr) minmax(0, 1.1fr)",
           gap: "1rem",
         }}
       >
@@ -433,6 +481,7 @@ const handleToggleArchive = async () => {
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
+            minWidth: 0,
           }}
         >
           <div
@@ -444,6 +493,8 @@ const handleToggleArchive = async () => {
               justifyContent: "space-between",
               alignItems: "center",
               fontSize: "0.85rem",
+              gap: "0.75rem",
+              flexWrap: "wrap",
             }}
           >
             <span style={{ fontWeight: 600, color: PRIMARY }}>
@@ -454,10 +505,19 @@ const handleToggleArchive = async () => {
             </span>
           </div>
 
-          <div style={{ maxHeight: "360px", overflowY: "auto" }}>
+          {/* ✅ Mobile: allow horizontal scroll for the table without changing its desktop look */}
+          <div
+            style={{
+              maxHeight: isMobile ? "320px" : "360px",
+              overflowY: "auto",
+              overflowX: "auto",
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
             <table
               style={{
                 width: "100%",
+                minWidth: isMobile ? 820 : undefined, // keeps columns readable; scroll on mobile
                 borderCollapse: "collapse",
                 fontSize: "0.85rem",
               }}
@@ -478,6 +538,7 @@ const handleToggleArchive = async () => {
                           position: "sticky",
                           top: 0,
                           zIndex: 1,
+                          whiteSpace: "nowrap",
                         }}
                       >
                         {h}
@@ -511,11 +572,12 @@ const handleToggleArchive = async () => {
                       style={{
                         cursor: "pointer",
                         background: isSelected ? "#eff6ff" : "#ffffff",
+                        touchAction: "manipulation",
                       }}
                     >
                       <td
                         style={{
-                          padding: "0.4rem 0.7rem",
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
                           borderBottom: "1px solid #f3f4f6",
                           whiteSpace: "nowrap",
                         }}
@@ -524,48 +586,46 @@ const handleToggleArchive = async () => {
                       </td>
                       <td
                         style={{
-                          padding: "0.4rem 0.7rem",
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
                           borderBottom: "1px solid #f3f4f6",
+                          whiteSpace: "nowrap",
                         }}
                       >
                         {n.participantName}
                       </td>
                       <td
                         style={{
-                          padding: "0.4rem 0.7rem",
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
                           borderBottom: "1px solid #f3f4f6",
+                          whiteSpace: "nowrap",
                         }}
                       >
                         {n.workerName}
                       </td>
                       <td
                         style={{
-                          padding: "0.4rem 0.7rem",
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
                           borderBottom: "1px solid #f3f4f6",
+                          whiteSpace: "nowrap",
                         }}
                       >
                         {n.location}
                       </td>
                       <td
                         style={{
-                          padding: "0.4rem 0.7rem",
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
                           borderBottom: "1px solid #f3f4f6",
                         }}
                       >
                         {n.incidentFlag
-                          ? badge("Incident", {
-                              bg: "#fef2f2",
-                              color: "#b91c1c",
-                            })
-                          : badge("No incident", {
-                              bg: "#ecfdf3",
-                              color: "#166534",
-                            })}
+                          ? badge("Incident", { bg: "#fef2f2", color: "#b91c1c" })
+                          : badge("No incident", { bg: "#ecfdf3", color: "#166534" })}
                       </td>
                       <td
                         style={{
-                          padding: "0.4rem 0.7rem",
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
                           borderBottom: "1px solid #f3f4f6",
+                          whiteSpace: "nowrap",
                         }}
                       >
                         {badge(
@@ -575,12 +635,9 @@ const handleToggleArchive = async () => {
                             : { bg: "#f3f4f6", color: "#4b5563" }
                         )}{" "}
                         {!!n.reviewedFlag &&
-                          badge("Reviewed", {
-                            bg: "#fef3c7",
-                            color: "#92400e",
-                          })}
-                          {!!n.archivedFlag &&
-                            badge("Archived", { bg: "#f3f4f6", color: "#111827" })}
+                          badge("Reviewed", { bg: "#fef3c7", color: "#92400e" })}
+                        {!!n.archivedFlag &&
+                          badge("Archived", { bg: "#f3f4f6", color: "#111827" })}
                       </td>
                     </tr>
                   );
@@ -588,22 +645,27 @@ const handleToggleArchive = async () => {
               </tbody>
             </table>
           </div>
+
           {nextCursor && (
-            <div style={{ padding: "0.6rem 0.8rem", borderTop: "1px solid #e5e7eb" }}>
+            <div
+              style={{
+                padding: "0.6rem 0.8rem",
+                borderTop: "1px solid #e5e7eb",
+              }}
+            >
               <button
                 type="button"
                 onClick={() => fetchNotes({ append: true, cursor: nextCursor })}
                 disabled={loadingMore}
-                style={{
-                  padding: "0.45rem 0.95rem",
-                  borderRadius: "999px",
+                style={pillBtn({
                   border: "1px solid #e5e7eb",
                   background: "#ffffff",
                   color: PRIMARY,
                   fontSize: "0.8rem",
                   fontWeight: 600,
                   cursor: loadingMore ? "wait" : "pointer",
-                }}
+                  ...(isMobile ? { width: "100%" } : {}),
+                })}
               >
                 {loadingMore ? "Loading…" : "Load more"}
               </button>
@@ -621,6 +683,7 @@ const handleToggleArchive = async () => {
             display: "flex",
             flexDirection: "column",
             minHeight: "260px",
+            minWidth: 0,
           }}
         >
           <h3
@@ -649,6 +712,7 @@ const handleToggleArchive = async () => {
                   marginBottom: "0.5rem",
                   color: "#374151",
                   lineHeight: 1.45,
+                  wordBreak: "break-word",
                 }}
               >
                 <strong>Participant:</strong> {selectedNote.participantName}
@@ -657,25 +721,22 @@ const handleToggleArchive = async () => {
                 <br />
                 <strong>Date:</strong> {fmtShiftDate(selectedNote.date)}
                 {selectedNote.startTime && selectedNote.endTime
-                  ? ` (${fmtHm(selectedNote.startTime)}–${fmtHm(selectedNote.endTime)})`
+                  ? ` (${fmtHm(selectedNote.startTime)}–${fmtHm(
+                      selectedNote.endTime
+                    )})`
                   : ""}
                 <br />
                 <strong>Location:</strong> {selectedNote.location}
                 <br />
-                <strong>Incident:</strong>{" "}
-                {selectedNote.incidentFlag ? "Yes" : "No"}
+                <strong>Incident:</strong> {selectedNote.incidentFlag ? "Yes" : "No"}
                 <br />
-                <strong>Status:</strong>{" "}
-                {selectedNote.finalisedAt ? "Finalised" : "Draft"}
+                <strong>Status:</strong> {selectedNote.finalisedAt ? "Finalised" : "Draft"}
                 {selectedNote.finalisedAt && (
                   <> (at {fmtDateTime(selectedNote.finalisedAt)})</>
                 )}
                 <br />
-                <strong>Reviewed:</strong>{" "}
-                {selectedNote.reviewedFlag ? "Yes" : "No"}
-                {selectedNote.reviewedAt && (
-                  <> (at {fmtDateTime(selectedNote.reviewedAt)})</>
-                )}
+                <strong>Reviewed:</strong> {selectedNote.reviewedFlag ? "Yes" : "No"}
+                {selectedNote.reviewedAt && <> (at {fmtDateTime(selectedNote.reviewedAt)})</>}
               </p>
 
               {/* Reviewer name */}
@@ -701,12 +762,7 @@ const handleToggleArchive = async () => {
                   value={reviewerName}
                   onChange={(e) => setReviewerName(e.target.value)}
                   placeholder="e.g. Coordinator name"
-                  style={{
-                    padding: "0.4rem 0.5rem",
-                    borderRadius: "0.5rem",
-                    border: "1px solid #d1d5db",
-                    fontSize: "0.85rem",
-                  }}
+                  style={inputBase}
                 />
               </div>
 
@@ -734,6 +790,7 @@ const handleToggleArchive = async () => {
                   border: "1px solid #d1d5db",
                   resize: "vertical",
                   background: "#f9fafb",
+                  boxSizing: "border-box",
                 }}
               />
 
@@ -749,53 +806,57 @@ const handleToggleArchive = async () => {
                 <button
                   type="button"
                   onClick={handleSaveFinalNoteForSelected}
-                  style={{
-                    padding: "0.45rem 0.95rem",
-                    borderRadius: "999px",
+                  style={pillBtn({
                     border: "none",
                     background: PRIMARY,
                     color: "#f9fafb",
                     fontSize: "0.8rem",
                     fontWeight: 500,
                     cursor: "pointer",
-                  }}
+                    ...(isMobile ? { width: "100%" } : {}),
+                  })}
                 >
                   Save final note for this shift
                 </button>
+
                 <button
                   type="button"
                   onClick={handleDownloadPdf}
                   disabled={downloadingPdf || !selectedNote}
-                  style={{
-                    padding: "0.45rem 0.95rem",
-                    borderRadius: "999px",
+                  style={pillBtn({
                     border: "1px solid #e5e7eb",
                     background: "#ffffff",
                     color: PRIMARY,
                     fontSize: "0.8rem",
                     fontWeight: 600,
                     cursor: downloadingPdf ? "wait" : "pointer",
-                  }}
+                    ...(isMobile ? { width: "100%" } : {}),
+                  })}
                 >
                   {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
                 </button>
+
                 <button
                   type="button"
                   onClick={handleToggleArchive}
                   disabled={archiving || !selectedNote}
-                  style={{
-                    padding: "0.45rem 0.95rem",
-                    borderRadius: "999px",
+                  style={pillBtn({
                     border: "1px solid #e5e7eb",
                     background: selectedNote?.archivedFlag ? "#111827" : "#ffffff",
                     color: selectedNote?.archivedFlag ? "#ffffff" : PRIMARY,
                     fontSize: "0.8rem",
                     fontWeight: 600,
                     cursor: archiving ? "wait" : "pointer",
-                  }}
+                    ...(isMobile ? { width: "100%" } : {}),
+                  })}
                 >
-                  {archiving ? "Updating…" : selectedNote?.archivedFlag ? "Restore" : "Archive"}
+                  {archiving
+                    ? "Updating…"
+                    : selectedNote?.archivedFlag
+                    ? "Restore"
+                    : "Archive"}
                 </button>
+
                 <label
                   style={{
                     display: "inline-flex",
@@ -804,23 +865,21 @@ const handleToggleArchive = async () => {
                     fontSize: "0.8rem",
                     color: "#374151",
                     cursor: "pointer",
+                    ...(isMobile ? { width: "100%" } : {}),
+                    padding: isMobile ? "0.25rem 0" : 0,
                   }}
                 >
                   <input
                     type="checkbox"
                     checked={!!selectedNote.reviewedFlag}
                     onChange={handleToggleReviewed}
+                    style={isMobile ? { transform: "scale(1.05)" } : undefined}
                   />
                   Mark note as reviewed by provider
                 </label>
 
                 {finalSaveMsg && (
-                  <span
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "#047857",
-                    }}
-                  >
+                  <span style={{ fontSize: "0.8rem", color: "#047857" }}>
                     {finalSaveMsg}
                   </span>
                 )}
@@ -847,8 +906,9 @@ const handleToggleArchive = async () => {
                   background: "#f3f4f6",
                   padding: "0.5rem",
                   borderRadius: "0.6rem",
-                  maxHeight: "190px",
+                  maxHeight: isMobile ? "240px" : "190px",
                   overflowY: "auto",
+                  boxSizing: "border-box",
                 }}
               >
                 {selectedNote.noteText}

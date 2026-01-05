@@ -4,8 +4,8 @@ import { apiFetch } from "../lib/api";
 
 function GenerateNotePage({ token, user }) {
   const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-  .toISOString()
-  .slice(0, 10);
+    .toISOString()
+    .slice(0, 10);
 
   const [participantName, setParticipantName] = useState("");
   const [date, setDate] = useState(todayIso);
@@ -31,6 +31,21 @@ function GenerateNotePage({ token, user }) {
   const [copied, setCopied] = useState(false);
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
 
+  // ✅ UI-only: responsive helper (no business logic changes)
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 760px)");
+    const apply = () => setIsMobile(!!mq.matches);
+    apply();
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else mq.addListener(apply);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", apply);
+      else mq.removeListener(apply);
+    };
+  }, []);
+
   useEffect(() => {
     if (user?.fullName) {
       setWorkerName(user.fullName);
@@ -42,8 +57,10 @@ function GenerateNotePage({ token, user }) {
     background: "#ffffff",
     borderRadius: "0.75rem",
     border: "1px solid #e5e7eb",
-    padding: "1.5rem",
+    padding: isMobile ? "1.05rem" : "1.5rem",
     boxShadow: "0 18px 45px rgba(15, 23, 42, 0.04)",
+    boxSizing: "border-box",
+    minWidth: 0,
   };
 
   const sectionTitleStyle = {
@@ -59,6 +76,7 @@ function GenerateNotePage({ token, user }) {
     color: "#4b5563",
     margin: 0,
     marginBottom: "1.1rem",
+    lineHeight: 1.45,
   };
 
   const labelStyle = {
@@ -78,6 +96,8 @@ function GenerateNotePage({ token, user }) {
     fontFamily: "inherit",
     background: "#f9fafb",
     boxSizing: "border-box",
+    // ✅ Mobile: better tap targets (no desktop change)
+    minHeight: isMobile ? 44 : undefined,
   };
 
   const textareaStyle = {
@@ -106,6 +126,9 @@ function GenerateNotePage({ token, user }) {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    // ✅ Mobile: larger, easier taps; keep same pill look
+    minHeight: isMobile ? 44 : undefined,
+    ...(isMobile ? { width: "100%" } : {}),
   };
 
   const secondaryButtonStyle = {
@@ -187,9 +210,7 @@ function GenerateNotePage({ token, user }) {
         /^no incidents?|^no incident|^no concerns?/i.test(incText);
 
       setNoteHasIncident(
-        incidentOccurred === true &&
-          incText.length > 0 &&
-          !looksLikeNoIncident
+        incidentOccurred === true && incText.length > 0 && !looksLikeNoIncident
       );
     } catch (err) {
       console.error(err);
@@ -209,9 +230,7 @@ function GenerateNotePage({ token, user }) {
       setErrorMsg("");
 
       if (!latestNoteId) {
-        setErrorMsg(
-          "No generated note to save. Please generate a note first."
-        );
+        setErrorMsg("No generated note to save. Please generate a note first.");
         return;
       }
 
@@ -220,18 +239,16 @@ function GenerateNotePage({ token, user }) {
         return;
       }
 
-      const data = await apiFetch(`/api/notes/${latestNoteId}/finalise`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            finalNoteText,
-          }),
-        }
-      );
+      await apiFetch(`/api/notes/${latestNoteId}/finalise`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          finalNoteText,
+        }),
+      });
 
       setFinalSaveMsg("Final note saved.");
     } catch (err) {
@@ -297,7 +314,9 @@ function GenerateNotePage({ token, user }) {
             style={{
               display: "grid",
               gap: "1rem",
-              gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)",
+              gridTemplateColumns: isMobile
+                ? "minmax(0, 1fr)"
+                : "minmax(0, 2fr) minmax(0, 1fr)",
             }}
           >
             <div>
@@ -320,7 +339,7 @@ function GenerateNotePage({ token, user }) {
                 onChange={(e) => setDate(e.target.value)}
                 style={{
                   ...inputBaseStyle,
-                  maxWidth: "210px",
+                  maxWidth: isMobile ? "100%" : "210px",
                 }}
               />
             </div>
@@ -331,8 +350,9 @@ function GenerateNotePage({ token, user }) {
             style={{
               display: "grid",
               gap: "1rem",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(160px, min-content))",
+              gridTemplateColumns: isMobile
+                ? "minmax(0, 1fr)"
+                : "repeat(auto-fit, minmax(160px, min-content))",
             }}
           >
             <div>
@@ -407,16 +427,13 @@ function GenerateNotePage({ token, user }) {
                 "the local park, practise safe road crossing and choose a bench for a short rest."
               }
             />
-            <div style={counterStyle}>
-              {activitiesAndSupports.length} characters
-            </div>
+            <div style={counterStyle}>{activitiesAndSupports.length} characters</div>
           </div>
 
           {/* Presentation */}
           <div>
             <label style={labelStyle}>
-              Participant presentation* (mood, behaviour, health,
-              communication)
+              Participant presentation* (mood, behaviour, health, communication)
             </label>
             <textarea
               required
@@ -432,9 +449,7 @@ function GenerateNotePage({ token, user }) {
                 "more talkative and followed prompts with some repetition required."
               }
             />
-            <div style={counterStyle}>
-              {participantPresentation.length} characters
-            </div>
+            <div style={counterStyle}>{participantPresentation.length} characters</div>
           </div>
 
           {/* Goals */}
@@ -464,6 +479,7 @@ function GenerateNotePage({ token, user }) {
               borderRadius: "0.75rem",
               padding: "0.75rem 0.9rem",
               background: "#f9fafb",
+              boxSizing: "border-box",
             }}
           >
             <label
@@ -473,12 +489,16 @@ function GenerateNotePage({ token, user }) {
                 alignItems: "center",
                 gap: "0.45rem",
                 marginBottom: "0.35rem",
+                // ✅ Mobile: easier to tap label row
+                padding: isMobile ? "0.25rem 0" : 0,
+                cursor: "pointer",
               }}
             >
               <input
                 type="checkbox"
                 checked={incidentOccurred}
                 onChange={(e) => setIncidentOccurred(e.target.checked)}
+                style={isMobile ? { transform: "scale(1.05)" } : undefined}
               />
               <span style={{ fontWeight: 500 }}>
                 Incident, risk, change or concern occurred this shift
@@ -489,6 +509,7 @@ function GenerateNotePage({ token, user }) {
                 margin: "0 0 0.5rem",
                 fontSize: "0.8rem",
                 color: "#555",
+                lineHeight: 1.4,
               }}
             >
               If you tick this, you&apos;ll still write the incident summary
@@ -543,11 +564,7 @@ function GenerateNotePage({ token, user }) {
             flexWrap: "wrap",
           }}
         >
-          <button
-            onClick={handleGenerate}
-            disabled={loading}
-            style={primaryButtonStyle}
-          >
+          <button onClick={handleGenerate} disabled={loading} style={primaryButtonStyle}>
             {loading ? "Wait a few minutes..." : "Generate note"}
           </button>
           <button
@@ -567,6 +584,7 @@ function GenerateNotePage({ token, user }) {
               marginTop: "0.9rem",
               fontSize: "0.9rem",
               whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
             }}
           >
             {errorMsg}
@@ -604,6 +622,11 @@ function GenerateNotePage({ token, user }) {
                 padding: "0.75rem",
                 borderRadius: "0.5rem",
                 border: "1px solid #e5e7eb",
+                boxSizing: "border-box",
+                // ✅ Mobile: keep code blocks from causing horizontal overflow
+                overflowX: "auto",
+                WebkitOverflowScrolling: "touch",
+                wordBreak: "break-word",
               }}
             >
               {generatedNote}
@@ -618,11 +641,7 @@ function GenerateNotePage({ token, user }) {
                 flexWrap: "wrap",
               }}
             >
-              <button
-                type="button"
-                onClick={handleCopyNote}
-                style={secondaryButtonStyle}
-              >
+              <button type="button" onClick={handleCopyNote} style={secondaryButtonStyle}>
                 Copy AI draft to clipboard
               </button>
               {copied && (
@@ -665,11 +684,7 @@ function GenerateNotePage({ token, user }) {
                 flexWrap: "wrap",
               }}
             >
-              <button
-                type="button"
-                onClick={handleSaveFinalNote}
-                style={primaryButtonStyle}
-              >
+              <button type="button" onClick={handleSaveFinalNote} style={primaryButtonStyle}>
                 Save final note
               </button>
               {finalSaveMsg && (
@@ -690,12 +705,14 @@ function GenerateNotePage({ token, user }) {
                 fontSize: "0.9rem",
                 color: "#78350f",
                 borderRadius: "0.5rem",
+                lineHeight: 1.45,
+                wordBreak: "break-word",
               }}
             >
-              <strong>Incident reminder:</strong> This note includes an
-              incident. Make sure you also follow your organisation&apos;s
-              incident management and reporting procedures (including any NDIS
-              reportable incident requirements that apply).
+              <strong>Incident reminder:</strong> This note includes an incident.
+              Make sure you also follow your organisation&apos;s incident
+              management and reporting procedures (including any NDIS reportable
+              incident requirements that apply).
             </div>
           )}
 
@@ -704,6 +721,7 @@ function GenerateNotePage({ token, user }) {
               marginTop: "1rem",
               fontSize: "0.75rem",
               color: "#6b7280",
+              lineHeight: 1.45,
             }}
           >
             This AI tool supports progress note drafting. Final responsibility

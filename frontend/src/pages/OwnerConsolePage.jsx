@@ -5,6 +5,21 @@ import { apiFetch } from "../lib/api";
 function OwnerConsolePage({ token, user }) {
   const PRIMARY = "#111827";
 
+  // ✅ UI-only: responsive helper (no business logic changes)
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 760px)");
+    const apply = () => setIsMobile(!!mq.matches);
+    apply();
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else mq.addListener(apply);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", apply);
+      else mq.removeListener(apply);
+    };
+  }, []);
+
   // Extra safety: block if somehow rendered for non-owner
   if (!user || user.role !== "OWNER") {
     return (
@@ -39,9 +54,7 @@ function OwnerConsolePage({ token, user }) {
         },
       });
 
-      setOrganisations(
-        Array.isArray(data.organisations) ? data.organisations : []
-      );
+      setOrganisations(Array.isArray(data.organisations) ? data.organisations : []);
     } catch (err) {
       console.error("Error loading owner overview:", err);
       setErrorMsg(err?.message || "Failed to load overview");
@@ -57,16 +70,14 @@ function OwnerConsolePage({ token, user }) {
 
       const newStatus = org.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
 
-      await apiFetch(`/api/owner/organisations/${org.id}/status`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ status: newStatus }),
-        }
-      );
+      await apiFetch(`/api/owner/organisations/${org.id}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
 
       await fetchOverview();
     } catch (err) {
@@ -80,16 +91,14 @@ function OwnerConsolePage({ token, user }) {
       setErrorMsg("");
       setCreateMsg("");
 
-      await apiFetch(`/api/owner/users/${userId}/status`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ isActive: !currentIsActive }),
-        }
-      );
+      await apiFetch(`/api/owner/users/${userId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive: !currentIsActive }),
+      });
 
       await fetchOverview();
     } catch (err) {
@@ -137,9 +146,7 @@ function OwnerConsolePage({ token, user }) {
         }),
       });
 
-      setCreateMsg(
-        `Created provider "${data.organisation.name}" with admin ${data.admin.email}.`
-      );
+      setCreateMsg(`Created provider "${data.organisation.name}" with admin ${data.admin.email}.`);
 
       // Clear form
       setOrganisationName("");
@@ -167,23 +174,66 @@ function OwnerConsolePage({ token, user }) {
         background: isActive ? "#ecfdf3" : "#fef2f2",
         color: isActive ? "#166534" : "#b91c1c",
         fontWeight: 600,
+        whiteSpace: "nowrap",
       }}
     >
       {label}
     </span>
   );
 
+  const inputStyle = {
+    width: "100%",
+    padding: "0.6rem 0.7rem",
+    fontSize: "0.9rem",
+    borderRadius: "0.6rem",
+    border: "1px solid #d1d5db",
+    boxSizing: "border-box",
+    minHeight: isMobile ? 44 : undefined, // ✅ tap target
+  };
+
+  const primaryButtonStyle = {
+    padding: "0.55rem 1.25rem",
+    fontSize: "0.9rem",
+    cursor: creating ? "wait" : "pointer",
+    borderRadius: "999px",
+    border: "none",
+    background: PRIMARY,
+    color: "#f9fafb",
+    fontWeight: 500,
+    minHeight: isMobile ? 44 : undefined,
+    ...(isMobile ? { width: "100%" } : {}),
+  };
+
+  const outlineButtonStyle = {
+    padding: "0.45rem 1.1rem",
+    fontSize: "0.85rem",
+    cursor: loading ? "wait" : "pointer",
+    borderRadius: "999px",
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: PRIMARY,
+    fontWeight: 500,
+    minHeight: isMobile ? 44 : undefined,
+    ...(isMobile ? { width: "100%" } : {}),
+  };
+
+  const smallPillButtonStyle = {
+    fontSize: "0.75rem",
+    padding: "0.35rem 0.9rem",
+    cursor: "pointer",
+    borderRadius: "999px",
+    border: "1px solid #e5e7eb",
+    background: "#f9fafb",
+    color: PRIMARY,
+    fontWeight: 500,
+    minHeight: isMobile ? 40 : undefined,
+  };
+
   return (
-    <section>
+    <section style={{ width: "100%", boxSizing: "border-box" }}>
       {/* Header */}
       <div style={{ marginBottom: "0.75rem" }}>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: "1.25rem",
-            color: PRIMARY,
-          }}
-        >
+        <h2 style={{ margin: 0, fontSize: "1.25rem", color: PRIMARY }}>
           Owner console
         </h2>
         <p
@@ -191,6 +241,7 @@ function OwnerConsolePage({ token, user }) {
             fontSize: "0.9rem",
             color: "#4b5563",
             marginTop: "0.25rem",
+            lineHeight: 1.45,
           }}
         >
           This view is for the platform owner only. From here you can create new
@@ -205,18 +256,12 @@ function OwnerConsolePage({ token, user }) {
           borderRadius: "0.75rem",
           border: "1px solid #e5e7eb",
           background: "#ffffff",
-          padding: "1rem 1.1rem",
+          padding: isMobile ? "0.95rem" : "1rem 1.1rem",
           marginBottom: "1.5rem",
+          boxSizing: "border-box",
         }}
       >
-        <h3
-          style={{
-            marginTop: 0,
-            marginBottom: "0.6rem",
-            fontSize: "1rem",
-            color: PRIMARY,
-          }}
-        >
+        <h3 style={{ marginTop: 0, marginBottom: "0.6rem", fontSize: "1rem", color: PRIMARY }}>
           Create new provider organisation
         </h3>
 
@@ -229,13 +274,7 @@ function OwnerConsolePage({ token, user }) {
           }}
         >
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: "0.85rem",
-                marginBottom: "0.15rem",
-              }}
-            >
+            <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}>
               Organisation name
             </label>
             <input
@@ -243,24 +282,12 @@ function OwnerConsolePage({ token, user }) {
               value={organisationName}
               onChange={(e) => setOrganisationName(e.target.value)}
               placeholder="e.g. Bright Path Support Services"
-              style={{
-                width: "100%",
-                padding: "0.5rem 0.55rem",
-                fontSize: "0.9rem",
-                borderRadius: "0.6rem",
-                border: "1px solid #d1d5db",
-              }}
+              style={inputStyle}
             />
           </div>
 
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: "0.85rem",
-                marginBottom: "0.15rem",
-              }}
-            >
+            <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}>
               Admin email
             </label>
             <input
@@ -268,24 +295,13 @@ function OwnerConsolePage({ token, user }) {
               value={adminEmail}
               onChange={(e) => setAdminEmail(e.target.value)}
               placeholder="provider.admin@example.com"
-              style={{
-                width: "100%",
-                padding: "0.5rem 0.55rem",
-                fontSize: "0.9rem",
-                borderRadius: "0.6rem",
-                border: "1px solid #d1d5db",
-              }}
+              style={inputStyle}
+              autoComplete="email"
             />
           </div>
 
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: "0.85rem",
-                marginBottom: "0.15rem",
-              }}
-            >
+            <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}>
               Admin full name
             </label>
             <input
@@ -293,24 +309,13 @@ function OwnerConsolePage({ token, user }) {
               value={adminFullName}
               onChange={(e) => setAdminFullName(e.target.value)}
               placeholder="e.g. Sarah Khan"
-              style={{
-                width: "100%",
-                padding: "0.5rem 0.55rem",
-                fontSize: "0.9rem",
-                borderRadius: "0.6rem",
-                border: "1px solid #d1d5db",
-              }}
+              style={inputStyle}
+              autoComplete="name"
             />
           </div>
 
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: "0.85rem",
-                marginBottom: "0.15rem",
-              }}
-            >
+            <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}>
               Admin password
             </label>
             <input
@@ -318,13 +323,8 @@ function OwnerConsolePage({ token, user }) {
               value={adminPassword}
               onChange={(e) => setAdminPassword(e.target.value)}
               placeholder="Temporary password for admin"
-              style={{
-                width: "100%",
-                padding: "0.5rem 0.55rem",
-                fontSize: "0.9rem",
-                borderRadius: "0.6rem",
-                border: "1px solid #d1d5db",
-              }}
+              style={inputStyle}
+              autoComplete="new-password"
             />
           </div>
 
@@ -334,26 +334,21 @@ function OwnerConsolePage({ token, user }) {
               gap: "0.75rem",
               alignItems: "center",
               marginTop: "0.2rem",
+              flexWrap: "wrap",
             }}
           >
-            <button
-              type="submit"
-              disabled={creating}
-              style={{
-                padding: "0.55rem 1.25rem",
-                fontSize: "0.9rem",
-                cursor: creating ? "wait" : "pointer",
-                borderRadius: "999px",
-                border: "none",
-                background: PRIMARY,
-                color: "#f9fafb",
-                fontWeight: 500,
-              }}
-            >
+            <button type="submit" disabled={creating} style={primaryButtonStyle}>
               {creating ? "Creating…" : "Create provider"}
             </button>
+
             {createMsg && (
-              <span style={{ fontSize: "0.8rem", color: "#047857" }}>
+              <span
+                style={{
+                  fontSize: "0.8rem",
+                  color: "#047857",
+                  wordBreak: "break-word",
+                }}
+              >
                 {createMsg}
               </span>
             )}
@@ -362,13 +357,7 @@ function OwnerConsolePage({ token, user }) {
       </div>
 
       {errorMsg && (
-        <p
-          style={{
-            color: "red",
-            fontSize: "0.85rem",
-            marginBottom: "0.9rem",
-          }}
-        >
+        <p style={{ color: "red", fontSize: "0.85rem", marginBottom: "0.9rem", wordBreak: "break-word" }}>
           {errorMsg}
         </p>
       )}
@@ -381,32 +370,13 @@ function OwnerConsolePage({ token, user }) {
           marginBottom: "0.5rem",
           alignItems: "center",
           gap: "0.75rem",
+          flexWrap: "wrap",
         }}
       >
-        <h3
-          style={{
-            margin: 0,
-            fontSize: "1rem",
-            color: PRIMARY,
-          }}
-        >
+        <h3 style={{ margin: 0, fontSize: "1rem", color: PRIMARY }}>
           All providers and users
         </h3>
-        <button
-          type="button"
-          onClick={fetchOverview}
-          disabled={loading}
-          style={{
-            padding: "0.45rem 1.1rem",
-            fontSize: "0.85rem",
-            cursor: loading ? "wait" : "pointer",
-            borderRadius: "999px",
-            border: "1px solid #d1d5db",
-            background: "#ffffff",
-            color: PRIMARY,
-            fontWeight: 500,
-          }}
-        >
+        <button type="button" onClick={fetchOverview} disabled={loading} style={outlineButtonStyle}>
           {loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
@@ -426,7 +396,8 @@ function OwnerConsolePage({ token, user }) {
               borderRadius: "0.75rem",
               border: "1px solid #e5e7eb",
               background: "#ffffff",
-              padding: "0.9rem 1rem",
+              padding: isMobile ? "0.85rem" : "0.9rem 1rem",
+              boxSizing: "border-box",
             }}
           >
             {/* Card header */}
@@ -437,21 +408,14 @@ function OwnerConsolePage({ token, user }) {
                 marginBottom: "0.5rem",
                 alignItems: "flex-start",
                 gap: "0.75rem",
+                flexWrap: "wrap",
               }}
             >
-              <div>
-                <h4
-                  style={{
-                    margin: 0,
-                    fontSize: "1rem",
-                    color: PRIMARY,
-                  }}
-                >
+              <div style={{ minWidth: 0 }}>
+                <h4 style={{ margin: 0, fontSize: "1rem", color: PRIMARY, wordBreak: "break-word" }}>
                   {org.name}
                 </h4>
-                <div
-                  style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: 2 }}
-                >
+                <div style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: 2, wordBreak: "break-word" }}>
                   Organisation ID: {org.id}
                 </div>
               </div>
@@ -471,25 +435,20 @@ function OwnerConsolePage({ token, user }) {
                   onClick={() => handleToggleOrgStatus(org)}
                   style={{
                     fontSize: "0.75rem",
-                    padding: "0.3rem 0.8rem",
+                    padding: "0.35rem 0.9rem",
                     cursor: "pointer",
                     borderRadius: "999px",
                     border: "1px solid #e5e7eb",
-                    background:
-                      org.status === "ACTIVE" ? "#fef2f2" : "#ecfdf3",
-                    color:
-                      org.status === "ACTIVE" ? "#b91c1c" : "#166534",
+                    background: org.status === "ACTIVE" ? "#fef2f2" : "#ecfdf3",
+                    color: org.status === "ACTIVE" ? "#b91c1c" : "#166534",
                     fontWeight: 500,
+                    minHeight: isMobile ? 40 : undefined,
                   }}
                 >
-                  {org.status === "ACTIVE"
-                    ? "Suspend provider"
-                    : "Reactivate provider"}
+                  {org.status === "ACTIVE" ? "Suspend provider" : "Reactivate provider"}
                 </button>
 
-                <span
-                  style={{ fontSize: "0.8rem", color: "#4b5563" }}
-                >
+                <span style={{ fontSize: "0.8rem", color: "#4b5563", whiteSpace: "nowrap" }}>
                   Users: {org.users?.length || 0}
                 </span>
               </div>
@@ -503,32 +462,38 @@ function OwnerConsolePage({ token, user }) {
             )}
 
             {org.users && org.users.length > 0 && (
-              <div style={{ overflowX: "auto", marginTop: "0.25rem" }}>
+              <div
+                style={{
+                  overflowX: "auto",
+                  marginTop: "0.25rem",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
                 <table
                   style={{
                     width: "100%",
                     borderCollapse: "collapse",
                     fontSize: "0.85rem",
+                    minWidth: isMobile ? 680 : undefined, // ✅ keeps columns readable, enables swipe
                   }}
                 >
                   <thead>
                     <tr>
-                      {["Role", "Name", "Email", "Active", "Created", "Actions"].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            style={{
-                              textAlign: "left",
-                              padding: "0.35rem 0.4rem",
-                              borderBottom: "1px solid #e5e7eb",
-                              fontWeight: 600,
-                              color: "#111827",
-                            }}
-                          >
-                            {h}
-                          </th>
-                        )
-                      )}
+                      {["Role", "Name", "Email", "Active", "Created", "Actions"].map((h) => (
+                        <th
+                          key={h}
+                          style={{
+                            textAlign: "left",
+                            padding: "0.35rem 0.4rem",
+                            borderBottom: "1px solid #e5e7eb",
+                            fontWeight: 600,
+                            color: "#111827",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -539,24 +504,20 @@ function OwnerConsolePage({ token, user }) {
                             padding: "0.35rem 0.4rem",
                             borderBottom: "1px solid #f3f4f6",
                             fontWeight: u.role === "ADMIN" ? 600 : 400,
-                            color:
-                              u.role === "ADMIN" ? "#111827" : "#4b5563",
+                            color: u.role === "ADMIN" ? "#111827" : "#4b5563",
+                            whiteSpace: "nowrap",
                           }}
                         >
                           {u.role}
                         </td>
-                        <td
-                          style={{
-                            padding: "0.35rem 0.4rem",
-                            borderBottom: "1px solid #f3f4f6",
-                          }}
-                        >
+                        <td style={{ padding: "0.35rem 0.4rem", borderBottom: "1px solid #f3f4f6" }}>
                           {u.fullName}
                         </td>
                         <td
                           style={{
                             padding: "0.35rem 0.4rem",
                             borderBottom: "1px solid #f3f4f6",
+                            wordBreak: "break-word",
                           }}
                         >
                           {u.email}
@@ -567,6 +528,7 @@ function OwnerConsolePage({ token, user }) {
                             borderBottom: "1px solid #f3f4f6",
                             color: u.isActive ? "#047857" : "#b91c1c",
                             fontWeight: 600,
+                            whiteSpace: "nowrap",
                           }}
                         >
                           {u.isActive ? "Yes" : "No"}
@@ -576,31 +538,16 @@ function OwnerConsolePage({ token, user }) {
                             padding: "0.35rem 0.4rem",
                             borderBottom: "1px solid #f3f4f6",
                             color: "#6b7280",
+                            whiteSpace: "nowrap",
                           }}
                         >
                           {u.createdAt}
                         </td>
-                        <td
-                          style={{
-                            padding: "0.35rem 0.4rem",
-                            borderBottom: "1px solid #f3f4f6",
-                          }}
-                        >
+                        <td style={{ padding: "0.35rem 0.4rem", borderBottom: "1px solid #f3f4f6" }}>
                           <button
                             type="button"
-                            onClick={() =>
-                              handleToggleUserStatus(u.id, !!u.isActive)
-                            }
-                            style={{
-                              fontSize: "0.75rem",
-                              padding: "0.25rem 0.75rem",
-                              cursor: "pointer",
-                              borderRadius: "999px",
-                              border: "1px solid #e5e7eb",
-                              background: "#f9fafb",
-                              color: PRIMARY,
-                              fontWeight: 500,
-                            }}
+                            onClick={() => handleToggleUserStatus(u.id, !!u.isActive)}
+                            style={smallPillButtonStyle}
                           >
                             {u.isActive ? "Deactivate" : "Activate"}
                           </button>
