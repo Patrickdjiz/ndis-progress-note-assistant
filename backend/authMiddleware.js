@@ -13,7 +13,7 @@ function generateToken(user) {
       email: user.email
     },
     JWT_SECRET,
-    { expiresIn: "12h" }
+    { expiresIn: "4h" }
   );
 }
 
