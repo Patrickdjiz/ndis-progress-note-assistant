@@ -1,7 +1,7 @@
 // src/pages/NotesDashboardPage.jsx
 import { useEffect, useState } from "react";
 import { apiFetch, apiFetchBlob } from "../lib/api";
-import { fmtShiftDate, fmtDateTime } from "../lib/dateFormat";
+import { fmtShiftDate, fmtDateTime, fmtHm } from "../lib/dateFormat";
 
 const PRIMARY = "#111827";
 
@@ -668,7 +668,7 @@ const handleToggleArchive = async () => {
                 <br />
                 <strong>Date:</strong> {fmtShiftDate(selectedNote.date)}
                 {selectedNote.startTime && selectedNote.endTime
-                  ? `(${selectedNote.startTime}–${selectedNote.endTime})`
+                  ? ` (${fmtHm(selectedNote.startTime)}–${fmtHm(selectedNote.endTime)})`
                   : ""}
                 <br />
                 <strong>Location:</strong> {selectedNote.location}
