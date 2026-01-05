@@ -37,18 +37,17 @@ function tidyModelText(s) {
 // ---------------- PDF helpers ----------------
 const TZ = process.env.APP_TZ || "Australia/Sydney";
 
-const ymdForFilename = (v) => {
+const ymdOnly = (v) => {
   if (!v) return "note";
-  const s = String(v);
-  const m = s.match(/\d{4}-\d{2}-\d{2}/);
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  const m = String(v).match(/\d{4}-\d{2}-\d{2}/);
   return m ? m[0] : "note";
 };
 
-const hm = (t) => (t ? String(t).slice(0, 5) : ""); // "16:09:00" -> "16:09"
 
 const fmtDateOnly = (v) => {
-  const ymd = String(v || "").match(/\d{4}-\d{2}-\d{2}/)?.[0];
-  if (!ymd) return "-";
+  const ymd = ymdOnly(v);
+  if (ymd === "note") return "-";
   const [y, m, d] = ymd.split("-");
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return `${d} ${months[Number(m) - 1]} ${y}`;
@@ -56,9 +55,10 @@ const fmtDateOnly = (v) => {
 
 const fmtDateTimeTz = (v) => {
   if (!v) return "-";
-  const d = v instanceof Date ? v : new Date(v);
-  if (Number.isNaN(d.getTime())) return String(v);
-  return d.toLocaleString("en-AU", {
+  const dt = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(dt.getTime())) return String(v);
+
+  const main = dt.toLocaleString("en-AU", {
     timeZone: TZ,
     day: "2-digit",
     month: "short",
@@ -67,29 +67,76 @@ const fmtDateTimeTz = (v) => {
     minute: "2-digit",
     hour12: true,
   });
+
+  // Try append AEDT/AEST if available
+  let abbr = "";
+  try {
+    abbr =
+      new Intl.DateTimeFormat("en-AU", { timeZone: TZ, timeZoneName: "short" })
+        .formatToParts(dt)
+        .find((p) => p.type === "timeZoneName")?.value || "";
+  } catch {}
+
+  return abbr ? `${main} ${abbr}` : main;
 };
 
 const tzInfoForDate = (dateVal) => {
+  const ymd = ymdOnly(dateVal);
+  if (ymd === "note") return { abbr: "", offset: "" };
+
+  const base = new Date(`${ymd}T12:00:00.000Z`);
+
+  let abbr = "";
+  let offset = "";
+
   try {
-    // midday UTC avoids DST edge weirdness
-    const ymd = String(dateVal || "").match(/\d{4}-\d{2}-\d{2}/)?.[0];
-    const base = ymd ? new Date(`${ymd}T12:00:00.000Z`) : new Date();
-
-    const getTzPart = (timeZoneName) =>
-      new Intl.DateTimeFormat("en-AU", { timeZone: TZ, timeZoneName })
+    abbr =
+      new Intl.DateTimeFormat("en-AU", { timeZone: TZ, timeZoneName: "short" })
         .formatToParts(base)
-        .find((p) => p.type === "timeZoneName")?.value;
+        .find((p) => p.type === "timeZoneName")?.value || "";
+  } catch {}
 
-    const abbr = getTzPart("short") || TZ; // AEDT/AEST
-    const offset = (getTzPart("shortOffset") || "").replace(/^GMT/, "UTC"); // UTC+11
+  try {
+    // longOffset is more reliable than shortOffset across Node versions
+    offset =
+      new Intl.DateTimeFormat("en-AU", { timeZone: TZ, timeZoneName: "longOffset" })
+        .formatToParts(base)
+        .find((p) => p.type === "timeZoneName")?.value?.replace(/^GMT/, "UTC") || "";
+  } catch {}
 
-    return { abbr, offset };
-  } catch {
-    return { abbr: TZ, offset: "" };
-  }
+  return { abbr, offset };
 };
-// ---------------- end PDF helpers ----------------
 
+const hm = (t) => (t ? String(t).slice(0, 5) : ""); // "16:09:00" -> "16:09"
+
+// Prevent duplicated headers in the body (your note_text includes header lines)
+const stripNoteHeader = (txt) => {
+  const s = String(txt || "");
+  const lines = s.split(/\r?\n/);
+  let i = 0;
+
+  while (i < lines.length && lines[i].trim() === "") i++;
+
+  const headerRe = /^(Support Worker|Date of Support|Shift Time|Location|Participant):/i;
+  let sawHeader = false;
+
+  while (i < lines.length && headerRe.test(lines[i])) {
+    sawHeader = true;
+    i++;
+  }
+
+  if (sawHeader) {
+    while (i < lines.length && lines[i].trim() === "") i++;
+  }
+
+  return lines.slice(i).join("\n").trim();
+};
+
+const safeFilePart = (s) =>
+  String(s || "")
+    .trim()
+    .replace(/[^\w\-]+/g, "_")
+    .slice(0, 60);
 
 
 // Helper: normalise a Postgres note row to the old camelCase shape
@@ -743,13 +790,13 @@ router.get("/notes/:id/pdf", async (req, res) => {
       return res.status(404).json({ error: "Note not found" });
     }
 
-    const fileDate = ymdForFilename(row.date);
+    const fileDate = ymdOnly(row.date);
+res.setHeader("Content-Type", "application/pdf");
+res.setHeader(
+  "Content-Disposition",
+  `attachment; filename="NDIS_Note_${row.id}_${fileDate}_${safeFilePart(row.participant_name)}.pdf"`
+);
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="NDIS-note-${row.id}-${fileDate}.pdf"`
-    );
 
 
     const doc = new PDFDocument({
@@ -779,46 +826,46 @@ router.get("/notes/:id/pdf", async (req, res) => {
     };
 
     const generated = fmtDateTimeTz(new Date());
-    const { abbr, offset } = tzInfoForDate(row.date);
+const { abbr, offset } = tzInfoForDate(row.date);
 
-    // Header (print ONCE)
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#111827").text("NDIS Progress Note");
-    doc.moveDown(0.2);
-    doc.font("Helvetica").fontSize(10).fillColor("#6b7280").text(`Generated: ${generated}`);
-    doc.font("Helvetica").fontSize(10).fillColor("#6b7280")
-      .text(`Times shown in ${TZ} (${abbr}${offset ? `, ${offset}` : ""})`);
+// Header
+doc.font("Helvetica-Bold").fontSize(18).fillColor("#111827").text("NDIS Progress Note");
+doc.moveDown(0.2);
+doc.font("Helvetica").fontSize(10).fillColor("#6b7280").text(`Generated: ${generated}`);
 
-    doc.moveDown(0.8);
-    doc.fontSize(11).fillColor("#111827");
+// This is the “easy to understand for anyone” line:
+doc.font("Helvetica").fontSize(10).fillColor("#6b7280").text(
+  `Times shown in Australian Eastern Time (AET)${abbr ? ` — ${abbr}` : ""}${offset ? ` (${offset})` : ""}`
+);
+
+doc.moveDown(0.8);
+doc.fontSize(11).fillColor("#111827");
+
 
     labelValue("Organisation", row.organisation_name);
     labelValue("Participant", row.participant_name);
     labelValue("Worker", row.worker_name);
 
     const shiftTime =
-      row.start_time && row.end_time ? `${hm(row.start_time)}–${hm(row.end_time)}` : "-";
+  row.start_time && row.end_time ? `${hm(row.start_time)}–${hm(row.end_time)}` : "-";
 
-    labelValue("Date", fmtDateOnly(row.date));
-    labelValue("Shift time", shiftTime);
-    labelValue("Location", row.location);
+labelValue("Date", fmtDateOnly(row.date));
+labelValue("Shift time", shiftTime);
+labelValue("Created", fmtDateTimeTz(row.created_at));
 
-    labelValue("Incident", row.incident_flag ? "Yes" : "No");
-    labelValue("Created", fmtDateTimeTz(row.created_at));
+if (row.finalised_at) {
+  labelValue("Finalised", `${fmtDateTimeTz(row.finalised_at)}${row.finalised_by ? ` (by ${row.finalised_by})` : ""}`);
+} else {
+  labelValue("Finalised", "No");
+}
 
-    if (row.finalised_at) {
-      labelValue("Finalised", `${fmtDateTimeTz(row.finalised_at)}${row.finalised_by ? ` (by ${row.finalised_by})` : ""}`);
-    } else {
-      labelValue("Finalised", "No");
-    }
-
-    if (row.reviewed_flag) {
-      const reviewedText =
-        `${row.reviewed_at ? fmtDateTimeTz(row.reviewed_at) : ""}${row.reviewed_by ? ` (by ${row.reviewed_by})` : ""}`.trim();
-      labelValue("Reviewed", reviewedText || "Yes");
-    } else {
-      labelValue("Reviewed", "No");
-    }
-
+if (row.reviewed_flag) {
+  const reviewedText =
+    `${row.reviewed_at ? fmtDateTimeTz(row.reviewed_at) : ""}${row.reviewed_by ? ` (by ${row.reviewed_by})` : ""}`.trim();
+  labelValue("Reviewed", reviewedText || "Yes");
+} else {
+  labelValue("Reviewed", "No");
+}
 
 
     // Divider
@@ -827,7 +874,9 @@ router.get("/notes/:id/pdf", async (req, res) => {
 
     
     // Final note (preferred)
-    section("Final note", (row.final_note_text || row.note_text || "").toString());
+    const finalBody = stripNoteHeader(row.final_note_text || row.note_text || "");
+    section("Final note", finalBody || "-");
+
 
     doc.end();
   } catch (err) {

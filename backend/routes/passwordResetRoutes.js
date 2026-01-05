@@ -68,36 +68,99 @@ router.post("/forgot-password", async (req, res) => {
       [tokenHash, expiresAt, rows[0].id]
     );
 
-    const resetLink = `${FRONTEND_ORIGIN.replace(
-      /\/+$/,
-      ""
-    )}/reset-password?token=${rawToken}`;
+    const resetLink = `${FRONTEND_ORIGIN.replace(/\/+$/, "")}/reset-password?token=${rawToken}`;
 
-    const from = process.env.MAIL_FROM || "no-reply@ndisnotes.com";
-    const replyTo = process.env.MAIL_REPLY_TO || "support@ndisnotes.com";
+  // ✅ Replace payload with branded version
+  const brandName = "NDIS Notes";
+  const supportEmail = process.env.MAIL_REPLY_TO || "support@ndisnotes.com";
+  const from = process.env.MAIL_FROM || `${brandName} <no-reply@ndisnotes.com>`;
+  const replyTo = supportEmail;
 
-    try {
-      await sendMail({
-        to: rows[0].email,
-        from,
-        replyTo,
-        subject: "Reset your password",
-        text:
-          `Reset your password using this link (valid for 30 minutes):\n\n` +
-          `${resetLink}\n\n` +
-          `If you did not request this, you can ignore this email.`,
-        html:
-          `<p>Reset your password using the link below (valid for 30 minutes):</p>` +
-          `<p><a href="${resetLink}">${resetLink}</a></p>` +
-          `<p>If you did not request this, you can ignore this email.</p>`,
-      });
-    } catch (e) {
-      // Keep response generic (avoid enumeration), but log for debugging
-      console.error("Password reset email failed:", e?.message || e);
-      if (process.env.NODE_ENV !== "production") {
-        console.log("PASSWORD RESET LINK (dev):", resetLink);
-      }
+  const subject = "Reset your NDIS Notes password";
+  const preview = "Reset your password (link valid for 30 minutes).";
+
+  const text =
+    `${brandName}\n\n` +
+    `We received a request to reset your password.\n\n` +
+    `Reset link (valid for 30 minutes, one-time use):\n${resetLink}\n\n` +
+    `If you did not request this, you can ignore this email.\n` +
+    `Need help? Reply to this email or contact ${supportEmail}\n`;
+
+  const html = `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width,initial-scale=1" />
+      <title>${subject}</title>
+    </head>
+    <body style="margin:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+      <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+        ${preview}
+      </div>
+
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 12px;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+              <tr>
+                <td style="padding:18px 20px;background:#111827;color:#ffffff;">
+                  <div style="font-size:16px;font-weight:700;">${brandName}</div>
+                  <div style="font-size:12px;opacity:.9;margin-top:4px;">Password reset request</div>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="padding:22px 20px;">
+                  <h1 style="font-size:18px;margin:0 0 10px 0;">Reset your password</h1>
+                  <p style="margin:0 0 14px 0;line-height:1.5;color:#374151;">
+                    We received a request to reset your password. This link is valid for <strong>30 minutes</strong> and can be used <strong>once</strong>.
+                  </p>
+
+                  <div style="margin:18px 0;">
+                    <a href="${resetLink}"
+                      style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:999px;font-weight:700;font-size:14px;">
+                      Reset password
+                    </a>
+                  </div>
+
+                  <p style="margin:0 0 10px 0;line-height:1.5;color:#6b7280;font-size:12px;">
+                    If the button doesn’t work, copy and paste this link into your browser:
+                  </p>
+                  <p style="margin:0 0 16px 0;word-break:break-all;font-size:12px;">
+                    <a href="${resetLink}" style="color:#1d4ed8;">${resetLink}</a>
+                  </p>
+
+                  <p style="margin:0;line-height:1.5;color:#6b7280;font-size:12px;">
+                    If you didn’t request this, you can ignore this email — your password will not change unless the link is used.
+                  </p>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="padding:14px 20px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;">
+                  Need help? Reply to this email or contact <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>
+                </td>
+              </tr>
+            </table>
+
+            <div style="font-size:11px;color:#9ca3af;margin-top:10px;">
+              © ${new Date().getFullYear()} ${brandName}
+            </div>
+          </td>
+        </tr>
+      </table>
+    </body>
+  </html>`;
+
+  try {
+    await sendMail({ to: rows[0].email, from, replyTo, subject, text, html });
+  } catch (e) {
+    console.error("Password reset email failed:", e?.message || e);
+    if (process.env.NODE_ENV !== "production") {
+      console.log("PASSWORD RESET LINK (dev):", resetLink);
     }
+  }
+
 
     return res.json(okResponse);
   } catch (err) {
