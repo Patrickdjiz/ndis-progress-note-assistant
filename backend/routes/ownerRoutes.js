@@ -16,6 +16,16 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requireRole("OWNER"));
 
+router.use((req, res, next) => {
+  if (req.user?.mustChangePassword) {
+    return res
+      .status(403)
+      .json({ error: "You must change your password before continuing." });
+  }
+  next();
+});
+
+
 /**
  * GET /api/owner/overview
  * Returns all organisations + their users (admins + workers)
@@ -219,6 +229,7 @@ router.patch("/organisations/:id/status", async (req, res) => {
  */
 router.patch("/users/:id/status", async (req, res) => {
   try {
+    
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
       return res.status(400).json({ error: "Invalid user id" });
@@ -252,7 +263,7 @@ router.patch("/users/:id/status", async (req, res) => {
       id,
     ]);
 
-    return res.json({ ok: true, id, isActive: isActive ? 1 : 0 });
+    return res.json({ ok: true, id, isActive: !!isActive });
   } catch (err) {
     console.error("Error in PATCH /api/owner/users/:id/status:", err);
     return res.status(500).json({ error: "Failed to update user status" });

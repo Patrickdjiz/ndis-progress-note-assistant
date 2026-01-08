@@ -17,6 +17,8 @@ const passwordResetRoutes = require("./routes/passwordResetRoutes");
 
 const app = express();
 
+app.disable("x-powered-by");
+
 // If deployed behind a reverse proxy (Render/Railway/Fly/NGINX), this makes req.ip and rate-limit work correctly
 if (NODE_ENV === "production") {
   app.set("trust proxy", 1);
@@ -67,8 +69,24 @@ const aiLimiter = rateLimit({
   standardHeaders: true,
 });
 
+const passwordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+});
+
+const accountPwLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+});
+
+
 app.use("/api/login", authLimiter);
 app.use("/api/generate-note", aiLimiter);
+app.use("/api/auth", passwordLimiter); // forgot-password + reset-password
+app.use("/api/account/change-password", accountPwLimiter);
+
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -89,6 +107,14 @@ app.get("/api/health/db", async (req, res, next) => {
     next(err);
   }
 });
+
+// Never cache API responses (sensitive data)
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Pragma", "no-cache");
+  next();
+});
+
 
 // Routes
 app.use("/api/auth", passwordResetRoutes);

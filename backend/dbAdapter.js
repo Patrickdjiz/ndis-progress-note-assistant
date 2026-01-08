@@ -1,4 +1,4 @@
-// dbAdapter.js
+//backend/dbAdapter.js
 const { query: pgQuery } = require("./pgClient");
 const { DB_DRIVER } = require("./config/env");
 

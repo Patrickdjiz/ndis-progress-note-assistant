@@ -8,6 +8,8 @@ const { requireAuth } = require("../authMiddleware");
 const { generateNoteSchema, notesQuerySchema } = require("../validation");
 const { query } = require("../dbAdapter");
 const PDFDocument = require("pdfkit");
+const { redactPII } = require("../pii");
+const { audit } = require("../audit");
 
 
 const router = express.Router();
@@ -175,6 +177,16 @@ function normaliseNoteRow(row) {
 
 // All routes in this file require auth
 router.use(requireAuth);
+
+router.use((req, res, next) => {
+  if (req.user?.mustChangePassword) {
+    return res
+      .status(403)
+      .json({ error: "You must change your password before continuing." });
+  }
+  next();
+});
+
 
 // GET /api/notes  (list recent notes with filters, org-scoped)
 router.get("/notes", async (req, res) => {
@@ -363,6 +375,12 @@ router.post("/notes/:id/review", async (req, res) => {
       ]
     );
 
+    await audit(req, reviewedFlag ? "NOTE_REVIEWED" : "NOTE_UNREVIEWED", {
+      targetType: "progress_note",
+      targetId: String(id),
+    });
+
+
     return res.json({
       ok: true,
       reviewedFlag, // ✅ boolean now
@@ -431,6 +449,12 @@ router.post("/notes/:id/finalise", async (req, res) => {
       `,
       [finalNoteText.toString().trim(), nowIso, finalisedByName, id]
     );
+
+    await audit(req, "NOTE_FINALISED", {
+      targetType: "progress_note",
+      targetId: String(id),
+    });
+
 
     return res.json({
       ok: true,
@@ -554,6 +578,17 @@ router.post("/generate-note", async (req, res) => {
       (followUpActions || "");
 
 
+    const activitiesLLM = redactPII(activitiesAndSupports);
+    const presentationLLM = redactPII(participantPresentation);
+    const goalsLLM = redactPII(goalsWorkedOn);
+    const incidentsLLM = redactPII(incidentsOrRisks);
+    const followUpLLM = redactPII(followUpActions);
+
+    // Optional: do NOT send participantName/location to LLM at all (minimise PII)
+    const participantLLM = "[participant]";
+    const locationLLM = "[location]";
+
+
     const systemPrompt = `
     You are assisting NDIS disability support workers to write professional, objective and compliant progress notes.
 
@@ -606,28 +641,29 @@ router.post("/generate-note", async (req, res) => {
 
     const userPrompt = `
     DATA PROVIDED:
-    Participant: ${clip(participantName, 120)}
+    Participant: ${participantLLM}
     Date of Support: ${clip(date, 20)}
     Shift Time: ${clip(shiftTime, 20)}
-    Location: ${clip(safeLocation, 120)}
+    Location: ${locationLLM}
 
     Raw input – Activities & Supports:
-    ${clip(activitiesAndSupports, 2000)}
+    ${clip(activitiesLLM, 2000)}
 
     Raw input – Participant Presentation:
-    ${clip(participantPresentation, 2000)}
+    ${clip(presentationLLM, 2000)}
 
     Raw input – Goals Worked On:
-    ${clip(goalsWorkedOn, 2000)}
+    ${clip(goalsLLM, 2000)}
 
     Raw input – Incidents, Risks, Changes:
-    ${clip(incidentsOrRisks, 2000)}
+    ${clip(incidentsLLM, 2000)}
 
     Raw input – Follow-up / Next Steps:
-    ${clip(followUpActions, 2000)}
+    ${clip(followUpLLM, 2000)}
 
     Support worker: ${clip(workerName, 120)}
     `.trim();
+
 
     const { text: modelOut } = await chatLLM({
       messages: [
@@ -713,6 +749,13 @@ router.post("/generate-note", async (req, res) => {
 
     const newId = rows[0].id;
 
+    await audit(req, "NOTE_GENERATED", {
+      targetType: "progress_note",
+      targetId: String(newId),
+      meta: { date, incidentFlag: incidentFlag === true },
+    });
+
+
     return res.json({ note: fullNote, id: newId });
   } catch (error) {
     console.error("Error generating note:", error?.message || error);
@@ -789,6 +832,11 @@ router.get("/notes/:id/pdf", async (req, res) => {
     if (!row) {
       return res.status(404).json({ error: "Note not found" });
     }
+    
+    await audit(req, "NOTE_PDF_DOWNLOADED", {
+      targetType: "progress_note",
+      targetId: String(row.id),
+    });
 
     const fileDate = ymdOnly(row.date);
 res.setHeader("Content-Type", "application/pdf");
@@ -945,6 +993,12 @@ router.post("/notes/:id/archive", async (req, res) => {
         req.user.organisationId,
       ]
     );
+
+    await audit(req, archivedFlag ? "NOTE_ARCHIVED" : "NOTE_UNARCHIVED", {
+      targetType: "progress_note",
+      targetId: String(id),
+    });
+
 
     return res.json({
       ok: true,

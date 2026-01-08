@@ -1,5 +1,7 @@
+// frontend/src/lib/sessionStore.js
 const TOKEN_KEY = "ndisnotes_token";
 const USER_KEY = "ndisnotes_user";
+const LAST_ACTIVE_KEY = "ndisnotes_last_active";
 
 export const sessionStore = {
   getToken() {
@@ -29,8 +31,20 @@ export const sessionStore = {
     sessionStorage.removeItem(USER_KEY);
   },
 
+  getLastActive() {
+    const v = sessionStorage.getItem(LAST_ACTIVE_KEY);
+    return v ? Number(v) : 0;
+  },
+  setLastActive(ts = Date.now()) {
+    sessionStorage.setItem(LAST_ACTIVE_KEY, String(ts));
+  },
+  clearLastActive() {
+    sessionStorage.removeItem(LAST_ACTIVE_KEY);
+  },
+
   clearAll() {
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(LAST_ACTIVE_KEY);
   },
 };

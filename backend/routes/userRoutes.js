@@ -20,6 +20,16 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requireRole("ADMIN", "OWNER"));
 
+router.use((req, res, next) => {
+  if (req.user?.mustChangePassword) {
+    return res
+      .status(403)
+      .json({ error: "You must change your password before continuing." });
+  }
+  next();
+});
+
+
 /**
  * GET /api/users
  * List team for the current organisation.
@@ -99,7 +109,6 @@ router.patch("/:id/status", async (req, res) => {
     }
 
     const { isActive } = parsed.data;
-    const activeFlag = isActive ? 1 : 0;
 
     // Can't change your own status
     if (id === req.user.id) {
@@ -125,7 +134,7 @@ router.patch("/:id/status", async (req, res) => {
 
     await updateUserActiveFlag(id, !!isActive);
 
-    return res.json({ ok: true, id, isActive: activeFlag });
+    return res.json({ ok: true, id, isActive: !!isActive });
   } catch (err) {
     console.error("Error updating user status:", err.message);
     return res.status(500).json({ error: "Failed to update user status" });

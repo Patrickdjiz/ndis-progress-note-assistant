@@ -41,6 +41,28 @@ CREATE TABLE progress_notes (
   incident_flag BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
+  -- Audit events (compliance logging)
+  CREATE TABLE IF NOT EXISTS audit_events (
+  id BIGSERIAL PRIMARY KEY,
+  organisation_id INTEGER REFERENCES organisations(id),
+  actor_user_id INTEGER REFERENCES users(id),
+  actor_role TEXT,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  meta JSONB,
+  ip INET,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_org_created
+  ON audit_events (organisation_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_actor_created
+  ON audit_events (actor_user_id, created_at DESC);
+
+
   -- final note fields
   final_note_text TEXT,
   finalised_at TIMESTAMPTZ,

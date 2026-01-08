@@ -1,4 +1,4 @@
-// lib/mailer.js (or utils/mailer.js)
+// backend/mailer.js 
 const postmark = require("postmark");
 
 const TOKEN = process.env.POSTMARK_SERVER_TOKEN;

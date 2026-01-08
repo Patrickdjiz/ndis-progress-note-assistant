@@ -25,8 +25,19 @@ function App() {
   const [auth, setAuth] = useState(() => {
     const token = sessionStore.getToken();
     const user = sessionStore.getUser();
-    return token && user ? { token, user } : null;
+    if (!token || !user) return null;
+
+    const last = sessionStore.getLastActive();
+    if (last && Date.now() - last > IDLE_MS) {
+      sessionStore.clearAll();
+      return null;
+    }
+
+    // mark active on load
+    sessionStore.setLastActive(Date.now());
+    return { token, user };
   });
+
 
 
   const [logoutMsg, setLogoutMsg] = useState("");
@@ -50,6 +61,7 @@ function App() {
     let timer = null;
 
     const reset = () => {
+      sessionStore.setLastActive(Date.now());
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         setAuth(null);
@@ -57,6 +69,7 @@ function App() {
         setLogoutMsg("You were logged out due to inactivity.");
       }, IDLE_MS);
     };
+
 
     const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
     events.forEach((ev) => window.addEventListener(ev, reset, { passive: true }));
@@ -103,6 +116,7 @@ function App() {
     // ✅ tab-only persistence
     sessionStore.setToken(data.token);
     sessionStore.setUser(data.user);
+    sessionStore.setLastActive(Date.now());
   };
 
 
