@@ -141,3 +141,7 @@ vite.config.ts.timestamp-*
 # Ignore backend environment variables
 backend/.env
 backend/.env.*
+
+# Ignore frontend environment variables
+frontend/.env
+frontend/.env.*
