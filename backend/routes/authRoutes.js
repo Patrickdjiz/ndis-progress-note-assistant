@@ -53,7 +53,7 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const ok = bcrypt.compareSync(password, row.passwordHash);
+    const ok = await bcrypt.compare(password, row.passwordHash);
     if (!ok) {
       return res.status(401).json({ error: "Invalid email or password" });
     }

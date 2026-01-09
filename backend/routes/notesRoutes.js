@@ -60,27 +60,37 @@ const fmtDateTimeTz = (v) => {
   const dt = v instanceof Date ? v : new Date(v);
   if (Number.isNaN(dt.getTime())) return String(v);
 
-  const main = dt.toLocaleString("en-AU", {
-    timeZone: TZ,
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-
-  // Try append AEDT/AEST if available
-  let abbr = "";
   try {
-    abbr =
-      new Intl.DateTimeFormat("en-AU", { timeZone: TZ, timeZoneName: "short" })
-        .formatToParts(dt)
-        .find((p) => p.type === "timeZoneName")?.value || "";
-  } catch {}
+    const main = dt.toLocaleString("en-AU", {
+      timeZone: TZ,
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
 
-  return abbr ? `${main} ${abbr}` : main;
+    // Try append AEDT/AEST if available
+    let abbr = "";
+    try {
+      abbr =
+        new Intl.DateTimeFormat("en-AU", { timeZone: TZ, timeZoneName: "short" })
+          .formatToParts(dt)
+          .find((p) => p.type === "timeZoneName")?.value || "";
+    } catch {}
+
+    return abbr ? `${main} ${abbr}` : main;
+  } catch (e) {
+    // If ICU/timezone data is missing on this Node build, fall back safely.
+    try {
+      return dt.toISOString().replace(".000Z", "Z");
+    } catch {
+      return String(v);
+    }
+  }
 };
+
 
 const tzInfoForDate = (dateVal) => {
   const ymd = ymdOnly(dateVal);
@@ -968,31 +978,28 @@ router.post("/notes/:id/archive", async (req, res) => {
     }
 
     const { rows: exists } = await query(sqlCheck, params);
-    if (!exists[0]) {
-      return res.status(404).json({ error: "Note not found" });
-    }
+    if (!exists[0]) return res.status(404).json({ error: "Note not found" });
 
     const nowIso = new Date().toISOString();
 
-    const { rows } = await query(
-      `
+    let sqlUpdate = `
       UPDATE progress_notes
-      SET
-        archived_flag = $1,
-        archived_at   = $2,
-        archived_by   = $3
+      SET archived_flag = $1,
+          archived_at   = $2,
+          archived_by   = $3
       WHERE id = $4
         AND organisation_id = $5
-      RETURNING archived_flag, archived_at, archived_by
-      `,
-      [
-        archivedFlag,
-        archivedFlag ? nowIso : null,
-        archivedFlag ? archivedBy : null,
-        id,
-        req.user.organisationId,
-      ]
-    );
+    `;
+    const up = [archivedFlag, archivedFlag ? nowIso : null, archivedFlag ? archivedBy : null, id, req.user.organisationId];
+
+    if (req.user.role === "WORKER") {
+      sqlUpdate += ` AND worker_user_id = $6`;
+      up.push(req.user.id);
+    }
+
+    sqlUpdate += ` RETURNING archived_flag, archived_at, archived_by`;
+
+    const { rows } = await query(sqlUpdate, up);
 
     await audit(req, archivedFlag ? "NOTE_ARCHIVED" : "NOTE_UNARCHIVED", {
       targetType: "progress_note",

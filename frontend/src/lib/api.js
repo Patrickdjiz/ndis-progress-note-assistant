@@ -1,3 +1,4 @@
+// frontend/src/lib/api.js
 import { sessionStore } from "./sessionStore";
 
 export const API_BASE_URL =

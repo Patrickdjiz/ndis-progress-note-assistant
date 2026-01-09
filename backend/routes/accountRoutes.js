@@ -22,10 +22,10 @@ router.post("/account/change-password", requireAuth, async (req, res) => {
     const { rows } = await query(`SELECT password_hash FROM users WHERE id = $1`, [req.user.id]);
     if (!rows[0]) return res.status(404).json({ error: "User not found" });
 
-    const ok = bcrypt.compareSync(String(currentPassword), rows[0].password_hash);
+    const ok = await bcrypt.compare(String(currentPassword), rows[0].password_hash);
     if (!ok) return res.status(401).json({ error: "Current password is incorrect" });
 
-    const newHash = bcrypt.hashSync(String(newPassword), 10);
+    const newHash = await bcrypt.hash(String(newPassword), 10);
     const nowIso = new Date().toISOString();
 
     await query(

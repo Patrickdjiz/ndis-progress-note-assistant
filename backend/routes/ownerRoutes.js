@@ -102,7 +102,7 @@ router.post("/providers", async (req, res) => {
     const password = adminPassword.trim();
     const nowIso = new Date().toISOString();
 
-    const hash = bcrypt.hashSync(password, 10);
+    const hash = await bcrypt.hash(password, 10);
 
     const client = await pool.connect();
     try {

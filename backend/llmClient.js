@@ -17,7 +17,7 @@ async function runpodChat({ messages, temperature = 0.2, max_tokens = 700 }) {
   }
 
   const baseUrl = `https://api.runpod.ai/v2/${endpointId}/openai/v1`;
-  const url = `${baseUrl}/chat/completions`;
+  const url = `${baseUrl}/chat/completions`; 
 
   // Cold starts can be > 60s (you saw ~80s). Give it headroom.
   const { signal, cancel } = withTimeout(240_000);

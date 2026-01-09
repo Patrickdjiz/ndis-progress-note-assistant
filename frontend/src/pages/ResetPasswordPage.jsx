@@ -42,8 +42,8 @@ export default function ResetPasswordPage() {
       setErr("Missing reset token. Please use the link from your email.");
       return;
     }
-    if (!newPassword || newPassword.length < 8) {
-      setErr("Password must be at least 8 characters.");
+    if (!newPassword || newPassword.length < 10) {
+      setErr("Password must be at least 10 characters.");
       return;
     }
     if (newPassword !== confirm) {

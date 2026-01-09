@@ -74,7 +74,7 @@ router.post("/", async (req, res) => {
         .json({ error: "A user with this email already exists" });
     }
 
-    const hash = bcrypt.hashSync(password, 10);
+    const hash = await bcrypt.hash(password, 10);
 
     const user = await createWorkerUser({
       orgId: req.user.organisationId,

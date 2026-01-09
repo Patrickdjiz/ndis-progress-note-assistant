@@ -1,7 +1,7 @@
-// src/pages/MyNotesPage.jsx
 import { useEffect, useState } from "react";
 import { apiFetch, apiFetchBlob } from "../lib/api";
 import { fmtShiftDate, fmtDateTime, fmtHm } from "../lib/dateFormat";
+import { downloadBlob } from "../lib/download";
 
 const PRIMARY = "#111827";
 
@@ -20,13 +20,8 @@ function MyNotesPage({ token, user }) {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const safeFile = (s) =>
-    String(s || "")
-      .trim()
-      .replace(/[^\w\-]+/g, "_")
-      .slice(0, 80);
 
-  // ✅ UI-only: responsive helper (no business logic changes)
+  // ✅ UI-only: responsive helper
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -41,19 +36,30 @@ function MyNotesPage({ token, user }) {
     };
   }, []);
 
+  const safeFile = (s) =>
+    String(s || "")
+      .trim()
+      .replace(/[^\w\-]+/g, "_")
+      .slice(0, 80);
+
+  const ymdOnly = (v) => {
+    const s = String(v || "");
+    const m = s.match(/\d{4}-\d{2}-\d{2}/);
+    return m ? m[0] : "date";
+  };
+
   // ---------- Load list of notes (cursor pagination) ----------
   const fetchNotes = async ({ append = false, cursor = null } = {}) => {
     try {
       append ? setLoadingMore(true) : setLoadingList(true);
       setErrorMsg("");
 
-      // Only reset selection/editor when doing a full refresh (not "load more")
       if (!append) {
         setSelectedNote(null);
         setFinalNoteEditText("");
         setFinalSaveMsg("");
         setDetailError("");
-        setNextCursor(null); // hide old cursor if this refresh fails
+        setNextCursor(null);
       }
 
       const params = new URLSearchParams();
@@ -87,17 +93,13 @@ function MyNotesPage({ token, user }) {
       setFinalSaveMsg("");
 
       const data = await apiFetch(`/api/notes/${noteSummary.id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       const fullNote = data.note;
       setSelectedNote(fullNote);
       setFinalNoteEditText(
-        fullNote.finalNoteText && fullNote.finalNoteText.trim().length > 0
-          ? fullNote.finalNoteText
-          : fullNote.noteText || ""
+        fullNote.finalNoteText && fullNote.finalNoteText.trim().length > 0 ? fullNote.finalNoteText : fullNote.noteText || ""
       );
     } catch (err) {
       console.error("Error fetching note details:", err);
@@ -105,20 +107,16 @@ function MyNotesPage({ token, user }) {
     }
   };
 
-  // ---------- Save / finalise note from worker view ----------
+  // ---------- Save / finalise note ----------
   const handleSaveFinalNote = async () => {
     try {
       setDetailError("");
       setFinalSaveMsg("");
       setSavingFinal(true);
 
-      if (!selectedNote) {
-        setDetailError("No note selected.");
-        return;
-      }
+      if (!selectedNote) return setDetailError("No note selected.");
       if (!finalNoteEditText || !finalNoteEditText.toString().trim()) {
-        setDetailError("Final note text cannot be empty.");
-        return;
+        return setDetailError("Final note text cannot be empty.");
       }
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/finalise`, {
@@ -127,12 +125,9 @@ function MyNotesPage({ token, user }) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          finalNoteText: finalNoteEditText,
-        }),
+        body: JSON.stringify({ finalNoteText: finalNoteEditText }),
       });
 
-      // Update selected note with new final text + timestamps
       setSelectedNote((prev) =>
         prev
           ? {
@@ -144,9 +139,7 @@ function MyNotesPage({ token, user }) {
           : prev
       );
 
-      // Refresh list so the badge switches to "Finalised"
       fetchNotes();
-
       setFinalSaveMsg("Final note saved for this shift.");
     } catch (err) {
       console.error("Error saving final note:", err);
@@ -174,14 +167,11 @@ function MyNotesPage({ token, user }) {
     </span>
   );
 
-  // ---------- savePDF ----------
+  // ---------- Download PDF ----------
   const handleDownloadPdf = async () => {
     try {
       setErrorMsg("");
-      if (!selectedNote) {
-        setErrorMsg("No note selected.");
-        return;
-      }
+      if (!selectedNote) return setErrorMsg("No note selected.");
 
       setDownloadingPdf(true);
 
@@ -189,16 +179,8 @@ function MyNotesPage({ token, user }) {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `NDIS_Note_${safeFile(selectedNote.date)}_${safeFile(
-        selectedNote.participantName
-      )}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}_${safeFile(selectedNote.participantName)}.pdf`;
+      downloadBlob(blob, filename);
     } catch (e) {
       setErrorMsg(e?.message || "Failed to download PDF.");
     } finally {
@@ -206,7 +188,7 @@ function MyNotesPage({ token, user }) {
     }
   };
 
-  // ✅ UI-only shared styles (tap targets + overflow safety)
+  // ✅ UI-only shared styles
   const pillBtn = (overrides = {}) => ({
     padding: "0.45rem 1.1rem",
     fontSize: "0.85rem",
@@ -229,20 +211,10 @@ function MyNotesPage({ token, user }) {
   return (
     <section style={{ width: "100%", boxSizing: "border-box" }}>
       <div style={{ marginBottom: "0.75rem" }}>
-        <h2 style={{ margin: 0, fontSize: "1.2rem", color: PRIMARY }}>
-          My notes
-        </h2>
-        <p
-          style={{
-            fontSize: "0.9rem",
-            color: "#4b5563",
-            marginTop: "0.25rem",
-            lineHeight: 1.45,
-          }}
-        >
-          These are notes you generated for your shifts. You can review them
-          here, edit the final version, and copy them into your
-          organisation&apos;s record system.
+        <h2 style={{ margin: 0, fontSize: "1.2rem", color: PRIMARY }}>My notes</h2>
+        <p style={{ fontSize: "0.9rem", color: "#4b5563", marginTop: "0.25rem", lineHeight: 1.45 }}>
+          These are notes you generated for your shifts. You can review them here, edit the final version, and copy them
+          into your organisation&apos;s record system.
         </p>
       </div>
 
@@ -261,15 +233,7 @@ function MyNotesPage({ token, user }) {
           flexWrap: "wrap",
         }}
       >
-        <span
-          style={{
-            fontSize: "0.85rem",
-            color: "#6b7280",
-            // ✅ Mobile: prevent overflow from long names
-            wordBreak: "break-word",
-            flex: "1 1 auto",
-          }}
-        >
+        <span style={{ fontSize: "0.85rem", color: "#6b7280", wordBreak: "break-word", flex: "1 1 auto" }}>
           Logged in as <strong>{user.fullName}</strong> – worker view
         </span>
         <button
@@ -282,27 +246,21 @@ function MyNotesPage({ token, user }) {
             background: PRIMARY,
             color: "#f9fafb",
             fontWeight: 500,
-            ...(isMobile ? { maxWidth: 260 } : {}), // keeps mobile bar tidy, still full-width if wrapping
+            ...(isMobile ? { maxWidth: 260 } : {}),
           })}
         >
           {loadingList ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
-      {errorMsg && (
-        <p style={{ color: "red", marginTop: "0.6rem", wordBreak: "break-word" }}>
-          {errorMsg}
-        </p>
-      )}
+      {errorMsg && <p style={{ color: "red", marginTop: "0.6rem", wordBreak: "break-word" }}>{errorMsg}</p>}
 
       {/* Main layout */}
       <div
         style={{
           marginTop: "1rem",
           display: "grid",
-          gridTemplateColumns: isMobile
-            ? "minmax(0, 1fr)"
-            : "minmax(0, 1.05fr) minmax(0, 1.1fr)",
+          gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "minmax(0, 1.05fr) minmax(0, 1.1fr)",
           gap: "1rem",
         }}
       >
@@ -318,16 +276,7 @@ function MyNotesPage({ token, user }) {
             minWidth: 0,
           }}
         >
-          <div
-            style={{
-              marginBottom: "0.4rem",
-              fontSize: "0.9rem",
-              fontWeight: 600,
-              color: PRIMARY,
-            }}
-          >
-            Your recent notes
-          </div>
+          <div style={{ marginBottom: "0.4rem", fontSize: "0.9rem", fontWeight: 600, color: PRIMARY }}>Your recent notes</div>
 
           <div
             style={{
@@ -341,8 +290,7 @@ function MyNotesPage({ token, user }) {
           >
             {notes.length === 0 && !loadingList && (
               <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
-                No notes yet. Generate a note from the home screen and it will
-                appear here.
+                No notes yet. Generate a note from the home screen and it will appear here.
               </p>
             )}
 
@@ -363,74 +311,22 @@ function MyNotesPage({ token, user }) {
                     padding: isMobile ? "0.7rem 0.75rem" : "0.55rem 0.65rem",
                     background: isSelected ? "#eff6ff" : "#ffffff",
                     cursor: "pointer",
-                    // ✅ Mobile: prevent accidental zoom / improve tapping
                     touchAction: "manipulation",
                     boxSizing: "border-box",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "baseline",
-                      marginBottom: "0.2rem",
-                      gap: "0.5rem",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        fontSize: "0.95rem",
-                        color: "#111827",
-                        // ✅ Mobile: long names wrap
-                        wordBreak: "break-word",
-                      }}
-                    >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.2rem", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 600, fontSize: "0.95rem", color: "#111827", wordBreak: "break-word" }}>
                       {note.participantName}
                     </span>
-                    <span
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "#6b7280",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {fmtShiftDate(note.date)}
-                    </span>
+                    <span style={{ fontSize: "0.75rem", color: "#6b7280", whiteSpace: "nowrap" }}>{fmtShiftDate(note.date)}</span>
                   </div>
 
-                  <div
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "#4b5563",
-                      marginBottom: "0.3rem",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {note.location}
-                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "#4b5563", marginBottom: "0.3rem", wordBreak: "break-word" }}>{note.location}</div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "0.4rem",
-                      flexWrap: "wrap",
-                      fontSize: "0.75rem",
-                    }}
-                  >
-                    {badge(
-                      isFinalised ? "Finalised" : "Draft",
-                      isFinalised
-                        ? { bg: "#ecfdf3", color: "#166534" }
-                        : { bg: "#f3f4f6", color: "#374151" }
-                    )}
-                    {badge(
-                      hasIncident ? "Incident" : "No incident",
-                      hasIncident
-                        ? { bg: "#fef2f2", color: "#b91c1c" }
-                        : { bg: "#e0f2fe", color: "#0369a1" }
-                    )}
+                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", fontSize: "0.75rem" }}>
+                    {badge(isFinalised ? "Finalised" : "Draft", isFinalised ? { bg: "#ecfdf3", color: "#166534" } : { bg: "#f3f4f6", color: "#374151" })}
+                    {badge(hasIncident ? "Incident" : "No incident", hasIncident ? { bg: "#fef2f2", color: "#b91c1c" } : { bg: "#e0f2fe", color: "#0369a1" })}
                   </div>
                 </button>
               );
@@ -459,7 +355,7 @@ function MyNotesPage({ token, user }) {
           )}
         </div>
 
-        {/* Note details + finalise */}
+        {/* Note details */}
         <div
           style={{
             borderRadius: "0.75rem",
@@ -470,48 +366,19 @@ function MyNotesPage({ token, user }) {
             minWidth: 0,
           }}
         >
-          <h3
-            style={{
-              marginTop: 0,
-              marginBottom: "0.4rem",
-              fontSize: "1rem",
-              color: PRIMARY,
-            }}
-          >
-            Note details
-          </h3>
+          <h3 style={{ marginTop: 0, marginBottom: "0.4rem", fontSize: "1rem", color: PRIMARY }}>Note details</h3>
 
-          {!selectedNote && (
-            <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
-              Tap a note on the left to view and edit the final text.
-            </p>
-          )}
+          {!selectedNote && <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>Tap a note on the left to view and edit the final text.</p>}
 
-          {detailError && (
-            <p style={{ color: "red", marginBottom: "0.4rem", wordBreak: "break-word" }}>
-              {detailError}
-            </p>
-          )}
+          {detailError && <p style={{ color: "red", marginBottom: "0.4rem", wordBreak: "break-word" }}>{detailError}</p>}
 
           {selectedNote && (
             <>
-              <p
-                style={{
-                  fontSize: "0.85rem",
-                  color: "#374151",
-                  marginBottom: "0.5rem",
-                  lineHeight: 1.45,
-                  wordBreak: "break-word",
-                }}
-              >
+              <p style={{ fontSize: "0.85rem", color: "#374151", marginBottom: "0.5rem", lineHeight: 1.45, wordBreak: "break-word" }}>
                 <strong>Participant:</strong> {selectedNote.participantName}
                 <br />
                 <strong>Date:</strong> {fmtShiftDate(selectedNote.date)}{" "}
-                {selectedNote.startTime && selectedNote.endTime
-                  ? ` (${fmtHm(selectedNote.startTime)}–${fmtHm(
-                      selectedNote.endTime
-                    )})`
-                  : ""}
+                {selectedNote.startTime && selectedNote.endTime ? ` (${fmtHm(selectedNote.startTime)}–${fmtHm(selectedNote.endTime)})` : ""}
                 <br />
                 <strong>Location:</strong> {selectedNote.location}
                 <br />
@@ -521,34 +388,12 @@ function MyNotesPage({ token, user }) {
                 <strong>Incident:</strong> {selectedNote.incidentFlag ? "Yes" : "No"}
               </p>
 
-              <h4
-                style={{
-                  fontSize: "0.9rem",
-                  marginTop: "0.3rem",
-                  marginBottom: "0.25rem",
-                  color: "#111827",
-                }}
-              >
+              <h4 style={{ fontSize: "0.9rem", marginTop: "0.3rem", marginBottom: "0.25rem", color: "#111827" }}>
                 Final note for this shift (editable)
               </h4>
-              <textarea
-                rows={8}
-                value={finalNoteEditText}
-                onChange={(e) => setFinalNoteEditText(e.target.value)}
-                style={inputBox({
-                  resize: "vertical",
-                })}
-              />
+              <textarea rows={8} value={finalNoteEditText} onChange={(e) => setFinalNoteEditText(e.target.value)} style={inputBox({ resize: "vertical" })} />
 
-              <div
-                style={{
-                  marginTop: "0.6rem",
-                  display: "flex",
-                  gap: "0.6rem",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}
-              >
+              <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
                 <button
                   type="button"
                   onClick={handleSaveFinalNote}
@@ -582,23 +427,10 @@ function MyNotesPage({ token, user }) {
                   {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
                 </button>
 
-                {finalSaveMsg && (
-                  <span style={{ fontSize: "0.8rem", color: "#047857" }}>
-                    {finalSaveMsg}
-                  </span>
-                )}
+                {finalSaveMsg && <span style={{ fontSize: "0.8rem", color: "#047857" }}>{finalSaveMsg}</span>}
               </div>
 
-              <h4
-                style={{
-                  fontSize: "0.9rem",
-                  marginTop: "0.9rem",
-                  marginBottom: "0.25rem",
-                  color: "#111827",
-                }}
-              >
-                AI draft (original)
-              </h4>
+              <h4 style={{ fontSize: "0.9rem", marginTop: "0.9rem", marginBottom: "0.25rem", color: "#111827" }}>AI draft (original)</h4>
               <pre
                 style={{
                   whiteSpace: "pre-wrap",

@@ -1,5 +1,5 @@
 -- Organisations (providers)
-CREATE TABLE organisations (
+CREATE TABLE IF NOT EXISTS organisations (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL DEFAULT 'ACTIVE',
@@ -8,7 +8,7 @@ CREATE TABLE organisations (
 );
 
 -- Users (admins + workers + owner)
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   organisation_id INTEGER NOT NULL REFERENCES organisations(id),
   email TEXT NOT NULL UNIQUE,
@@ -17,11 +17,15 @@ CREATE TABLE users (
   full_name TEXT NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
+  password_changed_at TIMESTAMPTZ,
+  reset_token_hash TEXT,
+  reset_token_expires_at TIMESTAMPTZ,
   CHECK (role IN ('OWNER', 'ADMIN', 'WORKER'))
 );
 
 -- Progress notes
-CREATE TABLE progress_notes (
+CREATE TABLE IF NOT EXISTS progress_notes (
   id SERIAL PRIMARY KEY,
   organisation_id INTEGER NOT NULL REFERENCES organisations(id),
   worker_user_id INTEGER NOT NULL REFERENCES users(id),
@@ -32,17 +36,32 @@ CREATE TABLE progress_notes (
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
   location TEXT NOT NULL,
+
   activities_and_supports TEXT NOT NULL,
   participant_presentation TEXT NOT NULL,
   goals_worked_on TEXT NOT NULL,
   incidents_or_risks TEXT NOT NULL,
   follow_up_actions TEXT NOT NULL,
+
   note_text TEXT NOT NULL,
   incident_flag BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-  -- Audit events (compliance logging)
-  CREATE TABLE IF NOT EXISTS audit_events (
+  final_note_text TEXT,
+  finalised_at TIMESTAMPTZ,
+  finalised_by TEXT,
+
+  reviewed_flag BOOLEAN NOT NULL DEFAULT FALSE,
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by TEXT,
+
+  archived_flag BOOLEAN NOT NULL DEFAULT FALSE,
+  archived_at TIMESTAMPTZ,
+  archived_by TEXT
+);
+
+-- Audit events (compliance logging)
+CREATE TABLE IF NOT EXISTS audit_events (
   id BIGSERIAL PRIMARY KEY,
   organisation_id INTEGER REFERENCES organisations(id),
   actor_user_id INTEGER REFERENCES users(id),
@@ -56,44 +75,25 @@ CREATE TABLE progress_notes (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS idx_users_org ON users (organisation_id);
+
+CREATE INDEX IF NOT EXISTS idx_notes_org_created ON progress_notes (organisation_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notes_org_worker ON progress_notes (organisation_id, worker_user_id);
+CREATE INDEX IF NOT EXISTS idx_notes_org_participant ON progress_notes (organisation_id, participant_name);
+CREATE INDEX IF NOT EXISTS idx_notes_org_incident ON progress_notes (organisation_id, incident_flag);
+CREATE INDEX IF NOT EXISTS idx_notes_org_archived ON progress_notes (organisation_id, archived_flag);
+
+-- Cursor pagination indexes
+CREATE INDEX IF NOT EXISTS idx_notes_org_created_id
+  ON progress_notes (organisation_id, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_notes_org_worker_created_id
+  ON progress_notes (organisation_id, worker_user_id, created_at DESC, id DESC);
+
+-- Audit indexes
 CREATE INDEX IF NOT EXISTS idx_audit_org_created
   ON audit_events (organisation_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_audit_actor_created
   ON audit_events (actor_user_id, created_at DESC);
-
-
-  -- final note fields
-  final_note_text TEXT,
-  finalised_at TIMESTAMPTZ,
-  finalised_by TEXT,
-
-  -- provider review fields
-  reviewed_flag BOOLEAN NOT NULL DEFAULT FALSE,
-  reviewed_at TIMESTAMPTZ,
-  reviewed_by TEXT
-);
-
-ALTER TABLE users
-  ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
-  ADD COLUMN password_changed_at TIMESTAMPTZ,
-  ADD COLUMN reset_token_hash TEXT,
-  ADD COLUMN reset_token_expires_at TIMESTAMPTZ;
-  
-ALTER TABLE progress_notes
-  ADD COLUMN IF NOT EXISTS archived_flag BOOLEAN NOT NULL DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS archived_by TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_notes_org_archived ON progress_notes (organisation_id, archived_flag);
-
-
--- Helpful indexes
-CREATE INDEX idx_users_org ON users (organisation_id);
-CREATE INDEX idx_notes_org_created ON progress_notes (organisation_id, created_at DESC);
-CREATE INDEX idx_notes_org_worker ON progress_notes (organisation_id, worker_user_id);
-CREATE INDEX idx_notes_org_participant ON progress_notes (organisation_id, participant_name);
-CREATE INDEX idx_notes_org_incident ON progress_notes (organisation_id, incident_flag);
-CREATE INDEX IF NOT EXISTS idx_notes_org_created_id ON progress_notes (organisation_id, created_at DESC, id DESC);
-CREATE INDEX IF NOT EXISTS idx_notes_org_worker_created_id ON progress_notes (organisation_id, worker_user_id, created_at DESC, id DESC);
-

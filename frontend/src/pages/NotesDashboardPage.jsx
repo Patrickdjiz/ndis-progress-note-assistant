@@ -1,7 +1,7 @@
-// src/pages/NotesDashboardPage.jsx
 import { useEffect, useState } from "react";
 import { apiFetch, apiFetchBlob } from "../lib/api";
 import { fmtShiftDate, fmtDateTime, fmtHm } from "../lib/dateFormat";
+import { downloadBlob } from "../lib/download";
 
 const PRIMARY = "#111827";
 
@@ -11,10 +11,11 @@ function NotesDashboardPage({ token, user }) {
   const [notesError, setNotesError] = useState("");
 
   const [filterParticipant, setFilterParticipant] = useState("");
+  const [debouncedParticipant, setDebouncedParticipant] = useState("");
   const [filterIncident, setFilterIncident] = useState("all"); // all | true | false
-  const [archiving, setArchiving] = useState(false);
-  const [filterArchived, setFilterArchived] = useState("false");
+  const [filterArchived, setFilterArchived] = useState("false"); // false | true | all
 
+  const [archiving, setArchiving] = useState(false);
   const [selectedNote, setSelectedNote] = useState(null);
 
   const [finalNoteEditText, setFinalNoteEditText] = useState("");
@@ -25,10 +26,9 @@ function NotesDashboardPage({ token, user }) {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState("");
-
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
-  // ✅ UI-only: responsive helper (no business logic changes)
+  // ✅ UI-only: responsive helper
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -42,6 +42,14 @@ function NotesDashboardPage({ token, user }) {
       else mq.removeListener(apply);
     };
   }, []);
+
+  // Debounce participant filter to avoid spamming requests while typing
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedParticipant(filterParticipant.trim());
+    }, 350);
+    return () => clearTimeout(t);
+  }, [filterParticipant]);
 
   const safeFile = (s) =>
     String(s || "")
@@ -60,10 +68,10 @@ function NotesDashboardPage({ token, user }) {
     try {
       append ? setLoadingMore(true) : setNotesLoading(true);
       setNotesError("");
+      setErrorMsg("");
 
       const params = new URLSearchParams();
-      if (filterParticipant.trim())
-        params.append("participant", filterParticipant.trim());
+      if (debouncedParticipant) params.append("participant", debouncedParticipant);
       if (filterIncident !== "all") params.append("hasIncident", filterIncident);
       params.append("archived", filterArchived);
       params.append("limit", "50");
@@ -89,36 +97,35 @@ function NotesDashboardPage({ token, user }) {
     }
   };
 
+  // Initial load
   useEffect(() => {
     fetchNotes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto refresh when filters change (participant is debounced)
   useEffect(() => {
     setNextCursor(null);
     setSelectedNote(null);
     setFinalNoteEditText("");
     setFinalSaveMsg("");
-    // optional: setNotes([]); // only if you want the table to clear immediately
-  }, [filterParticipant, filterIncident, filterArchived]);
+    fetchNotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedParticipant, filterIncident, filterArchived]);
 
   // ---------- Select a note ----------
   const handleSelectNote = async (id) => {
     try {
       setNotesError("");
-      setSelectedNote(null);
-      setFinalNoteEditText("");
-      setFinalSaveMsg("");
       setErrorMsg("");
+      setFinalSaveMsg("");
 
       const data = await apiFetch(`/api/notes/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       setSelectedNote(data.note);
-      setFinalNoteEditText(
-        data.note.finalNoteText ? data.note.finalNoteText : data.note.noteText
-      );
+      setFinalNoteEditText(data.note.finalNoteText ? data.note.finalNoteText : data.note.noteText);
     } catch (err) {
       console.error("Error fetching note:", err);
       setNotesError(err?.message || "Failed to fetch note");
@@ -131,13 +138,9 @@ function NotesDashboardPage({ token, user }) {
       setFinalSaveMsg("");
       setErrorMsg("");
 
-      if (!selectedNote) {
-        setErrorMsg("No note selected.");
-        return;
-      }
+      if (!selectedNote) return setErrorMsg("No note selected.");
       if (!finalNoteEditText || !finalNoteEditText.toString().trim()) {
-        setErrorMsg("Final note text cannot be empty.");
-        return;
+        return setErrorMsg("Final note text cannot be empty.");
       }
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/finalise`, {
@@ -148,7 +151,6 @@ function NotesDashboardPage({ token, user }) {
         },
         body: JSON.stringify({
           finalNoteText: finalNoteEditText,
-          reviewerName: reviewerName || undefined,
         }),
       });
 
@@ -174,10 +176,7 @@ function NotesDashboardPage({ token, user }) {
   const handleToggleReviewed = async () => {
     try {
       setErrorMsg("");
-      if (!selectedNote) {
-        setErrorMsg("No note selected.");
-        return;
-      }
+      if (!selectedNote) return setErrorMsg("No note selected.");
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/review`, {
         method: "POST",
@@ -226,39 +225,22 @@ function NotesDashboardPage({ token, user }) {
     </span>
   );
 
-  // ---------- savePDF ----------
-  const fileDate = (d) => {
-    const s = String(d || "");
-    const m = s.match(/\d{4}-\d{2}-\d{2}/); // grabs 2026-01-04 even if it's ISO
-    return m ? m[0] : "date";
-  };
-
+  // ---------- Download PDF ----------
   const handleDownloadPdf = async () => {
     try {
       setErrorMsg("");
-      if (!selectedNote) {
-        setErrorMsg("No note selected.");
-        return;
-      }
+      if (!selectedNote) return setErrorMsg("No note selected.");
 
       setDownloadingPdf(true);
-
       const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-
-      a.download = `NDIS_Note_${ymdOnly(selectedNote.date)}_${safeFile(
+      const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}_${safeFile(
         selectedNote.participantName
       )}.pdf`;
 
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      downloadBlob(blob, filename);
     } catch (e) {
       setErrorMsg(e?.message || "Failed to download PDF.");
     } finally {
@@ -266,6 +248,7 @@ function NotesDashboardPage({ token, user }) {
     }
   };
 
+  // ---------- Toggle Archive ----------
   const handleToggleArchive = async () => {
     try {
       setErrorMsg("");
@@ -305,7 +288,7 @@ function NotesDashboardPage({ token, user }) {
     }
   };
 
-  // ✅ Shared input sizing for mobile tap targets (UI-only)
+  // ✅ Shared input sizing for mobile tap targets
   const inputBase = {
     width: "100%",
     padding: "0.4rem 0.5rem",
@@ -336,9 +319,7 @@ function NotesDashboardPage({ token, user }) {
   return (
     <section style={{ width: "100%", boxSizing: "border-box" }}>
       <div style={{ marginBottom: "0.75rem" }}>
-        <h2 style={{ margin: 0, fontSize: "1.15rem", color: PRIMARY }}>
-          Saved notes
-        </h2>
+        <h2 style={{ margin: 0, fontSize: "1.15rem", color: PRIMARY }}>Saved notes</h2>
       </div>
 
       {/* Filters bar */}
@@ -355,12 +336,7 @@ function NotesDashboardPage({ token, user }) {
           alignItems: "flex-end",
         }}
       >
-        <div
-          style={{
-            minWidth: isMobile ? "0" : "210px",
-            flex: isMobile ? "1 1 100%" : "0 0 auto",
-          }}
-        >
+        <div style={{ minWidth: isMobile ? "0" : "210px", flex: isMobile ? "1 1 100%" : "0 0 auto" }}>
           <label
             style={{
               display: "block",
@@ -382,25 +358,13 @@ function NotesDashboardPage({ token, user }) {
         </div>
 
         <div style={{ flex: isMobile ? "1 1 100%" : "0 0 auto" }}>
-          <label
-            style={{
-              display: "block",
-              fontSize: "0.8rem",
-              fontWeight: 500,
-              color: "#374151",
-              marginBottom: "0.2rem",
-            }}
-          >
+          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, color: "#374151", marginBottom: "0.2rem" }}>
             Incident filter
           </label>
           <select
             value={filterIncident}
             onChange={(e) => setFilterIncident(e.target.value)}
-            style={{
-              ...selectBase,
-              width: isMobile ? "100%" : undefined,
-              boxSizing: "border-box",
-            }}
+            style={{ ...selectBase, width: isMobile ? "100%" : undefined, boxSizing: "border-box" }}
           >
             <option value="all">All notes</option>
             <option value="true">Incident notes only</option>
@@ -409,25 +373,13 @@ function NotesDashboardPage({ token, user }) {
         </div>
 
         <div style={{ flex: isMobile ? "1 1 100%" : "0 0 auto" }}>
-          <label
-            style={{
-              display: "block",
-              fontSize: "0.8rem",
-              fontWeight: 500,
-              color: "#374151",
-              marginBottom: "0.2rem",
-            }}
-          >
+          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, color: "#374151", marginBottom: "0.2rem" }}>
             Archived
           </label>
           <select
             value={filterArchived}
             onChange={(e) => setFilterArchived(e.target.value)}
-            style={{
-              ...selectBase,
-              width: isMobile ? "100%" : undefined,
-              boxSizing: "border-box",
-            }}
+            style={{ ...selectBase, width: isMobile ? "100%" : undefined, boxSizing: "border-box" }}
           >
             <option value="false">Hide archived</option>
             <option value="true">Archived only</option>
@@ -450,25 +402,15 @@ function NotesDashboardPage({ token, user }) {
         </button>
       </div>
 
-      {notesError && (
-        <p style={{ color: "red", marginTop: "0.75rem", wordBreak: "break-word" }}>
-          {notesError}
-        </p>
-      )}
-      {errorMsg && (
-        <p style={{ color: "red", marginTop: "0.4rem", wordBreak: "break-word" }}>
-          {errorMsg}
-        </p>
-      )}
+      {notesError && <p style={{ color: "red", marginTop: "0.75rem", wordBreak: "break-word" }}>{notesError}</p>}
+      {errorMsg && <p style={{ color: "red", marginTop: "0.4rem", wordBreak: "break-word" }}>{errorMsg}</p>}
 
       {/* Main layout */}
       <div
         style={{
           marginTop: "1rem",
           display: "grid",
-          gridTemplateColumns: isMobile
-            ? "minmax(0, 1fr)"
-            : "minmax(0, 1.05fr) minmax(0, 1.1fr)",
+          gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "minmax(0, 1.05fr) minmax(0, 1.1fr)",
           gap: "1rem",
         }}
       >
@@ -497,15 +439,10 @@ function NotesDashboardPage({ token, user }) {
               flexWrap: "wrap",
             }}
           >
-            <span style={{ fontWeight: 600, color: PRIMARY }}>
-              Recent notes — showing {notes.length}
-            </span>
-            <span style={{ color: "#9ca3af", fontSize: "0.75rem" }}>
-              Click a row to review
-            </span>
+            <span style={{ fontWeight: 600, color: PRIMARY }}>Recent notes — showing {notes.length}</span>
+            <span style={{ color: "#9ca3af", fontSize: "0.75rem" }}>Click a row to review</span>
           </div>
 
-          {/* ✅ Mobile: allow horizontal scroll for the table without changing its desktop look */}
           <div
             style={{
               maxHeight: isMobile ? "320px" : "360px",
@@ -517,47 +454,38 @@ function NotesDashboardPage({ token, user }) {
             <table
               style={{
                 width: "100%",
-                minWidth: isMobile ? 820 : undefined, // keeps columns readable; scroll on mobile
+                minWidth: isMobile ? 820 : undefined,
                 borderCollapse: "collapse",
                 fontSize: "0.85rem",
               }}
             >
               <thead>
                 <tr>
-                  {["Date", "Participant", "Worker", "Location", "Incident", "Status"].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        style={{
-                          textAlign: "left",
-                          padding: "0.45rem 0.7rem",
-                          borderBottom: "1px solid #e5e7eb",
-                          color: "#4b5563",
-                          fontWeight: 600,
-                          background: "#f9fafb",
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 1,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {h}
-                      </th>
-                    )
-                  )}
+                  {["Date", "Participant", "Worker", "Location", "Incident", "Status"].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: "left",
+                        padding: "0.45rem 0.7rem",
+                        borderBottom: "1px solid #e5e7eb",
+                        color: "#4b5563",
+                        fontWeight: 600,
+                        background: "#f9fafb",
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 1,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {notes.length === 0 && !notesLoading && (
                   <tr>
-                    <td
-                      colSpan={6}
-                      style={{
-                        padding: "0.8rem",
-                        textAlign: "center",
-                        color: "#6b7280",
-                      }}
-                    >
+                    <td colSpan={6} style={{ padding: "0.8rem", textAlign: "center", color: "#6b7280" }}>
                       No notes found. Generate a note and click Refresh.
                     </td>
                   </tr>
@@ -575,69 +503,30 @@ function NotesDashboardPage({ token, user }) {
                         touchAction: "manipulation",
                       }}
                     >
-                      <td
-                        style={{
-                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
-                          borderBottom: "1px solid #f3f4f6",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
                         {fmtShiftDate(n.date)}
                       </td>
-                      <td
-                        style={{
-                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
-                          borderBottom: "1px solid #f3f4f6",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
                         {n.participantName}
                       </td>
-                      <td
-                        style={{
-                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
-                          borderBottom: "1px solid #f3f4f6",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
                         {n.workerName}
                       </td>
-                      <td
-                        style={{
-                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
-                          borderBottom: "1px solid #f3f4f6",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
                         {n.location}
                       </td>
-                      <td
-                        style={{
-                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
-                          borderBottom: "1px solid #f3f4f6",
-                        }}
-                      >
+                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6" }}>
                         {n.incidentFlag
                           ? badge("Incident", { bg: "#fef2f2", color: "#b91c1c" })
                           : badge("No incident", { bg: "#ecfdf3", color: "#166534" })}
                       </td>
-                      <td
-                        style={{
-                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
-                          borderBottom: "1px solid #f3f4f6",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
                         {badge(
                           n.finalisedAt ? "Finalised" : "Draft",
-                          n.finalisedAt
-                            ? { bg: "#eff6ff", color: "#1d4ed8" }
-                            : { bg: "#f3f4f6", color: "#4b5563" }
+                          n.finalisedAt ? { bg: "#eff6ff", color: "#1d4ed8" } : { bg: "#f3f4f6", color: "#4b5563" }
                         )}{" "}
-                        {!!n.reviewedFlag &&
-                          badge("Reviewed", { bg: "#fef3c7", color: "#92400e" })}
-                        {!!n.archivedFlag &&
-                          badge("Archived", { bg: "#f3f4f6", color: "#111827" })}
+                        {!!n.reviewedFlag && badge("Reviewed", { bg: "#fef3c7", color: "#92400e" })}{" "}
+                        {!!n.archivedFlag && badge("Archived", { bg: "#f3f4f6", color: "#111827" })}
                       </td>
                     </tr>
                   );
@@ -647,12 +536,7 @@ function NotesDashboardPage({ token, user }) {
           </div>
 
           {nextCursor && (
-            <div
-              style={{
-                padding: "0.6rem 0.8rem",
-                borderTop: "1px solid #e5e7eb",
-              }}
-            >
+            <div style={{ padding: "0.6rem 0.8rem", borderTop: "1px solid #e5e7eb" }}>
               <button
                 type="button"
                 onClick={() => fetchNotes({ append: true, cursor: nextCursor })}
@@ -664,7 +548,6 @@ function NotesDashboardPage({ token, user }) {
                   fontSize: "0.8rem",
                   fontWeight: 600,
                   cursor: loadingMore ? "wait" : "pointer",
-                  ...(isMobile ? { width: "100%" } : {}),
                 })}
               >
                 {loadingMore ? "Loading…" : "Load more"}
@@ -686,77 +569,37 @@ function NotesDashboardPage({ token, user }) {
             minWidth: 0,
           }}
         >
-          <h3
-            style={{
-              marginTop: 0,
-              marginBottom: "0.3rem",
-              fontSize: "1rem",
-              color: PRIMARY,
-            }}
-          >
-            Note details
-          </h3>
+          <h3 style={{ marginTop: 0, marginBottom: "0.3rem", fontSize: "1rem", color: PRIMARY }}>Note details</h3>
 
           {!selectedNote && (
             <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
-              Select a note on the left to review, edit the final wording and
-              mark it as reviewed.
+              Select a note on the left to review, edit the final wording and mark it as reviewed.
             </p>
           )}
 
           {selectedNote && (
             <>
-              <p
-                style={{
-                  fontSize: "0.85rem",
-                  marginBottom: "0.5rem",
-                  color: "#374151",
-                  lineHeight: 1.45,
-                  wordBreak: "break-word",
-                }}
-              >
+              <p style={{ fontSize: "0.85rem", marginBottom: "0.5rem", color: "#374151", lineHeight: 1.45, wordBreak: "break-word" }}>
                 <strong>Participant:</strong> {selectedNote.participantName}
                 <br />
                 <strong>Worker:</strong> {selectedNote.workerName}
                 <br />
                 <strong>Date:</strong> {fmtShiftDate(selectedNote.date)}
-                {selectedNote.startTime && selectedNote.endTime
-                  ? ` (${fmtHm(selectedNote.startTime)}–${fmtHm(
-                      selectedNote.endTime
-                    )})`
-                  : ""}
+                {selectedNote.startTime && selectedNote.endTime ? ` (${fmtHm(selectedNote.startTime)}–${fmtHm(selectedNote.endTime)})` : ""}
                 <br />
                 <strong>Location:</strong> {selectedNote.location}
                 <br />
                 <strong>Incident:</strong> {selectedNote.incidentFlag ? "Yes" : "No"}
                 <br />
                 <strong>Status:</strong> {selectedNote.finalisedAt ? "Finalised" : "Draft"}
-                {selectedNote.finalisedAt && (
-                  <> (at {fmtDateTime(selectedNote.finalisedAt)})</>
-                )}
+                {selectedNote.finalisedAt && <> (at {fmtDateTime(selectedNote.finalisedAt)})</>}
                 <br />
                 <strong>Reviewed:</strong> {selectedNote.reviewedFlag ? "Yes" : "No"}
                 {selectedNote.reviewedAt && <> (at {fmtDateTime(selectedNote.reviewedAt)})</>}
               </p>
 
-              {/* Reviewer name */}
-              <div
-                style={{
-                  marginBottom: "0.55rem",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.25rem",
-                }}
-              >
-                <label
-                  style={{
-                    fontSize: "0.8rem",
-                    fontWeight: 500,
-                    color: "#374151",
-                  }}
-                >
-                  Your name (for finalising / review)
-                </label>
+              <div style={{ marginBottom: "0.55rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                <label style={{ fontSize: "0.8rem", fontWeight: 500, color: "#374151" }}>Your name (for review)</label>
                 <input
                   type="text"
                   value={reviewerName}
@@ -766,15 +609,7 @@ function NotesDashboardPage({ token, user }) {
                 />
               </div>
 
-              {/* Final note editor */}
-              <h4
-                style={{
-                  marginTop: "0.2rem",
-                  marginBottom: "0.2rem",
-                  fontSize: "0.9rem",
-                  color: "#111827",
-                }}
-              >
+              <h4 style={{ marginTop: "0.2rem", marginBottom: "0.2rem", fontSize: "0.9rem", color: "#111827" }}>
                 Final note for this shift (editable)
               </h4>
               <textarea
@@ -794,15 +629,7 @@ function NotesDashboardPage({ token, user }) {
                 }}
               />
 
-              <div
-                style={{
-                  marginTop: "0.6rem",
-                  display: "flex",
-                  gap: "0.65rem",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}
-              >
+              <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.65rem", alignItems: "center", flexWrap: "wrap" }}>
                 <button
                   type="button"
                   onClick={handleSaveFinalNoteForSelected}
@@ -813,7 +640,6 @@ function NotesDashboardPage({ token, user }) {
                     fontSize: "0.8rem",
                     fontWeight: 500,
                     cursor: "pointer",
-                    ...(isMobile ? { width: "100%" } : {}),
                   })}
                 >
                   Save final note for this shift
@@ -830,7 +656,6 @@ function NotesDashboardPage({ token, user }) {
                     fontSize: "0.8rem",
                     fontWeight: 600,
                     cursor: downloadingPdf ? "wait" : "pointer",
-                    ...(isMobile ? { width: "100%" } : {}),
                   })}
                 >
                   {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
@@ -847,14 +672,9 @@ function NotesDashboardPage({ token, user }) {
                     fontSize: "0.8rem",
                     fontWeight: 600,
                     cursor: archiving ? "wait" : "pointer",
-                    ...(isMobile ? { width: "100%" } : {}),
                   })}
                 >
-                  {archiving
-                    ? "Updating…"
-                    : selectedNote?.archivedFlag
-                    ? "Restore"
-                    : "Archive"}
+                  {archiving ? "Updating…" : selectedNote?.archivedFlag ? "Restore" : "Archive"}
                 </button>
 
                 <label
@@ -878,22 +698,10 @@ function NotesDashboardPage({ token, user }) {
                   Mark note as reviewed by provider
                 </label>
 
-                {finalSaveMsg && (
-                  <span style={{ fontSize: "0.8rem", color: "#047857" }}>
-                    {finalSaveMsg}
-                  </span>
-                )}
+                {finalSaveMsg && <span style={{ fontSize: "0.8rem", color: "#047857" }}>{finalSaveMsg}</span>}
               </div>
 
-              {/* AI draft */}
-              <h4
-                style={{
-                  marginTop: "0.9rem",
-                  marginBottom: "0.25rem",
-                  fontSize: "0.9rem",
-                  color: "#111827",
-                }}
-              >
+              <h4 style={{ marginTop: "0.9rem", marginBottom: "0.25rem", fontSize: "0.9rem", color: "#111827" }}>
                 AI draft (original)
               </h4>
               <pre
