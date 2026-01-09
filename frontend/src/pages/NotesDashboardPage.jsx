@@ -64,38 +64,71 @@ function NotesDashboardPage({ token, user }) {
   };
 
   // ---------- Load notes list ----------
-  const fetchNotes = async ({ append = false, cursor = null } = {}) => {
-    try {
-      append ? setLoadingMore(true) : setNotesLoading(true);
-      setNotesError("");
-      setErrorMsg("");
+const fetchNotes = async ({ append = false, cursor = null } = {}) => {
+  try {
+    append ? setLoadingMore(true) : setNotesLoading(true);
+    setNotesError("");
+    setErrorMsg("");
 
+    const limit = 50;
+
+    // convert UI strings -> API types
+    const hasIncidentValue =
+      filterIncident === "all" ? undefined : filterIncident === "true"; // boolean | undefined
+
+    const archivedValue =
+      filterArchived === "all"
+        ? "all"
+        : filterArchived === "true"; // boolean | "all"
+
+    // ✅ IMPORTANT: if participant filter is used, use POST /api/notes/search
+    const useSearch = !!debouncedParticipant;
+
+    let data;
+    if (useSearch) {
+      data = await apiFetch("/api/notes/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          participant: debouncedParticipant || undefined,
+          hasIncident: hasIncidentValue,
+          archived: archivedValue,
+          limit,
+          cursor,
+        }),
+      });
+    } else {
+      // keep GET for non-participant filtering (allowed by your backend)
       const params = new URLSearchParams();
-      if (debouncedParticipant) params.append("participant", debouncedParticipant);
       if (filterIncident !== "all") params.append("hasIncident", filterIncident);
       params.append("archived", filterArchived);
-      params.append("limit", "50");
+      params.append("limit", String(limit));
       if (cursor) params.append("cursor", cursor);
 
-      const data = await apiFetch(`/api/notes?${params.toString()}`, {
+      data = await apiFetch(`/api/notes?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
-      const incoming = Array.isArray(data.notes) ? data.notes : [];
-      setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
-      setNextCursor(data.nextCursor || null);
-
-      if (!append) {
-        setSelectedNote(null);
-        setFinalNoteEditText("");
-        setFinalSaveMsg("");
-      }
-    } catch (err) {
-      setNotesError(err?.message || "Failed to load notes");
-    } finally {
-      append ? setLoadingMore(false) : setNotesLoading(false);
     }
-  };
+
+    const incoming = Array.isArray(data.notes) ? data.notes : [];
+    setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
+    setNextCursor(data.nextCursor || null);
+
+    if (!append) {
+      setSelectedNote(null);
+      setFinalNoteEditText("");
+      setFinalSaveMsg("");
+    }
+  } catch (err) {
+    setNotesError(err?.message || "Failed to load notes");
+  } finally {
+    append ? setLoadingMore(false) : setNotesLoading(false);
+  }
+};
+
 
   // Initial load
   useEffect(() => {

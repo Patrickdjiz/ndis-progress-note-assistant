@@ -27,12 +27,17 @@ if (NODE_ENV === "production") {
 // Basic security headers
 app.use(helmet());
 
-// Request logging: dev = verbose, prod = combined
-if (NODE_ENV !== "production") {
-  app.use(morgan("dev"));
-} else {
-  app.use(morgan("combined"));
-}
+const morgan = require("morgan");
+
+// logs "/api/notes" instead of "/api/notes?participant=John"
+morgan.token("safe-url", (req) => (req.originalUrl || "").split("?")[0]);
+
+app.use(
+  morgan(
+    ':remote-addr :method :safe-url :status :res[content-length] - :response-time ms ":user-agent"'
+  )
+);
+
 
 // CORS – only allow known frontend origin
 const allowedOrigins = new Set([

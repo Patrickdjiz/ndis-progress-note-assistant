@@ -5,7 +5,7 @@ const { chatLLM } = require("../llmClient");
 const applyComplianceFilter = require("../compliance");
 const { timeToMinutes, parseYyyyMmDd, looksLikeJunk } = require("../utils");
 const { requireAuth } = require("../authMiddleware");
-const { generateNoteSchema, notesQuerySchema } = require("../validation");
+const { generateNoteSchema, notesListQuerySchema, notesSearchSchema } = require("../validation");
 const { query } = require("../dbAdapter");
 const PDFDocument = require("pdfkit");
 const { redactPII } = require("../pii");
@@ -200,14 +200,19 @@ router.use((req, res, next) => {
 
 // GET /api/notes  (list recent notes with filters, org-scoped)
 router.get("/notes", async (req, res) => {
-  try {
+    try {
     if (req.user.role === "OWNER") {
       return res.status(403).json({ error: "Owners cannot access notes API" });
     }
 
-    // ✅ Validate query
-    const parsed = notesQuerySchema.safeParse({
-      participant: req.query.participant,
+    // ✅ prevent PII in URL
+    if (req.query.participant) {
+      return res.status(400).json({
+        error: "Do not send participant in querystring. Use POST /api/notes/search.",
+      });
+    }
+
+    const parsed = notesListQuerySchema.safeParse({
       hasIncident: req.query.hasIncident,
       archived: req.query.archived,
       limit: req.query.limit,
@@ -218,8 +223,11 @@ router.get("/notes", async (req, res) => {
       return res.status(400).json({ error: msg || "Invalid query parameters" });
     }
 
-    const { participant, hasIncident } = parsed.data;
+    const { hasIncident } = parsed.data;
     const archived = parsed.data.archived ?? "false";
+    const limit = parsed.data.limit ?? 50;
+    const cursor = parsed.data.cursor;
+    const take = limit + 1;
 
     let sql = `
       SELECT *
@@ -251,11 +259,6 @@ router.get("/notes", async (req, res) => {
     } else if (archived === "false") {
       sql += " AND archived_flag = FALSE";
     }
-
-    // add to your parsed query (see validation note below)
-    const limit = parsed.data.limit ?? 50;
-    const cursor = parsed.data.cursor; // base64 "createdAt|id"
-    const take = limit + 1;
 
     // cursor filter
     if (cursor) {
@@ -303,6 +306,101 @@ router.get("/notes", async (req, res) => {
   }
 });
 
+router.post("/notes/search", async (req, res) => {
+  try {
+    if (req.user.role === "OWNER") {
+      return res.status(403).json({ error: "Owners cannot access notes API" });
+    }
+
+    const parsed = notesSearchSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid search body" });
+    }
+
+    const participant = parsed.data.participant;
+    const hasIncident = parsed.data.hasIncident; // boolean | undefined
+    const archivedRaw = parsed.data.archived;    // boolean | "all" | undefined
+    const archived =
+      archivedRaw === "all" || archivedRaw === undefined
+        ? "false" // choose your default; you can also do "all"
+        : archivedRaw
+          ? "true"
+          : "false";
+
+    let sql = `
+      SELECT *
+      FROM progress_notes
+      WHERE organisation_id = $1
+    `;
+    const params = [req.user.organisationId];
+    let idx = 2;
+
+    if (req.user.role === "WORKER") {
+      sql += ` AND worker_user_id = $${idx++}`;
+      params.push(req.user.id);
+    }
+
+    if (participant && participant.trim()) {
+      sql += ` AND participant_name ILIKE $${idx++}`;
+      params.push(`%${participant.trim()}%`);
+    }
+
+    if (hasIncident === true) sql += " AND incident_flag = TRUE";
+    if (hasIncident === false) sql += " AND incident_flag = FALSE";
+
+    if (archived === "true") sql += " AND archived_flag = TRUE";
+    else if (archived === "false") sql += " AND archived_flag = FALSE";
+    // if you want "all", skip filter
+
+    const limit = parsed.data.limit ?? 50;
+    const cursor = parsed.data.cursor;
+    const take = limit + 1;
+
+    if (cursor) {
+      let decoded = "";
+      try {
+        decoded = Buffer.from(cursor, "base64").toString("utf8");
+      } catch {
+        return res.status(400).json({ error: "Invalid cursor" });
+      }
+
+      const [createdAtStr, idStr] = decoded.split("|");
+      const cursorCreatedAt = new Date(createdAtStr);
+      const cursorId = Number(idStr);
+
+      if (!createdAtStr || !Number.isInteger(cursorId) || Number.isNaN(cursorCreatedAt.getTime())) {
+        return res.status(400).json({ error: "Invalid cursor" });
+      }
+
+      sql += ` AND (created_at, id) < ($${idx++}, $${idx++})`;
+      params.push(cursorCreatedAt, cursorId);
+    }
+
+    sql += ` ORDER BY created_at DESC, id DESC LIMIT $${idx++}`;
+    params.push(take);
+
+    const { rows } = await query(sql, params);
+
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const notes = pageRows.map(normaliseNoteRow);
+
+    let nextCursor = null;
+    if (hasMore) {
+      const last = pageRows[pageRows.length - 1];
+      const lastCreatedAt = last.created_at instanceof Date ? last.created_at.toISOString() : String(last.created_at);
+      nextCursor = Buffer.from(`${lastCreatedAt}|${last.id}`, "utf8").toString("base64");
+    }
+
+    return res.json({ notes, nextCursor });
+  } catch (err) {
+    console.error("Error searching notes:", err.message);
+    return res.status(500).json({ error: "Failed to search notes" });
+  }
+});
+
+
 // GET /api/notes/:id (single note, org-scoped)
 router.get("/notes/:id", async (req, res) => {
   const id = Number(req.params.id);
@@ -349,9 +447,8 @@ router.post("/notes/:id/review", async (req, res) => {
     const reviewedFlag = req.body.reviewedFlag === false ? false : true;
 
     // optional: accept typed reviewerName, otherwise fallback to account name
-    const reviewerName =
-      (req.body.reviewerName && req.body.reviewerName.toString().trim()) ||
-      (req.user.fullName || "");
+    const reviewerName = (req.user.fullName || "").trim();
+
 
     const nowIso = new Date().toISOString();
 
@@ -852,7 +949,7 @@ router.get("/notes/:id/pdf", async (req, res) => {
 res.setHeader("Content-Type", "application/pdf");
 res.setHeader(
   "Content-Disposition",
-  `attachment; filename="NDIS_Note_${row.id}_${fileDate}_${safeFilePart(row.participant_name)}.pdf"`
+  `attachment; filename="NDIS_Note_${row.id}_${fileDate}.pdf"`
 );
 
 
@@ -958,9 +1055,8 @@ router.post("/notes/:id/archive", async (req, res) => {
 
     const archivedFlag = !!req.body.archivedFlag;
 
-    const archivedBy =
-      (req.body.archivedBy && req.body.archivedBy.toString().trim()) ||
-      (req.user.fullName || "");
+    const archivedBy = (req.user.fullName || "").trim();
+
 
     // Must exist in org (+ if WORKER, must be their own note)
     let sqlCheck = `
