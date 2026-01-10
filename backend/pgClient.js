@@ -3,42 +3,37 @@ const { Pool } = require("pg");
 const { DATABASE_URL, NODE_ENV } = require("./config/env");
 
 if (!DATABASE_URL) {
-  console.error(
-    "[pgClient] DATABASE_URL is missing. Set it in your .env before starting the server."
-  );
-  // In dev you *could* throw; for now just log loudly.
+  throw new Error("DATABASE_URL is missing");
 }
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  // In production (e.g. Render / Railway) you often need SSL:
-  ...(NODE_ENV === "production"
-    ? { ssl: { rejectUnauthorized: false } }
-    : {}),
+  max: 10,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+  ...(NODE_ENV === "production" ? { ssl: { rejectUnauthorized: false } } : {}),
 });
 
+// Helpful: log unexpected idle client errors (rare but useful)
 pool.on("error", (err) => {
-  console.error("[pgClient] Unexpected error on idle client", err);
+  console.error("Unexpected Postgres idle client error:", err);
 });
 
-async function testConnection() {
-  try {
-    const res = await pool.query("SELECT 1 AS ok");
-    return res.rows[0]?.ok === 1;
-  } catch (err) {
-    console.error("[pgClient] DB testConnection failed:", err.message);
-    return false;
-  }
-}
-
-
-// Small helper wrapper so later we can do: db.query(text, params)
 async function query(text, params) {
   return pool.query(text, params);
 }
 
-module.exports = {
-  pool,
-  query,
-  testConnection,
-};
+async function testConnection() {
+  try {
+    await pool.query("SELECT 1");
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function closePool() {
+  await pool.end();
+}
+
+module.exports = { pool, query, testConnection, closePool };

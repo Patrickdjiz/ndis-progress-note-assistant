@@ -84,6 +84,20 @@ CREATE INDEX IF NOT EXISTS idx_notes_org_participant ON progress_notes (organisa
 CREATE INDEX IF NOT EXISTS idx_notes_org_incident ON progress_notes (organisation_id, incident_flag);
 CREATE INDEX IF NOT EXISTS idx_notes_org_archived ON progress_notes (organisation_id, archived_flag);
 
+-- For ILIKE '%term%' searches (fast substring search)
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE INDEX IF NOT EXISTS idx_notes_participant_trgm
+ON progress_notes USING gin (participant_name gin_trgm_ops);
+
+-- Archived filter + pagination/order
+CREATE INDEX IF NOT EXISTS idx_notes_org_archived_created_id
+ON progress_notes (organisation_id, archived_flag, created_at DESC, id DESC);
+
+-- Incident filter + pagination/order
+CREATE INDEX IF NOT EXISTS idx_notes_org_incident_created_id
+ON progress_notes (organisation_id, incident_flag, created_at DESC, id DESC);
+
 -- Cursor pagination indexes
 CREATE INDEX IF NOT EXISTS idx_notes_org_created_id
   ON progress_notes (organisation_id, created_at DESC, id DESC);
@@ -97,3 +111,5 @@ CREATE INDEX IF NOT EXISTS idx_audit_org_created
 
 CREATE INDEX IF NOT EXISTS idx_audit_actor_created
   ON audit_events (actor_user_id, created_at DESC);
+
+

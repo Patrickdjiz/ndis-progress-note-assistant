@@ -4,6 +4,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
+const crypto = require("crypto");
 
 const { FRONTEND_ORIGIN, NODE_ENV } = require("./config/env");
 const { testConnection } = require("./pgClient");
@@ -16,6 +17,21 @@ const accountRoutes = require("./routes/accountRoutes");
 const passwordResetRoutes = require("./routes/passwordResetRoutes");
 
 const app = express();
+
+// Request ID (great for debugging)
+app.use((req, res, next) => {
+  const incoming = req.get("x-request-id");
+  req.id =
+    incoming ||
+    (crypto.randomUUID
+      ? crypto.randomUUID()
+      : crypto.randomBytes(16).toString("hex"));
+
+  res.setHeader("X-Request-Id", req.id);
+  next();
+});
+
+
 
 // ---- Rate limit store (Redis in prod, memory in dev) ----
 let RedisStore, Redis, redis, makeStore;
@@ -49,34 +65,42 @@ app.use(
 
 // logs "/api/notes" instead of "/api/notes?participant=John"
 morgan.token("safe-url", (req) => (req.originalUrl || "").split("?")[0]);
+morgan.token("reqid", (req) => req.id || "-");
 
 app.use(
   morgan(
-    ':remote-addr :method :safe-url :status :res[content-length] - :response-time ms ":user-agent"'
+    ':reqid :remote-addr :method :safe-url :status :res[content-length] - :response-time ms ":user-agent"'
   )
 );
+
 
 
 // CORS – only allow known frontend origin
 const allowedOrigins = new Set([
   FRONTEND_ORIGIN,
   "https://www.ndisnotes.com",
+  "https://ndisnotes.com",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
-  "https://ndisnotes.com",
 ]);
 
+const corsOptions = {
+  origin(origin, callback) {
+    // allow non-browser clients (no Origin header)
+    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
+};
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error("Not allowed by CORS"));
-    },
-  })
-);
+// Apply CORS to all routes
+app.use(cors(corsOptions));
+
+// Explicit preflight handling (important for some proxies/platforms)
+app.options("*", cors(corsOptions));
+
 
 // JSON body parsing
 app.use(express.json({ limit: "1mb" }));
@@ -90,6 +114,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   store: makeStore("rl:auth:ip:"),
   keyGenerator: (req) => req.ip,
+  skip: (req) => req.method === "OPTIONS",
   message: { error: "Too many login attempts. Please try again later." },
 });
 
@@ -100,6 +125,7 @@ const aiLimiter = rateLimit({
   legacyHeaders: false,
   store: makeStore("rl:ai:ip:"),
   keyGenerator: (req) => req.ip,
+  skip: (req) => req.method === "OPTIONS",
   message: { error: "Too many note generations. Please slow down." },
 });
 
@@ -110,6 +136,7 @@ const passwordLimiter = rateLimit({
   legacyHeaders: false,
   store: makeStore("rl:pwreset:ip:"),
   keyGenerator: (req) => req.ip,
+  skip: (req) => req.method === "OPTIONS",
   message: { error: "Too many password reset requests. Please try again later." },
 });
 
@@ -120,6 +147,7 @@ const accountPwLimiter = rateLimit({
   legacyHeaders: false,
   store: makeStore("rl:accountpw:ip:"),
   keyGenerator: (req) => req.ip,
+  skip: (req) => req.method === "OPTIONS",
   message: { error: "Too many password change attempts. Please try again later." },
 });
 
@@ -168,38 +196,37 @@ app.use("/api", notesRoutes);
 app.use("/api", accountRoutes);
 
 
-// -----------------------
 // 404 handler
-// -----------------------
-app.use((req, res, next) => {
-  res.status(404).json({ error: "Route not found" });
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found", requestId: req.id });
 });
 
-// -----------------------
 // Central error handler
-// -----------------------
 app.use((err, req, res, next) => {
-  // Avoid super noisy preflight logs
+  const requestId = req?.id;
+
   if (err.message !== "Not allowed by CORS") {
     if (NODE_ENV !== "test") {
-      console.error("❌ Internal error:", err);
+      console.error(`❌ [${requestId}] Internal error:`, err);
     }
   }
 
-  // Friendly CORS message
   if (err.message === "Not allowed by CORS") {
-    return res.status(403).json({ error: "CORS error: origin not allowed" });
+    return res.status(403).json({
+      error: "CORS error: origin not allowed",
+      requestId,
+    });
   }
 
   const status = err.status || 500;
 
-  // Hide internals in production
   const message =
     NODE_ENV === "production" && status === 500
       ? "Internal server error"
       : err.message || "Internal server error";
 
-  res.status(status).json({ error: message });
+  res.status(status).json({ error: message, requestId });
 });
+
 
 module.exports = app;
