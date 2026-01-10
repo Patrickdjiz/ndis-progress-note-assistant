@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { apiFetch, apiFetchBlob } from "../lib/api";
 import { fmtShiftDate, fmtDateTime, fmtHm } from "../lib/dateFormat";
 import { downloadBlob } from "../lib/download";
+import { useIsMobile } from "../lib/useIsMobile";
+
 
 const PRIMARY = "#111827";
 
@@ -22,25 +24,7 @@ function MyNotesPage({ token, user }) {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // ✅ UI-only: responsive helper
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(max-width: 760px)");
-    const apply = () => setIsMobile(!!mq.matches);
-    apply();
-    if (mq.addEventListener) mq.addEventListener("change", apply);
-    else mq.addListener(apply);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", apply);
-      else mq.removeListener(apply);
-    };
-  }, []);
-
-  const safeFile = (s) =>
-    String(s || "")
-      .trim()
-      .replace(/[^\w\-]+/g, "_")
-      .slice(0, 80);
+  const isMobile = useIsMobile(760);
 
   const ymdOnly = (v) => {
     const s = String(v || "");
@@ -50,36 +34,56 @@ function MyNotesPage({ token, user }) {
 
   // ---------- Load list of notes (cursor pagination) ----------
   const fetchNotes = async ({ append = false, cursor = null } = {}) => {
-    try {
-      append ? setLoadingMore(true) : setLoadingList(true);
-      setErrorMsg("");
+  try {
+    append ? setLoadingMore(true) : setLoadingList(true);
+    setErrorMsg("");
 
-      if (!append) {
+    // ✅ Don't clear selection on refresh.
+    // Only clear it if the selected note disappears from the refreshed list.
+    if (!append) {
+      setDetailError("");
+      setFinalSaveMsg("");
+      setNextCursor(null);
+      // (keep selectedNote + finalNoteEditText intact)
+    }
+
+    const data = await apiFetch("/api/notes/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        archived: false, // hide archived
+        limit: 50,
+        cursor,
+      }),
+    });
+
+    const incoming = Array.isArray(data.notes) ? data.notes : [];
+
+    setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
+    setNextCursor(data.nextCursor || null);
+
+    // ✅ If NOT appending and the selected note is no longer visible (rare here, but safe),
+    // clear selection (e.g. if backend rules change or note is removed).
+    if (!append && selectedNote) {
+      const stillVisible = incoming.some((n) => n.id === selectedNote.id);
+      if (!stillVisible) {
         setSelectedNote(null);
         setFinalNoteEditText("");
         setFinalSaveMsg("");
-        setDetailError("");
-        setNextCursor(null);
       }
-
-      const params = new URLSearchParams();
-      params.append("limit", "50");
-      if (cursor) params.append("cursor", cursor);
-
-      const data = await apiFetch(`/api/notes?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const incoming = Array.isArray(data.notes) ? data.notes : [];
-      setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
-      setNextCursor(data.nextCursor || null);
-    } catch (err) {
-      console.error("Error loading my notes:", err);
-      setErrorMsg(err?.message || "Failed to load notes");
-    } finally {
-      append ? setLoadingMore(false) : setLoadingList(false);
     }
-  };
+  } catch (err) {
+    console.error("Error loading my notes:", err);
+    setErrorMsg(err?.message || "Failed to load notes");
+  } finally {
+    append ? setLoadingMore(false) : setLoadingList(false);
+  }
+};
+
+
 
   useEffect(() => {
     fetchNotes();
@@ -391,7 +395,7 @@ function MyNotesPage({ token, user }) {
               <h4 style={{ fontSize: "0.9rem", marginTop: "0.3rem", marginBottom: "0.25rem", color: "#111827" }}>
                 Final note for this shift (editable)
               </h4>
-              <textarea rows={8} value={finalNoteEditText} onChange={(e) => setFinalNoteEditText(e.target.value)} style={inputBox({ resize: "vertical" })} />
+              <textarea maxLength={12000} rows={8} value={finalNoteEditText} onChange={(e) => setFinalNoteEditText(e.target.value)} style={inputBox({ resize: "vertical" })} />
 
               <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
                 <button

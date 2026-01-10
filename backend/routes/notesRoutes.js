@@ -11,27 +11,107 @@ const PDFDocument = require("pdfkit");
 const { redactPII } = require("../pii");
 const { audit } = require("../audit");
 const rateLimit = require("express-rate-limit");
+const { z } = require("zod");
+
 
 
 const router = express.Router();
 
+
+let RedisStore, Redis, redis, makeStore;
+
+if (process.env.REDIS_URL) {
+  ({ RedisStore } = require("rate-limit-redis"));
+  Redis = require("ioredis");
+
+  redis = new Redis(process.env.REDIS_URL);
+
+  makeStore = (prefix) =>
+    new RedisStore({
+      sendCommand: (...args) => redis.call(...args),
+      prefix, // namespacing so different limiters don't collide
+    });
+} else {
+  makeStore = () => undefined; // dev fallback: memory store
+}
+
+
 // ---- Rate limiting for notes list/search ----
 // Higher threshold than login because the UI legitimately loads lists/pagination.
 const notesIpLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 120,            // per IP per minute
+  windowMs: 60 * 1000,
+  max: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  store: makeStore("rl:notes:ip:"),   // ✅ add this
+  keyGenerator: (req) => req.ip,      // explicit is good
   message: { error: "Too many requests to notes. Please slow down." },
 });
 
 const notesUserLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 240,            // per user per minute (separate from IP)
+  windowMs: 60 * 1000,
+  max: 240,
   standardHeaders: true,
   legacyHeaders: false,
+  store: makeStore("rl:notes:user:"), // ✅ add this
   keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
   message: { error: "Too many requests to notes. Please slow down." },
+});
+
+const notesReadIpLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:notes:read:ip:"),
+  keyGenerator: (req) => req.ip,
+  message: { error: "Too many note reads. Please slow down." },
+});
+
+const notesReadUserLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:notes:read:user:"),
+  keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  message: { error: "Too many note reads. Please slow down." },
+});
+
+const notesPdfIpLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:notes:pdf:ip:"),
+  keyGenerator: (req) => req.ip,
+  message: { error: "Too many PDF downloads. Please slow down." },
+});
+
+const notesPdfUserLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:notes:pdf:user:"),
+  keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  message: { error: "Too many PDF downloads. Please slow down." },
+});
+
+
+// ---- Body validation schemas ----
+const reviewBodySchema = z.object({
+  // allow omitted -> defaults to true, but if provided must be boolean
+  reviewedFlag: z.boolean().optional().default(true),
+});
+
+const finaliseBodySchema = z.object({
+  // choose a sensible max; adjust if your DB column is smaller/larger
+  finalNoteText: z.string().trim().min(1).max(12000),
+});
+
+const archiveBodySchema = z.object({
+  archivedFlag: z.boolean(),
 });
 
 
@@ -182,7 +262,7 @@ function normaliseNoteRow(row) {
     workerUserId: row.worker_user_id,
     participantName: row.participant_name,
     workerName: row.worker_name,
-    date: row.date, // pg client will serialise DATE to ISO string in JSON
+    date: row.date,
     startTime: row.start_time,
     endTime: row.end_time,
     location: row.location,
@@ -191,10 +271,16 @@ function normaliseNoteRow(row) {
     goalsWorkedOn: row.goals_worked_on,
     incidentsOrRisks: row.incidents_or_risks,
     followUpActions: row.follow_up_actions,
-    noteText: row.note_text,
+
+    // ✅ ALWAYS return body-only (works for old + new records)
+    noteText: stripNoteHeader(row.note_text),
+
     incidentFlag: row.incident_flag,
     createdAt: row.created_at,
-    finalNoteText: row.final_note_text,
+
+    // ✅ ALSO body-only so final text never contains headers
+    finalNoteText: row.final_note_text ? stripNoteHeader(row.final_note_text) : null,
+
     finalisedAt: row.finalised_at,
     finalisedBy: row.finalised_by,
     reviewedFlag: row.reviewed_flag,
@@ -205,6 +291,7 @@ function normaliseNoteRow(row) {
     archivedBy: row.archived_by,
   };
 }
+
 
 // All routes in this file require auth
 router.use(requireAuth);
@@ -420,7 +507,7 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
 
 
 // GET /api/notes/:id (single note, org-scoped)
-router.get("/notes/:id", async (req, res) => {
+router.get("/notes/:id", notesReadIpLimiter, notesReadUserLimiter, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid note id" });
 
@@ -462,7 +549,13 @@ router.post("/notes/:id/review", async (req, res) => {
     }
 
     // boolean, default true unless explicitly false
-    const reviewedFlag = req.body.reviewedFlag === false ? false : true;
+    const parsedBody = reviewBodySchema.safeParse(req.body || {});
+    if (!parsedBody.success) {
+      return res.status(400).json({ error: "Invalid body" });
+    }
+
+    const { reviewedFlag } = parsedBody.data;
+
 
     // optional: accept typed reviewerName, otherwise fallback to account name
     const reviewerName = (req.user.fullName || "").trim();
@@ -533,13 +626,16 @@ router.post("/notes/:id/finalise", async (req, res) => {
         .json({ error: "Owners cannot finalise notes" });
     }
 
-    const { finalNoteText } = req.body;
-
-    if (!finalNoteText || !finalNoteText.toString().trim()) {
-      return res
-        .status(400)
-        .json({ error: "Final note text is required" });
+    const parsedBody = finaliseBodySchema.safeParse(req.body || {});
+    if (!parsedBody.success) {
+      const msg = parsedBody.error.issues.map((i) => i.message).join("; ");
+      return res.status(400).json({ error: msg || "Invalid body" });
     }
+
+    const { finalNoteText } = parsedBody.data; // already trimmed + validated
+
+    // ✅ Enforce body-only storage (even if someone pasted a full header)
+    const storedFinalBody = stripNoteHeader(finalNoteText).trim();  
 
     const finalisedByName = req.user.fullName || "";
     const nowIso = new Date().toISOString();
@@ -572,8 +668,9 @@ router.post("/notes/:id/finalise", async (req, res) => {
             finalised_by   = $3
         WHERE id = $4
       `,
-      [finalNoteText.toString().trim(), nowIso, finalisedByName, id]
+      [storedFinalBody, nowIso, finalisedByName, id]
     );
+
 
     await audit(req, "NOTE_FINALISED", {
       targetType: "progress_note",
@@ -585,7 +682,7 @@ router.post("/notes/:id/finalise", async (req, res) => {
       ok: true,
       finalisedAt: nowIso,
       finalisedBy: finalisedByName,
-      finalNoteText: finalNoteText.toString().trim(),
+      finalNoteText: storedFinalBody,
     });
   } catch (err) {
     console.error("Error finalising note:", err.message);
@@ -807,6 +904,10 @@ router.post("/generate-note", async (req, res) => {
 
     const filteredBody = applyComplianceFilter(modelText, rawCombined, workerName);
 
+    // ✅ Store BODY ONLY in DB (privacy + future-proofing)
+    const storedBody = String(filteredBody || "").trim();
+
+    // Optional: still build a display note for the immediate response (copy/paste convenience)
     const header = [
       `Support Worker: ${workerName}`,
       `Date of Support: ${date}`,
@@ -815,7 +916,7 @@ router.post("/generate-note", async (req, res) => {
       `Participant: ${participantName}`,
     ].join("\n");
 
-    const fullNote = `${header}\n\n${filteredBody}`;
+    const fullNote = `${header}\n\n${storedBody}`;
 
     const incidentText = (incidentsOrRisks || "").toLowerCase();
     const looksLikeNoIncident =
@@ -855,7 +956,7 @@ router.post("/generate-note", async (req, res) => {
 
     const { rows } = await query(insertSql, [
       req.user.organisationId,
-      req.user.id, // logged-in worker
+      req.user.id,
       participantName,
       workerName,
       date,
@@ -867,10 +968,14 @@ router.post("/generate-note", async (req, res) => {
       goalsWorkedOn,
       incidentsOrRisks,
       followUpActions,
-      fullNote,
+
+      // ✅ changed:
+      storedBody,
+
       incidentFlag === true,
       createdAt,
     ]);
+
 
     const newId = rows[0].id;
 
@@ -893,7 +998,7 @@ router.post("/generate-note", async (req, res) => {
 });
 
 // GET /api/notes/:id/pdf  (download note as PDF, org-scoped)
-router.get("/notes/:id/pdf", async (req, res) => {
+router.get("/notes/:id/pdf", notesPdfIpLimiter, notesPdfUserLimiter, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -983,6 +1088,15 @@ res.setHeader(
 
     doc.pipe(res);
 
+    doc.on("error", (e) => {
+      console.error("PDF stream error:", e);
+      try { res.destroy(e); } catch {}
+    });
+    res.on("close", () => {
+      try { doc.end(); } catch {}
+    });
+
+
     // Helpers
     const labelValue = (label, value) => {
       doc.font("Helvetica-Bold").text(`${label}: `, { continued: true });
@@ -1054,7 +1168,10 @@ if (row.reviewed_flag) {
     doc.end();
   } catch (err) {
     console.error("Error generating PDF:", err.message);
-    return res.status(500).json({ error: "Failed to generate PDF" });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: "Failed to generate PDF" });
+    }
+    try { res.destroy(err); } catch {}
   }
 });
 
@@ -1071,7 +1188,13 @@ router.post("/notes/:id/archive", async (req, res) => {
       return res.status(403).json({ error: "Owners cannot access notes API" });
     }
 
-    const archivedFlag = !!req.body.archivedFlag;
+    const parsedBody = archiveBodySchema.safeParse(req.body || {});
+    if (!parsedBody.success) {
+      return res.status(400).json({ error: "Invalid body" });
+    }
+
+    const { archivedFlag } = parsedBody.data;
+
 
     const archivedBy = (req.user.fullName || "").trim();
 

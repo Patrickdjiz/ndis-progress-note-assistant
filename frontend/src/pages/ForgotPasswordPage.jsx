@@ -1,6 +1,8 @@
 // src/pages/ForgotPasswordPage.jsx
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { useIsMobile } from "../lib/useIsMobile";
+
 
 const PRIMARY = "#111827";
 
@@ -11,19 +13,8 @@ export default function ForgotPasswordPage() {
   const [err, setErr] = useState("");
 
   // ✅ UI-only: responsive helper (no business logic changes)
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(max-width: 760px)");
-    const apply = () => setIsMobile(!!mq.matches);
-    apply();
-    if (mq.addEventListener) mq.addEventListener("change", apply);
-    else mq.addListener(apply);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", apply);
-      else mq.removeListener(apply);
-    };
-  }, []);
+  const isMobile = useIsMobile(760);
+
 
   const submit = async (e) => {
     e.preventDefault();
@@ -39,9 +30,13 @@ export default function ForgotPasswordPage() {
       });
 
       // In DEV you can return a resetLink to speed testing
-      setMsg(data?.message || "If that email exists, a reset link has been sent.");
-      if (data?.resetLink)
-        setMsg(data?.message || "If that email exists, a reset link has been sent.");
+      const msg = data?.message || "If that email exists, a reset link has been sent.";
+      if (data?.resetLink) {
+        // DEV convenience: show link (optional)
+        setMsg(`${msg} (DEV reset link: ${data.resetLink})`);
+      } else {
+        setMsg(msg);
+      }
     } catch (e2) {
       setErr(e2?.message || "Failed to request reset.");
     } finally {

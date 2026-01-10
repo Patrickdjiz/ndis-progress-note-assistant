@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { apiFetch, apiFetchBlob } from "../lib/api";
 import { fmtShiftDate, fmtDateTime, fmtHm } from "../lib/dateFormat";
 import { downloadBlob } from "../lib/download";
+import { useIsMobile } from "../lib/useIsMobile";
+
 
 const PRIMARY = "#111827";
 
@@ -28,19 +30,8 @@ function NotesDashboardPage({ token, user }) {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // ✅ UI-only: responsive helper
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(max-width: 760px)");
-    const apply = () => setIsMobile(!!mq.matches);
-    apply();
-    if (mq.addEventListener) mq.addEventListener("change", apply);
-    else mq.addListener(apply);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", apply);
-      else mq.removeListener(apply);
-    };
-  }, []);
+  const isMobile = useIsMobile(760);
+
 
   // Debounce participant filter to avoid spamming requests while typing
   useEffect(() => {
@@ -58,69 +49,58 @@ function NotesDashboardPage({ token, user }) {
 
   // ---------- Load notes list ----------
   const fetchNotes = async ({ append = false, cursor = null } = {}) => {
-    try {
-      append ? setLoadingMore(true) : setNotesLoading(true);
-      setNotesError("");
-      setErrorMsg("");
+  try {
+    append ? setLoadingMore(true) : setNotesLoading(true);
+    setNotesError("");
+    setErrorMsg("");
 
-      const limit = 50;
+    const limit = 50;
 
-      // convert UI strings -> API types
-      const hasIncidentValue =
-        filterIncident === "all" ? undefined : filterIncident === "true"; // boolean | undefined
+    const hasIncidentValue =
+      filterIncident === "all" ? undefined : filterIncident === "true";
 
-      const archivedValue =
-        filterArchived === "all"
-          ? "all"
-          : filterArchived === "true"; // boolean | "all"
+    const archivedValue =
+      filterArchived === "all" ? "all" : filterArchived === "true";
 
-      // ✅ IMPORTANT: if participant filter is used, use POST /api/notes/search
-      const useSearch = !!debouncedParticipant;
+    const data = await apiFetch("/api/notes/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        participant: debouncedParticipant || undefined,
+        hasIncident: hasIncidentValue,
+        archived: archivedValue,
+        limit,
+        cursor,
+      }),
+    });
 
-      let data;
-      if (useSearch) {
-        data = await apiFetch("/api/notes/search", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            participant: debouncedParticipant || undefined,
-            hasIncident: hasIncidentValue,
-            archived: archivedValue,
-            limit,
-            cursor,
-          }),
-        });
-      } else {
-        // keep GET for non-participant filtering (allowed by your backend)
-        const params = new URLSearchParams();
-        if (filterIncident !== "all") params.append("hasIncident", filterIncident);
-        params.append("archived", filterArchived);
-        params.append("limit", String(limit));
-        if (cursor) params.append("cursor", cursor);
+    const incoming = Array.isArray(data.notes) ? data.notes : [];
 
-        data = await apiFetch(`/api/notes?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
+    // Build new list
+    setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
+    setNextCursor(data.nextCursor || null);
 
-      const incoming = Array.isArray(data.notes) ? data.notes : [];
-      setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
-      setNextCursor(data.nextCursor || null);
-
-      if (!append) {
+    // ✅ If we're NOT appending and the currently selected note is no longer in the list,
+    // clear the selection (important when "Hide archived" is on and you just archived it).
+    if (!append && selectedNote) {
+      const stillVisible = incoming.some((n) => n.id === selectedNote.id);
+      if (!stillVisible) {
         setSelectedNote(null);
         setFinalNoteEditText("");
         setFinalSaveMsg("");
       }
-    } catch (err) {
-      setNotesError(err?.message || "Failed to load notes");
-    } finally {
-      append ? setLoadingMore(false) : setNotesLoading(false);
     }
-  };
+  } catch (err) {
+    setNotesError(err?.message || "Failed to load notes");
+  } finally {
+    append ? setLoadingMore(false) : setNotesLoading(false);
+  }
+};
+
+
 
   // Initial load
   useEffect(() => {
@@ -773,6 +753,7 @@ function NotesDashboardPage({ token, user }) {
               </h4>
 
               <textarea
+                maxLength={12000}
                 rows={7}
                 value={finalNoteEditText}
                 onChange={(e) => setFinalNoteEditText(e.target.value)}

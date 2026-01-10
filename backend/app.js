@@ -17,15 +17,35 @@ const passwordResetRoutes = require("./routes/passwordResetRoutes");
 
 const app = express();
 
-app.disable("x-powered-by");
+// ---- Rate limit store (Redis in prod, memory in dev) ----
+let RedisStore, Redis, redis, makeStore;
 
-// If deployed behind a reverse proxy (Render/Railway/Fly/NGINX), this makes req.ip and rate-limit work correctly
-if (NODE_ENV === "production") {
-  app.set("trust proxy", 1);
+if (process.env.REDIS_URL) {
+  ({ RedisStore } = require("rate-limit-redis"));
+  Redis = require("ioredis");
+  redis = new Redis(process.env.REDIS_URL);
+
+  makeStore = (prefix) =>
+    new RedisStore({
+      sendCommand: (...args) => redis.call(...args),
+      prefix,
+    });
+} else {
+  makeStore = () => undefined; // dev fallback
 }
 
+
+app.set("trust proxy", 1);
+
+app.disable("x-powered-by");
+
 // Basic security headers
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // or disable it
+  })
+);
+
 
 // logs "/api/notes" instead of "/api/notes?participant=John"
 morgan.token("safe-url", (req) => (req.originalUrl || "").split("?")[0]);
@@ -62,28 +82,47 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 
 // Rate limits
+// Rate limits (Redis-backed in prod if REDIS_URL is set)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:auth:ip:"),
+  keyGenerator: (req) => req.ip,
+  message: { error: "Too many login attempts. Please try again later." },
 });
+
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
   standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:ai:ip:"),
+  keyGenerator: (req) => req.ip,
+  message: { error: "Too many note generations. Please slow down." },
 });
 
 const passwordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:pwreset:ip:"),
+  keyGenerator: (req) => req.ip,
+  message: { error: "Too many password reset requests. Please try again later." },
 });
 
 const accountPwLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:accountpw:ip:"),
+  keyGenerator: (req) => req.ip,
+  message: { error: "Too many password change attempts. Please try again later." },
 });
+
 
 
 app.use("/api/login", authLimiter);

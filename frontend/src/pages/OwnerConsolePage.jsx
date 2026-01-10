@@ -1,24 +1,14 @@
 // src/pages/OwnerConsolePage.jsx
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { useIsMobile } from "../lib/useIsMobile";
+
 
 function OwnerConsolePage({ token, user }) {
   const PRIMARY = "#111827";
 
   // ✅ UI-only: responsive helper (no business logic changes)
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(max-width: 760px)");
-    const apply = () => setIsMobile(!!mq.matches);
-    apply();
-    if (mq.addEventListener) mq.addEventListener("change", apply);
-    else mq.addListener(apply);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", apply);
-      else mq.removeListener(apply);
-    };
-  }, []);
+  const isMobile = useIsMobile(760);
 
   // Extra safety: block if somehow rendered for non-owner
   if (!user || user.role !== "OWNER") {

@@ -1,24 +1,15 @@
 // src/pages/UsersAdminPage.jsx
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { useIsMobile } from "../lib/useIsMobile";
+
 
 function UsersAdminPage({ token, user }) {
   const PRIMARY = "#111827";
 
   // ✅ UI-only: detect mobile so we can stack layouts + improve tap targets
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(max-width: 760px)");
-    const apply = () => setIsMobile(!!mq.matches);
-    apply();
-    if (mq.addEventListener) mq.addEventListener("change", apply);
-    else mq.addListener(apply);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", apply);
-      else mq.removeListener(apply);
-    };
-  }, []);
+  const isMobile = useIsMobile(760);
+
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false); // for fetching users

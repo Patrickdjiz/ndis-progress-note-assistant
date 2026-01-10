@@ -1,6 +1,8 @@
 // src/pages/GenerateNotePage.jsx
 import { useState, useEffect } from "react";
 import { apiFetch } from "../lib/api";
+import { useIsMobile } from "../lib/useIsMobile";
+
 
 function GenerateNotePage({ token, user }) {
   const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
@@ -32,19 +34,8 @@ function GenerateNotePage({ token, user }) {
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
 
   // ✅ UI-only: responsive helper (no business logic changes)
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(max-width: 760px)");
-    const apply = () => setIsMobile(!!mq.matches);
-    apply();
-    if (mq.addEventListener) mq.addEventListener("change", apply);
-    else mq.addListener(apply);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", apply);
-      else mq.removeListener(apply);
-    };
-  }, []);
+  const isMobile = useIsMobile(760);
+
 
   useEffect(() => {
     if (user?.fullName) {
@@ -196,7 +187,6 @@ function GenerateNotePage({ token, user }) {
           goalsWorkedOn,
           incidentsOrRisks,
           followUpActions,
-          workerName,
           incidentOccurred,
         }),
       });
@@ -401,8 +391,8 @@ function GenerateNotePage({ token, user }) {
               <input
                 type="text"
                 required
-                value={workerName}
-                onChange={(e) => setWorkerName(e.target.value)}
+                value={user?.fullName || ""}
+                readOnly
                 style={inputBaseStyle}
                 placeholder="e.g. Fatima Khan"
               />
