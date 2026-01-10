@@ -21,15 +21,17 @@ const app = express();
 // Request ID (great for debugging)
 app.use((req, res, next) => {
   const incoming = req.get("x-request-id");
+  const safeIncoming =
+    incoming && /^[a-zA-Z0-9\-]{1,80}$/.test(incoming) ? incoming : null;
+
   req.id =
-    incoming ||
-    (crypto.randomUUID
-      ? crypto.randomUUID()
-      : crypto.randomBytes(16).toString("hex"));
+    safeIncoming ||
+    (crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex"));
 
   res.setHeader("X-Request-Id", req.id);
   next();
 });
+
 
 
 

@@ -82,6 +82,7 @@ const notesIpLimiter = rateLimit({
   legacyHeaders: false,
   store: makeStore("rl:notes:ip:"),   // ✅ add this
   keyGenerator: (req) => req.ip,      // explicit is good
+  skip: (req) => req.method === "OPTIONS",
   message: { error: "Too many requests to notes. Please slow down." },
 });
 
@@ -92,6 +93,7 @@ const notesUserLimiter = rateLimit({
   legacyHeaders: false,
   store: makeStore("rl:notes:user:"), // ✅ add this
   keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  skip: (req) => req.method === "OPTIONS",
   message: { error: "Too many requests to notes. Please slow down." },
 });
 
@@ -102,6 +104,7 @@ const notesReadIpLimiter = rateLimit({
   legacyHeaders: false,
   store: makeStore("rl:notes:read:ip:"),
   keyGenerator: (req) => req.ip,
+  skip: (req) => req.method === "OPTIONS",
   message: { error: "Too many note reads. Please slow down." },
 });
 
@@ -112,6 +115,7 @@ const notesReadUserLimiter = rateLimit({
   legacyHeaders: false,
   store: makeStore("rl:notes:read:user:"),
   keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  skip: (req) => req.method === "OPTIONS",
   message: { error: "Too many note reads. Please slow down." },
 });
 
@@ -122,6 +126,7 @@ const notesPdfIpLimiter = rateLimit({
   legacyHeaders: false,
   store: makeStore("rl:notes:pdf:ip:"),
   keyGenerator: (req) => req.ip,
+  skip: (req) => req.method === "OPTIONS",
   message: { error: "Too many PDF downloads. Please slow down." },
 });
 
@@ -132,6 +137,7 @@ const notesPdfUserLimiter = rateLimit({
   legacyHeaders: false,
   store: makeStore("rl:notes:pdf:user:"),
   keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  skip: (req) => req.method === "OPTIONS",
   message: { error: "Too many PDF downloads. Please slow down." },
 });
 
@@ -441,8 +447,8 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
 
     return res.json({ notes, nextCursor });
   } catch (err) {
-    console.error("Error listing notes:", err.message);
-    return res.status(500).json({ error: "Failed to list notes" });
+    console.error(`[${req.id}] Error listing notes:`, err);
+    return res.status(500).json({ error: "Failed to list notes", requestId: req.id });
   }
 });
 
@@ -537,39 +543,43 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
 
     return res.json({ notes, nextCursor });
   } catch (err) {
-    console.error("Error searching notes:", err.message);
-    return res.status(500).json({ error: "Failed to search notes" });
+    console.error(`[${req.id}] Error searching notes:`, err);
+    return res.status(500).json({ error: "Failed to search notes", requestId: req.id });
   }
 });
 
 
 // GET /api/notes/:id (single note, org-scoped)
 router.get("/notes/:id", notesReadIpLimiter, notesReadUserLimiter, async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid note id" });
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid note id", requestId: req.id });
 
-  if (req.user.role === "OWNER") {
-    return res.status(403).json({ error: "Owners cannot access notes API" });
+    if (req.user.role === "OWNER") {
+      return res.status(403).json({ error: "Owners cannot access notes API", requestId: req.id });
+    }
+
+    let sql = `
+      SELECT *
+      FROM progress_notes
+      WHERE id = $1 AND organisation_id = $2
+    `;
+    const params = [id, req.user.organisationId];
+    let idx = 3;
+
+    if (req.user.role === "WORKER") {
+      sql += ` AND worker_user_id = $${idx++}`;
+      params.push(req.user.id);
+    }
+
+    const { rows } = await query(sql, params);
+    if (!rows[0]) return res.status(404).json({ error: "Note not found", requestId: req.id });
+
+    return res.json({ note: normaliseNoteRow(rows[0]) });
+  } catch (err) {
+    console.error(`❌ [${req.id}] Error reading note:`, err);
+    return res.status(500).json({ error: "Failed to read note", requestId: req.id });
   }
-
-  let sql = `
-    SELECT *
-    FROM progress_notes
-    WHERE id = $1 AND organisation_id = $2
-  `;
-  const params = [id, req.user.organisationId];
-  let idx = 3;
-
-  // WORKER only sees their own
-  if (req.user.role === "WORKER") {
-    sql += ` AND worker_user_id = $${idx++}`;
-    params.push(req.user.id);
-  }
-
-  const { rows } = await query(sql, params);
-  if (!rows[0]) return res.status(404).json({ error: "Note not found" });
-
-  return res.json({ note: normaliseNoteRow(rows[0]) });
 });
 
 
@@ -643,8 +653,8 @@ router.post("/notes/:id/review", async (req, res) => {
       reviewedBy: reviewedFlag ? reviewerName : null,
     });
   } catch (err) {
-    console.error("Error updating review status:", err.message);
-    return res.status(500).json({ error: "Failed to update review status" });
+    console.error(`[${req.id}] Error updating review status:`, err);
+    return res.status(500).json({ error: "Failed to update review status", requestId: req.id });
   }
 });
 
@@ -722,8 +732,8 @@ router.post("/notes/:id/finalise", async (req, res) => {
       finalNoteText: storedFinalBody,
     });
   } catch (err) {
-    console.error("Error finalising note:", err.message);
-    return res.status(500).json({ error: "Failed to finalise note" });
+    console.error(`[${req.id}] Error finalising note:`, err);
+    return res.status(500).json({ error: "Failed to finalise note", requestId: req.id });
   }
 });
 
@@ -1218,9 +1228,9 @@ if (row.reviewed_flag) {
 
     doc.end();
   } catch (err) {
-    console.error("Error generating PDF:", err.message);
+    console.error(`[${req.id}] Error generating PDF:`, err);
     if (!res.headersSent) {
-      return res.status(500).json({ error: "Failed to generate PDF" });
+      return res.status(500).json({ error: "Failed to generate PDF", requestId: req.id });
     }
     try { res.destroy(err); } catch {}
   }
@@ -1302,8 +1312,8 @@ router.post("/notes/:id/archive", async (req, res) => {
       archivedBy: rows[0].archived_by,
     });
   } catch (err) {
-    console.error("Error archiving note:", err.message);
-    return res.status(500).json({ error: "Failed to update archive state" });
+    console.error(`[${req.id}] Error archiving note:`, err);
+    return res.status(500).json({ error: "Failed to update archive state", requestId: req.id });
   }
 });
 
