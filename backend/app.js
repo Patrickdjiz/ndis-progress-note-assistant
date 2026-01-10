@@ -92,7 +92,7 @@ const corsOptions = {
     if (!origin || allowedOrigins.has(origin)) return callback(null, true);
     return callback(new Error("Not allowed by CORS"));
   },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 204,
 };
@@ -157,7 +157,8 @@ const accountPwLimiter = rateLimit({
 
 app.use("/api/login", authLimiter);
 app.use("/api/generate-note", aiLimiter);
-app.use("/api/auth", passwordLimiter); // forgot-password + reset-password
+app.use("/api/auth/forgot-password", passwordLimiter);
+app.use("/api/auth/reset-password", passwordLimiter);
 app.use("/api/account/change-password", accountPwLimiter);
 
 

@@ -12,15 +12,17 @@ const { pool } = require("../pgClient");
 
 const router = express.Router();
 
+const sendErr = (res, req, status, msg) =>
+  res.status(status).json({ error: msg, requestId: req.id });
+
+
 // All routes here: must be logged in + OWNER
 router.use(requireAuth);
 router.use(requireRole("OWNER"));
 
 router.use((req, res, next) => {
   if (req.user?.mustChangePassword) {
-    return res
-      .status(403)
-      .json({ error: "You must change your password before continuing." });
+    return sendErr(res, req, 403, "You must change your password before continuing.");  
   }
   next();
 });
@@ -71,7 +73,7 @@ router.get("/overview", async (req, res) => {
     return res.json({ organisations: results });
   } catch (err) {
     console.error("Error in /api/owner/overview:", err);
-    return res.status(500).json({ error: "Failed to load overview" });
+    return sendErr(res, req, 500, "Failed to load overview");
   }
 });
 
@@ -86,7 +88,7 @@ router.post("/providers", async (req, res) => {
     const parsed = createProviderSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid provider data" });
+      return sendErr(res, req, 400, msg || "Invalid provider data");
     }
 
     const {
@@ -175,13 +177,13 @@ router.post("/providers", async (req, res) => {
     } catch (err) {
       await client.query("ROLLBACK");
       console.error("Error creating provider:", err);
-      return res.status(500).json({ error: "Failed to create provider" });
+      return sendErr(res, req, 500, "Failed to create provider");
     } finally {
       client.release();
     }
   } catch (err) {
     console.error("Error in POST /api/owner/providers:", err);
-    return res.status(500).json({ error: "Failed to create provider" });
+    return sendErr(res, req, 500, "Failed to create provider");
   }
 });
 
@@ -193,13 +195,13 @@ router.patch("/organisations/:id/status", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: "Invalid organisation id" });
+      return sendErr(res, req, 400, "Invalid organisation id");
     }
 
     const parsed = orgStatusSchema.safeParse(req.body || {});
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid status data" });
+      return sendErr(res, req, 400, msg || "Invalid status data");
     }
     const { status } = parsed.data;
 
@@ -209,7 +211,7 @@ router.patch("/organisations/:id/status", async (req, res) => {
     );
 
     if (rowCount === 0) {
-      return res.status(404).json({ error: "Organisation not found" });
+      return sendErr(res, req, 404, "Organisation not found");
     }
 
     return res.json({ ok: true, id, status });
@@ -218,7 +220,7 @@ router.patch("/organisations/:id/status", async (req, res) => {
       "Error in PATCH /api/owner/organisations/:id/status:",
       err
     );
-    return res.status(500).json({ error: "Failed to update organisation status" });
+    return sendErr(res, req, 500, "Failed to update organisation status");
   }
 });
 
@@ -232,13 +234,13 @@ router.patch("/users/:id/status", async (req, res) => {
     
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: "Invalid user id" });
+      return sendErr(res, req, 400, "Invalid user id");
     }
 
     const parsed = booleanFlagSchema.safeParse(req.body || {});
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid status data" });
+      return sendErr(res, req, 400, msg || "Invalid status data");
     }
     const { isActive } = parsed.data;
 
@@ -249,13 +251,11 @@ router.patch("/users/:id/status", async (req, res) => {
     const existing = rows[0];
 
     if (!existing) {
-      return res.status(404).json({ error: "User not found" });
+      return sendErr(res, req, 404, "User not found");
     }
 
     if (existing.role === "OWNER") {
-      return res
-        .status(400)
-        .json({ error: "You cannot change status of OWNER accounts" });
+      return sendErr(res, req, 400, "You cannot change status of OWNER accounts");
     }
 
     await query(`UPDATE users SET is_active = $1 WHERE id = $2`, [
@@ -266,7 +266,7 @@ router.patch("/users/:id/status", async (req, res) => {
     return res.json({ ok: true, id, isActive: !!isActive });
   } catch (err) {
     console.error("Error in PATCH /api/owner/users/:id/status:", err);
-    return res.status(500).json({ error: "Failed to update user status" });
+    return sendErr(res, req, 500, "Failed to update user status");
   }
 });
 

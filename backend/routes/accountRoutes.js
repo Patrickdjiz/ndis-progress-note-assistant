@@ -4,6 +4,8 @@ const { requireAuth } = require("../authMiddleware"); // adjust path/name to you
 const { updateProfileSchema, updatePasswordSchema } = require("../validation");
 const { updateUserProfile, query } = require("../dbAdapter"); // updateUserProfile already exists in dbAdapter
 
+const sendErr = (res, req, status, msg) =>
+  res.status(status).json({ error: msg, requestId: req.id });
 
 const router = express.Router();
 
@@ -14,16 +16,16 @@ router.post("/account/change-password", requireAuth, async (req, res) => {
     const parsed = updatePasswordSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid request" });
+      return sendErr(res, req, 400, msg || "Invalid request");
     }
 
     const { currentPassword, newPassword } = parsed.data;
 
     const { rows } = await query(`SELECT password_hash FROM users WHERE id = $1`, [req.user.id]);
-    if (!rows[0]) return res.status(404).json({ error: "User not found" });
+    if (!rows[0]) return sendErr(res, req, 404, "User not found");
 
     const ok = await bcrypt.compare(String(currentPassword), rows[0].password_hash);
-    if (!ok) return res.status(401).json({ error: "Current password is incorrect" });
+    if (!ok) return sendErr(res, req, 401, "Current password is incorrect");
 
     const newHash = await bcrypt.hash(String(newPassword), 10);
     const nowIso = new Date().toISOString();
@@ -44,7 +46,7 @@ router.post("/account/change-password", requireAuth, async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error("Change password error:", err);
-    return res.status(500).json({ error: "Failed to change password" });
+    return sendErr(res, req, 500, "Failed to change password");
   }
 });
 
@@ -54,13 +56,13 @@ router.patch("/account/profile", requireAuth, async (req, res) => {
     const parsed = updateProfileSchema.safeParse(req.body || {});
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid request" });
+      return sendErr(res, req, 400, msg || "Invalid request");
     }
 
     const { fullName, email } = parsed.data;
 
     if (!fullName && !email) {
-      return res.status(400).json({ error: "Nothing to update" });
+      return sendErr(res, req, 400, "Nothing to update");
     }
 
     await updateUserProfile(req.user.id, {
@@ -88,7 +90,7 @@ router.patch("/account/profile", requireAuth, async (req, res) => {
     return res.json({ ok: true, user: rows[0] });
   } catch (err) {
     console.error("Update profile error:", err);
-    return res.status(err.status || 500).json({ error: err.message || "Failed to update profile" });
+    return sendErr(res, req, 500, "Failed to update profile");
   }
 });
 

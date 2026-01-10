@@ -15,6 +15,9 @@ const {
 } = require("../validation");
 const crypto = require("crypto");
 
+const sendErr = (res, req, status, msg) =>
+  res.status(status).json({ error: msg, requestId: req.id });
+
 const router = express.Router();
 
 // POST /api/login
@@ -23,7 +26,7 @@ router.post("/login", async (req, res) => {
     const parsed = loginSchema.safeParse(req.body || {});
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid login data" });
+      return sendErr(res, req, 400, msg || "Invalid login data");
     }
 
     const { email, password } = parsed.data;
@@ -34,28 +37,22 @@ router.post("/login", async (req, res) => {
     const row = await findUserByEmailWithOrg(normalisedEmail);
 
     if (!row) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return sendErr(res, req, 401, "Invalid email or password");
     }
 
     // Block deactivated users
     if (!row.isActive) {
-      return res.status(403).json({
-        error:
-          "This user account is inactive. Please contact your provider.",
-      });
+      return sendErr(res, req, 403, "This user account is inactive.");
     }
 
     // Block users from a suspended provider (but still allow OWNER)
     if (row.role !== "OWNER" && row.orgStatus !== "ACTIVE") {
-      return res.status(403).json({
-        error:
-          "This provider account is suspended. Please contact the platform owner or your organisation.",
-      });
+      return sendErr(res, req, 403, "This provider account is suspended.");
     }
 
     const ok = await bcrypt.compare(password, row.passwordHash);
     if (!ok) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return sendErr(res, req, 401, "Invalid email or password");
     }
 
     const token = generateToken(row);
@@ -73,7 +70,7 @@ router.post("/login", async (req, res) => {
     });
   } catch (err) {
     console.error("Login error:", err);
-    return res.status(500).json({ error: "Login failed" });
+    return sendErr(res, req, 500, "Login failed");
   }
 });
 

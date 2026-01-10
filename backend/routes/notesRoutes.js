@@ -12,12 +12,24 @@ const { redactPII } = require("../pii");
 const { audit } = require("../audit");
 const rateLimit = require("express-rate-limit");
 const { z } = require("zod");
+const sendErr = (res, req, status, msg) =>
+  res.status(status).json({ error: msg, requestId: req.id });
 
 
 
 const router = express.Router();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const limiterHandler = (req, res, _next, options) => {
+  const payload =
+    typeof options.message === "string"
+      ? { error: options.message }
+      : options.message || { error: "Too many requests" };
+
+  return res.status(options.statusCode).json({ ...payload, requestId: req.id });
+};
+
 
 function isTransientLLMError(err) {
   const code = err?.code;
@@ -83,6 +95,7 @@ const notesIpLimiter = rateLimit({
   store: makeStore("rl:notes:ip:"),   // ✅ add this
   keyGenerator: (req) => req.ip,      // explicit is good
   skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
   message: { error: "Too many requests to notes. Please slow down." },
 });
 
@@ -94,6 +107,7 @@ const notesUserLimiter = rateLimit({
   store: makeStore("rl:notes:user:"), // ✅ add this
   keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
   skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
   message: { error: "Too many requests to notes. Please slow down." },
 });
 
@@ -105,6 +119,7 @@ const notesReadIpLimiter = rateLimit({
   store: makeStore("rl:notes:read:ip:"),
   keyGenerator: (req) => req.ip,
   skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
   message: { error: "Too many note reads. Please slow down." },
 });
 
@@ -116,6 +131,7 @@ const notesReadUserLimiter = rateLimit({
   store: makeStore("rl:notes:read:user:"),
   keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
   skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
   message: { error: "Too many note reads. Please slow down." },
 });
 
@@ -127,6 +143,7 @@ const notesPdfIpLimiter = rateLimit({
   store: makeStore("rl:notes:pdf:ip:"),
   keyGenerator: (req) => req.ip,
   skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
   message: { error: "Too many PDF downloads. Please slow down." },
 });
 
@@ -138,6 +155,7 @@ const notesPdfUserLimiter = rateLimit({
   store: makeStore("rl:notes:pdf:user:"),
   keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
   skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
   message: { error: "Too many PDF downloads. Please slow down." },
 });
 
@@ -341,9 +359,7 @@ router.use(requireAuth);
 
 router.use((req, res, next) => {
   if (req.user?.mustChangePassword) {
-    return res
-      .status(403)
-      .json({ error: "You must change your password before continuing." });
+    return sendErr(res, req, 403, "You must change your password before continuing.");
   }
   next();
 });
@@ -353,14 +369,12 @@ router.use((req, res, next) => {
 router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
     try {
     if (req.user.role === "OWNER") {
-      return res.status(403).json({ error: "Owners cannot access notes API" });
+      return sendErr(res, req, 403, "Owners cannot access notes API");
     }
 
     // ✅ prevent PII in URL
     if (req.query.participant) {
-      return res.status(400).json({
-        error: "Do not send participant in querystring. Use POST /api/notes/search.",
-      });
+      return sendErr(res, req, 400, "Do not send participant in querystring. Use POST /api/notes/search.");
     }
 
     const parsed = notesListQuerySchema.safeParse({
@@ -371,7 +385,7 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
     });
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid query parameters" });
+      return sendErr(res, req, 400, msg || "Invalid query parameters" );
     }
 
     const { hasIncident } = parsed.data;
@@ -412,7 +426,7 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
       try {
         decoded = Buffer.from(cursor, "base64").toString("utf8");
       } catch {
-        return res.status(400).json({ error: "Invalid cursor" });
+        return sendErr(res, req, 400, "Invalid cursor" );
       }
 
       const [createdAtStr, idStr] = decoded.split("|");
@@ -420,7 +434,7 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
       const cursorId = Number(idStr);
 
       if (!createdAtStr || !Number.isInteger(cursorId) || Number.isNaN(cursorCreatedAt.getTime())) {
-        return res.status(400).json({ error: "Invalid cursor" });
+        return sendErr(res, req, 400, "Invalid cursor" );
       }
 
       sql += ` AND (created_at, id) < ($${idx++}, $${idx++})`;
@@ -455,13 +469,13 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
 router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) => {
   try {
     if (req.user.role === "OWNER") {
-      return res.status(403).json({ error: "Owners cannot access notes API" });
+      return sendErr(res, req, 403, "Owners cannot access notes API");
     }
 
     const parsed = notesSearchSchema.safeParse(req.body || {});
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid search body" });
+      return sendErr(res, req, 400, msg || "Invalid search body");
     }
 
     const participant = parsed.data.participant;
@@ -510,7 +524,7 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
       try {
         decoded = Buffer.from(cursor, "base64").toString("utf8");
       } catch {
-        return res.status(400).json({ error: "Invalid cursor" });
+        return sendErr(res, req, 400, "Invalid cursor");
       }
 
       const [createdAtStr, idStr] = decoded.split("|");
@@ -518,7 +532,7 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
       const cursorId = Number(idStr);
 
       if (!createdAtStr || !Number.isInteger(cursorId) || Number.isNaN(cursorCreatedAt.getTime())) {
-        return res.status(400).json({ error: "Invalid cursor" });
+        return sendErr(res, req, 400, "Invalid cursor");
       }
 
       sql += ` AND (created_at, id) < ($${idx++}, $${idx++})`;
@@ -553,10 +567,10 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
 router.get("/notes/:id", notesReadIpLimiter, notesReadUserLimiter, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid note id", requestId: req.id });
+    if (!Number.isInteger(id)) return sendErr(res, req, 400, "Invalid note id");
 
     if (req.user.role === "OWNER") {
-      return res.status(403).json({ error: "Owners cannot access notes API", requestId: req.id });
+      return sendErr(res, req, 403, "Owners cannot access notes API");
     }
 
     let sql = `
@@ -573,12 +587,12 @@ router.get("/notes/:id", notesReadIpLimiter, notesReadUserLimiter, async (req, r
     }
 
     const { rows } = await query(sql, params);
-    if (!rows[0]) return res.status(404).json({ error: "Note not found", requestId: req.id });
+    if (!rows[0]) return sendErr(res, req, 404, "Note not found");
 
     return res.json({ note: normaliseNoteRow(rows[0]) });
   } catch (err) {
     console.error(`❌ [${req.id}] Error reading note:`, err);
-    return res.status(500).json({ error: "Failed to read note", requestId: req.id });
+    return sendErr(res, req, 500, "Failed to read note");
   }
 });
 
@@ -588,17 +602,17 @@ router.post("/notes/:id/review", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: "Invalid note id" });
+      return sendErr(res, req, 400, "Invalid note id");
     }
 
     if (req.user.role !== "ADMIN") {
-      return res.status(403).json({ error: "Only admins can review notes" });
+      return sendErr(res, req, 403, "Only admins can review notes");
     }
 
     // boolean, default true unless explicitly false
     const parsedBody = reviewBodySchema.safeParse(req.body || {});
     if (!parsedBody.success) {
-      return res.status(400).json({ error: "Invalid body" });
+      return sendErr(res, req, 400, "Invalid body");
     }
 
     const { reviewedFlag } = parsedBody.data;
@@ -621,7 +635,7 @@ router.post("/notes/:id/review", async (req, res) => {
     );
 
     if (!rows[0]) {
-      return res.status(404).json({ error: "Note not found" });
+      return sendErr(res, req, 404, "Note not found");
     }
 
     await query(
@@ -664,19 +678,17 @@ router.post("/notes/:id/finalise", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: "Invalid note id" });
+      return sendErr(res, req, 400, "Invalid note id");
     }
 
     if (req.user.role === "OWNER") {
-      return res
-        .status(403)
-        .json({ error: "Owners cannot finalise notes" });
+      return sendErr(res, req, 403, "Owners cannot finalise notes");
     }
 
     const parsedBody = finaliseBodySchema.safeParse(req.body || {});
     if (!parsedBody.success) {
       const msg = parsedBody.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid body" });
+      return sendErr(res, req, 400, msg || "Invalid body");
     }
 
     const { finalNoteText } = parsedBody.data; // already trimmed + validated
@@ -704,7 +716,7 @@ router.post("/notes/:id/finalise", async (req, res) => {
 
     const { rows } = await query(sql, params);
     if (!rows[0]) {
-      return res.status(404).json({ error: "Note not found" });
+      return sendErr(res, req, 404, "Note not found");
     }
 
     await query(
@@ -745,11 +757,11 @@ router.post("/generate-note", async (req, res) => {
 
   try {
     if (req.user.role === "OWNER") {
-      return res.status(403).json({ error: "Owners cannot generate notes" });
+      return sendErr(res, req, 403, "Owners cannot generate notes");
     }
 
     if (req.user.role !== "WORKER") {
-      return res.status(403).json({ error: "Only workers can generate notes" });
+      return sendErr(res, req, 403, "Only workers can generate notes");
     }
 
 
@@ -757,7 +769,7 @@ router.post("/generate-note", async (req, res) => {
     const parsed = generateNoteSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid note data" });
+      return sendErr(res, req, 400, msg || "Invalid note data");
     }
 
     const {
@@ -780,16 +792,14 @@ router.post("/generate-note", async (req, res) => {
     // 2. Date sanity
     const shiftDate = parseYyyyMmDd(date);
     if (!shiftDate) {
-      return res.status(400).json({ error: "Invalid date format." });
+      return sendErr(res, req, 400, "Invalid date format.");
     }
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     shiftDate.setHours(0, 0, 0, 0);
 
     if (shiftDate > today) {
-      return res.status(400).json({
-        error: "Date of support cannot be in the future.",
-      });
+      return sendErr(res, req, 400, "Date of support cannot be in the future.");
     }
 
     // 3. Time sanity
@@ -801,15 +811,11 @@ router.post("/generate-note", async (req, res) => {
     }
 
     if (startMins === null || endMins === null) {
-      return res.status(400).json({
-        error: "Invalid start or end time format.",
-      });
+      return sendErr(res, req, 400, "Invalid start or end time format.");
     }
 
     if (endMins <= startMins) {
-      return res.status(400).json({
-        error: "End time must be after start time for the shift.",
-      });
+      return sendErr(res, req, 400, "End time must be after start time for the shift.");
     }
 
     // 4. Junk detection
@@ -825,11 +831,7 @@ router.post("/generate-note", async (req, res) => {
     }
 
     if (junkFields.length > 0) {
-      return res.status(400).json({
-        error:
-          "Some fields do not look like meaningful descriptions. Please rewrite: " +
-          junkFields.join(", "),
-      });
+      return sendErr(res, req, 400, "Some fields do not look like meaningful descriptions. Please rewrite: " + junkFields.join(", "));
     }
 
     const safeLocation = location.trim();
@@ -960,7 +962,7 @@ router.post("/generate-note", async (req, res) => {
 
 
     if (modelText.startsWith("ERROR:")) {
-      return res.status(400).json({ error: modelText });
+      return sendErr(res, req, 400, modelText);
     }
 
     const filteredBody = applyComplianceFilter(modelText, rawCombined, workerName);
@@ -1049,11 +1051,12 @@ router.post("/generate-note", async (req, res) => {
 
     return res.json({ note: fullNote, id: newId });
   } catch (error) {
-    console.error("Error generating note:", error?.message || error);
+    console.error(`[${req.id}] Error generating note:`, error);
 
     return res.status(500).json({
       error:
         "Failed to generate note. If this keeps happening, please contact the system administrator.",
+      requestId: req.id,
     });
   }
 });
@@ -1063,12 +1066,12 @@ router.get("/notes/:id/pdf", notesPdfIpLimiter, notesPdfUserLimiter, async (req,
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: "Invalid note id" });
+      return sendErr(res, req, 400, "Invalid note id");
     }
 
     // Keep your existing rule
     if (req.user.role === "OWNER") {
-      return res.status(403).json({ error: "Owners cannot access notes API" });
+      return sendErr(res, req, 403, "Owners cannot access notes API");
     }
 
     let sql = `
@@ -1121,7 +1124,7 @@ router.get("/notes/:id/pdf", notesPdfIpLimiter, notesPdfUserLimiter, async (req,
     const { rows } = await query(sql, params);
     const row = rows[0];
     if (!row) {
-      return res.status(404).json({ error: "Note not found" });
+      return sendErr(res, req, 404, "Note not found");
     }
     
     await audit(req, "NOTE_PDF_DOWNLOADED", {
@@ -1150,7 +1153,7 @@ res.setHeader(
     doc.pipe(res);
 
     doc.on("error", (e) => {
-      console.error("PDF stream error:", e);
+      console.error(`[${req.id}] PDF stream error:`, e);
       try { res.destroy(e); } catch {}
     });
     res.on("close", () => {
@@ -1242,16 +1245,16 @@ router.post("/notes/:id/archive", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: "Invalid note id" });
+      return sendErr(res, req, 400, "Invalid note id");
     }
 
     if (req.user.role === "OWNER") {
-      return res.status(403).json({ error: "Owners cannot access notes API" });
+      return sendErr(res, req, 403, "Owners cannot access notes API");
     }
 
     const parsedBody = archiveBodySchema.safeParse(req.body || {});
     if (!parsedBody.success) {
-      return res.status(400).json({ error: "Invalid body" });
+      return sendErr(res, req, 400, "Invalid body");
     }
 
     const { archivedFlag } = parsedBody.data;
@@ -1276,7 +1279,7 @@ router.post("/notes/:id/archive", async (req, res) => {
     }
 
     const { rows: exists } = await query(sqlCheck, params);
-    if (!exists[0]) return res.status(404).json({ error: "Note not found" });
+    if (!exists[0]) return sendErr(res, req, 404, "Note not found");
 
     const nowIso = new Date().toISOString();
 

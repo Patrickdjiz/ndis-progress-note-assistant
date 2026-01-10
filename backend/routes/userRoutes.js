@@ -14,6 +14,9 @@ const {
   updateUserActiveFlag,
 } = require("../dbAdapter");
 
+const sendErr = (res, req, status, msg) =>
+  res.status(status).json({ error: msg, requestId: req.id });
+
 const router = express.Router();
 
 // All user routes require auth + ADMIN/OWNER
@@ -22,9 +25,7 @@ router.use(requireRole("ADMIN", "OWNER"));
 
 router.use((req, res, next) => {
   if (req.user?.mustChangePassword) {
-    return res
-      .status(403)
-      .json({ error: "You must change your password before continuing." });
+    return sendErr(res, req, 403, "You must change your password before continuing.");
   }
   next();
 });
@@ -45,7 +46,7 @@ router.get("/", async (req, res) => {
     return res.json({ users });
   } catch (err) {
     console.error("Error listing users:", err.message);
-    return res.status(500).json({ error: "Failed to list users" });
+    return sendErr(res, req, 500, "Failed to list users");
   }
 });
 
@@ -60,7 +61,7 @@ router.post("/", async (req, res) => {
     const parsed = createWorkerSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid user data" });
+      return sendErr(res, req, 400, msg || "Invalid user data");
     }
 
     const { email, fullName, password } = parsed.data;
@@ -86,7 +87,7 @@ router.post("/", async (req, res) => {
     return res.status(201).json({ user });
   } catch (err) {
     console.error("Error creating user:", err.message);
-    return res.status(500).json({ error: "Failed to create user" });
+    return sendErr(res, req, 500, "Failed to create user");
   }
 });
 
@@ -98,14 +99,14 @@ router.patch("/:id/status", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: "Invalid user id" });
+      return sendErr(res, req, 400, "Invalid user id");
     }
 
     // ✅ Validate body
     const parsed = booleanFlagSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid status data" });
+      return sendErr(res, req, 400, msg || "Invalid status data");
     }
 
     const { isActive } = parsed.data;
@@ -124,12 +125,10 @@ router.patch("/:id/status", async (req, res) => {
     );
 
     if (!existing) {
-      return res.status(404).json({ error: "User not found" });
+      return sendErr(res, req, 404, "User not found");
     }
     if (existing.role !== "WORKER") {
-      return res.status(400).json({
-        error: "You can only change worker accounts from the team screen",
-      });
+      return sendErr(res, req, 400, "You can only change worker accounts from the team screen");
     }
 
     await updateUserActiveFlag(id, !!isActive);
@@ -137,7 +136,7 @@ router.patch("/:id/status", async (req, res) => {
     return res.json({ ok: true, id, isActive: !!isActive });
   } catch (err) {
     console.error("Error updating user status:", err.message);
-    return res.status(500).json({ error: "Failed to update user status" });
+    return sendErr(res, req, 500, "Failed to update user status");
   }
 });
 

@@ -11,6 +11,10 @@ const { FRONTEND_ORIGIN } = require("../config/env");
 
 const router = express.Router();
 
+const sendErr = (res, req, status, msg) =>
+  res.status(status).json({ error: msg, requestId: req.id });
+
+
 function sha256Hex(s) {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
@@ -25,7 +29,7 @@ router.post("/forgot-password", async (req, res) => {
     const parsed = forgotPasswordSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid request" });
+      return sendErr(res, req, 400, msg || "Invalid request");
     }
 
     const email = parsed.data.email.trim().toLowerCase();
@@ -165,7 +169,7 @@ router.post("/forgot-password", async (req, res) => {
     return res.json(okResponse);
   } catch (err) {
     console.error("Forgot password error:", err);
-    return res.status(500).json({ error: "Failed to start password reset" });
+    return sendErr(res, req, 500, "Failed to start password reset");
   }
 });
 
@@ -175,7 +179,7 @@ router.post("/reset-password", async (req, res) => {
     const parsed = resetPasswordSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid request" });
+      return sendErr(res, req, 400, msg || "Invalid request");
     }
 
     const { token, newPassword } = parsed.data;
@@ -195,9 +199,7 @@ router.post("/reset-password", async (req, res) => {
     );
 
     if (!rows[0]) {
-      return res
-        .status(400)
-        .json({ error: "Reset token is invalid or expired" });
+      return sendErr(res, req, 400, "Reset token is invalid or expired");
     }
 
     const newHash = await bcrypt.hash(String(newPassword), 10);
@@ -219,7 +221,7 @@ router.post("/reset-password", async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error("Reset password error:", err);
-    return res.status(500).json({ error: "Failed to reset password" });
+    return sendErr(res, req, 500, "Failed to reset password");
   }
 });
 
