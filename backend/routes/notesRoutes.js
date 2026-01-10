@@ -10,9 +10,30 @@ const { query } = require("../dbAdapter");
 const PDFDocument = require("pdfkit");
 const { redactPII } = require("../pii");
 const { audit } = require("../audit");
+const rateLimit = require("express-rate-limit");
 
 
 const router = express.Router();
+
+// ---- Rate limiting for notes list/search ----
+// Higher threshold than login because the UI legitimately loads lists/pagination.
+const notesIpLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 120,            // per IP per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests to notes. Please slow down." },
+});
+
+const notesUserLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 240,            // per user per minute (separate from IP)
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  message: { error: "Too many requests to notes. Please slow down." },
+});
+
 
 function clip(s, max = 1500) {
   if (!s) return "";
@@ -199,7 +220,7 @@ router.use((req, res, next) => {
 
 
 // GET /api/notes  (list recent notes with filters, org-scoped)
-router.get("/notes", async (req, res) => {
+router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
     try {
     if (req.user.role === "OWNER") {
       return res.status(403).json({ error: "Owners cannot access notes API" });
@@ -241,11 +262,6 @@ router.get("/notes", async (req, res) => {
     if (req.user.role === "WORKER") {
       sql += ` AND worker_user_id = $${idx++}`;
       params.push(req.user.id);
-    }
-
-    if (participant && participant.trim()) {
-      sql += ` AND participant_name ILIKE $${idx++}`;
-      params.push(`%${participant.trim()}%`);
     }
 
     if (hasIncident === "true") {
@@ -306,7 +322,7 @@ router.get("/notes", async (req, res) => {
   }
 });
 
-router.post("/notes/search", async (req, res) => {
+router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) => {
   try {
     if (req.user.role === "OWNER") {
       return res.status(403).json({ error: "Owners cannot access notes API" });
@@ -322,11 +338,13 @@ router.post("/notes/search", async (req, res) => {
     const hasIncident = parsed.data.hasIncident; // boolean | undefined
     const archivedRaw = parsed.data.archived;    // boolean | "all" | undefined
     const archived =
-      archivedRaw === "all" || archivedRaw === undefined
-        ? "false" // choose your default; you can also do "all"
-        : archivedRaw
-          ? "true"
-          : "false";
+      archivedRaw === "all"
+        ? "all"
+        : archivedRaw === undefined
+          ? "false"
+          : archivedRaw
+            ? "true"
+            : "false";
 
     let sql = `
       SELECT *

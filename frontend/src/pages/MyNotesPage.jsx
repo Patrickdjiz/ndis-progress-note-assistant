@@ -179,7 +179,7 @@ function MyNotesPage({ token, user }) {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}_${safeFile(selectedNote.participantName)}.pdf`;
+      const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}.pdf`;
       downloadBlob(blob, filename);
     } catch (e) {
       setErrorMsg(e?.message || "Failed to download PDF.");

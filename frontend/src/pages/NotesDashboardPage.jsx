@@ -20,7 +20,6 @@ function NotesDashboardPage({ token, user }) {
 
   const [finalNoteEditText, setFinalNoteEditText] = useState("");
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
-  const [reviewerName, setReviewerName] = useState(user?.fullName || "");
 
   const [nextCursor, setNextCursor] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -51,12 +50,6 @@ function NotesDashboardPage({ token, user }) {
     return () => clearTimeout(t);
   }, [filterParticipant]);
 
-  const safeFile = (s) =>
-    String(s || "")
-      .trim()
-      .replace(/[^\w\-]+/g, "_")
-      .slice(0, 80);
-
   const ymdOnly = (v) => {
     const s = String(v || "");
     const m = s.match(/\d{4}-\d{2}-\d{2}/);
@@ -64,71 +57,70 @@ function NotesDashboardPage({ token, user }) {
   };
 
   // ---------- Load notes list ----------
-const fetchNotes = async ({ append = false, cursor = null } = {}) => {
-  try {
-    append ? setLoadingMore(true) : setNotesLoading(true);
-    setNotesError("");
-    setErrorMsg("");
+  const fetchNotes = async ({ append = false, cursor = null } = {}) => {
+    try {
+      append ? setLoadingMore(true) : setNotesLoading(true);
+      setNotesError("");
+      setErrorMsg("");
 
-    const limit = 50;
+      const limit = 50;
 
-    // convert UI strings -> API types
-    const hasIncidentValue =
-      filterIncident === "all" ? undefined : filterIncident === "true"; // boolean | undefined
+      // convert UI strings -> API types
+      const hasIncidentValue =
+        filterIncident === "all" ? undefined : filterIncident === "true"; // boolean | undefined
 
-    const archivedValue =
-      filterArchived === "all"
-        ? "all"
-        : filterArchived === "true"; // boolean | "all"
+      const archivedValue =
+        filterArchived === "all"
+          ? "all"
+          : filterArchived === "true"; // boolean | "all"
 
-    // ✅ IMPORTANT: if participant filter is used, use POST /api/notes/search
-    const useSearch = !!debouncedParticipant;
+      // ✅ IMPORTANT: if participant filter is used, use POST /api/notes/search
+      const useSearch = !!debouncedParticipant;
 
-    let data;
-    if (useSearch) {
-      data = await apiFetch("/api/notes/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          participant: debouncedParticipant || undefined,
-          hasIncident: hasIncidentValue,
-          archived: archivedValue,
-          limit,
-          cursor,
-        }),
-      });
-    } else {
-      // keep GET for non-participant filtering (allowed by your backend)
-      const params = new URLSearchParams();
-      if (filterIncident !== "all") params.append("hasIncident", filterIncident);
-      params.append("archived", filterArchived);
-      params.append("limit", String(limit));
-      if (cursor) params.append("cursor", cursor);
+      let data;
+      if (useSearch) {
+        data = await apiFetch("/api/notes/search", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            participant: debouncedParticipant || undefined,
+            hasIncident: hasIncidentValue,
+            archived: archivedValue,
+            limit,
+            cursor,
+          }),
+        });
+      } else {
+        // keep GET for non-participant filtering (allowed by your backend)
+        const params = new URLSearchParams();
+        if (filterIncident !== "all") params.append("hasIncident", filterIncident);
+        params.append("archived", filterArchived);
+        params.append("limit", String(limit));
+        if (cursor) params.append("cursor", cursor);
 
-      data = await apiFetch(`/api/notes?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+        data = await apiFetch(`/api/notes?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+
+      const incoming = Array.isArray(data.notes) ? data.notes : [];
+      setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
+      setNextCursor(data.nextCursor || null);
+
+      if (!append) {
+        setSelectedNote(null);
+        setFinalNoteEditText("");
+        setFinalSaveMsg("");
+      }
+    } catch (err) {
+      setNotesError(err?.message || "Failed to load notes");
+    } finally {
+      append ? setLoadingMore(false) : setNotesLoading(false);
     }
-
-    const incoming = Array.isArray(data.notes) ? data.notes : [];
-    setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
-    setNextCursor(data.nextCursor || null);
-
-    if (!append) {
-      setSelectedNote(null);
-      setFinalNoteEditText("");
-      setFinalSaveMsg("");
-    }
-  } catch (err) {
-    setNotesError(err?.message || "Failed to load notes");
-  } finally {
-    append ? setLoadingMore(false) : setNotesLoading(false);
-  }
-};
-
+  };
 
   // Initial load
   useEffect(() => {
@@ -158,7 +150,9 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
       });
 
       setSelectedNote(data.note);
-      setFinalNoteEditText(data.note.finalNoteText ? data.note.finalNoteText : data.note.noteText);
+      setFinalNoteEditText(
+        data.note.finalNoteText ? data.note.finalNoteText : data.note.noteText
+      );
     } catch (err) {
       console.error("Error fetching note:", err);
       setNotesError(err?.message || "Failed to fetch note");
@@ -217,9 +211,9 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        // ✅ Backend uses req.user.fullName — don’t send reviewerName
         body: JSON.stringify({
           reviewedFlag: !selectedNote.reviewedFlag,
-          reviewerName: reviewerName || undefined,
         }),
       });
 
@@ -269,9 +263,7 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}_${safeFile(
-        selectedNote.participantName
-      )}.pdf`;
+      const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}.pdf`;
 
       downloadBlob(blob, filename);
     } catch (e) {
@@ -296,9 +288,9 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        // ✅ Backend uses req.user.fullName — don’t send archivedBy
         body: JSON.stringify({
           archivedFlag: next,
-          archivedBy: reviewerName || undefined,
         }),
       });
 
@@ -349,10 +341,14 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
     ...overrides,
   });
 
+  const actingName = user?.fullName || "Unknown user";
+
   return (
     <section style={{ width: "100%", boxSizing: "border-box" }}>
       <div style={{ marginBottom: "0.75rem" }}>
-        <h2 style={{ margin: 0, fontSize: "1.15rem", color: PRIMARY }}>Saved notes</h2>
+        <h2 style={{ margin: 0, fontSize: "1.15rem", color: PRIMARY }}>
+          Saved notes
+        </h2>
       </div>
 
       {/* Filters bar */}
@@ -369,7 +365,12 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
           alignItems: "flex-end",
         }}
       >
-        <div style={{ minWidth: isMobile ? "0" : "210px", flex: isMobile ? "1 1 100%" : "0 0 auto" }}>
+        <div
+          style={{
+            minWidth: isMobile ? "0" : "210px",
+            flex: isMobile ? "1 1 100%" : "0 0 auto",
+          }}
+        >
           <label
             style={{
               display: "block",
@@ -391,13 +392,25 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
         </div>
 
         <div style={{ flex: isMobile ? "1 1 100%" : "0 0 auto" }}>
-          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, color: "#374151", marginBottom: "0.2rem" }}>
+          <label
+            style={{
+              display: "block",
+              fontSize: "0.8rem",
+              fontWeight: 500,
+              color: "#374151",
+              marginBottom: "0.2rem",
+            }}
+          >
             Incident filter
           </label>
           <select
             value={filterIncident}
             onChange={(e) => setFilterIncident(e.target.value)}
-            style={{ ...selectBase, width: isMobile ? "100%" : undefined, boxSizing: "border-box" }}
+            style={{
+              ...selectBase,
+              width: isMobile ? "100%" : undefined,
+              boxSizing: "border-box",
+            }}
           >
             <option value="all">All notes</option>
             <option value="true">Incident notes only</option>
@@ -406,13 +419,25 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
         </div>
 
         <div style={{ flex: isMobile ? "1 1 100%" : "0 0 auto" }}>
-          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 500, color: "#374151", marginBottom: "0.2rem" }}>
+          <label
+            style={{
+              display: "block",
+              fontSize: "0.8rem",
+              fontWeight: 500,
+              color: "#374151",
+              marginBottom: "0.2rem",
+            }}
+          >
             Archived
           </label>
           <select
             value={filterArchived}
             onChange={(e) => setFilterArchived(e.target.value)}
-            style={{ ...selectBase, width: isMobile ? "100%" : undefined, boxSizing: "border-box" }}
+            style={{
+              ...selectBase,
+              width: isMobile ? "100%" : undefined,
+              boxSizing: "border-box",
+            }}
           >
             <option value="false">Hide archived</option>
             <option value="true">Archived only</option>
@@ -435,15 +460,37 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
         </button>
       </div>
 
-      {notesError && <p style={{ color: "red", marginTop: "0.75rem", wordBreak: "break-word" }}>{notesError}</p>}
-      {errorMsg && <p style={{ color: "red", marginTop: "0.4rem", wordBreak: "break-word" }}>{errorMsg}</p>}
+      {notesError && (
+        <p
+          style={{
+            color: "red",
+            marginTop: "0.75rem",
+            wordBreak: "break-word",
+          }}
+        >
+          {notesError}
+        </p>
+      )}
+      {errorMsg && (
+        <p
+          style={{
+            color: "red",
+            marginTop: "0.4rem",
+            wordBreak: "break-word",
+          }}
+        >
+          {errorMsg}
+        </p>
+      )}
 
       {/* Main layout */}
       <div
         style={{
           marginTop: "1rem",
           display: "grid",
-          gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "minmax(0, 1.05fr) minmax(0, 1.1fr)",
+          gridTemplateColumns: isMobile
+            ? "minmax(0, 1fr)"
+            : "minmax(0, 1.05fr) minmax(0, 1.1fr)",
           gap: "1rem",
         }}
       >
@@ -472,8 +519,12 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
               flexWrap: "wrap",
             }}
           >
-            <span style={{ fontWeight: 600, color: PRIMARY }}>Recent notes — showing {notes.length}</span>
-            <span style={{ color: "#9ca3af", fontSize: "0.75rem" }}>Click a row to review</span>
+            <span style={{ fontWeight: 600, color: PRIMARY }}>
+              Recent notes — showing {notes.length}
+            </span>
+            <span style={{ color: "#9ca3af", fontSize: "0.75rem" }}>
+              Click a row to review
+            </span>
           </div>
 
           <div
@@ -494,7 +545,14 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
             >
               <thead>
                 <tr>
-                  {["Date", "Participant", "Worker", "Location", "Incident", "Status"].map((h) => (
+                  {[
+                    "Date",
+                    "Participant",
+                    "Worker",
+                    "Location",
+                    "Incident",
+                    "Status",
+                  ].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -518,7 +576,14 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
               <tbody>
                 {notes.length === 0 && !notesLoading && (
                   <tr>
-                    <td colSpan={6} style={{ padding: "0.8rem", textAlign: "center", color: "#6b7280" }}>
+                    <td
+                      colSpan={6}
+                      style={{
+                        padding: "0.8rem",
+                        textAlign: "center",
+                        color: "#6b7280",
+                      }}
+                    >
                       No notes found. Generate a note and click Refresh.
                     </td>
                   </tr>
@@ -536,27 +601,64 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
                         touchAction: "manipulation",
                       }}
                     >
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
+                      <td
+                        style={{
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
+                          borderBottom: "1px solid #f3f4f6",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {fmtShiftDate(n.date)}
                       </td>
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
+                      <td
+                        style={{
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
+                          borderBottom: "1px solid #f3f4f6",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {n.participantName}
                       </td>
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
+                      <td
+                        style={{
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
+                          borderBottom: "1px solid #f3f4f6",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {n.workerName}
                       </td>
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
+                      <td
+                        style={{
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
+                          borderBottom: "1px solid #f3f4f6",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {n.location}
                       </td>
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6" }}>
+                      <td
+                        style={{
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
+                          borderBottom: "1px solid #f3f4f6",
+                        }}
+                      >
                         {n.incidentFlag
                           ? badge("Incident", { bg: "#fef2f2", color: "#b91c1c" })
                           : badge("No incident", { bg: "#ecfdf3", color: "#166534" })}
                       </td>
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
+                      <td
+                        style={{
+                          padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem",
+                          borderBottom: "1px solid #f3f4f6",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {badge(
                           n.finalisedAt ? "Finalised" : "Draft",
-                          n.finalisedAt ? { bg: "#eff6ff", color: "#1d4ed8" } : { bg: "#f3f4f6", color: "#4b5563" }
+                          n.finalisedAt
+                            ? { bg: "#eff6ff", color: "#1d4ed8" }
+                            : { bg: "#f3f4f6", color: "#4b5563" }
                         )}{" "}
                         {!!n.reviewedFlag && badge("Reviewed", { bg: "#fef3c7", color: "#92400e" })}{" "}
                         {!!n.archivedFlag && badge("Archived", { bg: "#f3f4f6", color: "#111827" })}
@@ -602,7 +704,9 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
             minWidth: 0,
           }}
         >
-          <h3 style={{ marginTop: 0, marginBottom: "0.3rem", fontSize: "1rem", color: PRIMARY }}>Note details</h3>
+          <h3 style={{ marginTop: 0, marginBottom: "0.3rem", fontSize: "1rem", color: PRIMARY }}>
+            Note details
+          </h3>
 
           {!selectedNote && (
             <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
@@ -612,13 +716,23 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
 
           {selectedNote && (
             <>
-              <p style={{ fontSize: "0.85rem", marginBottom: "0.5rem", color: "#374151", lineHeight: 1.45, wordBreak: "break-word" }}>
+              <p
+                style={{
+                  fontSize: "0.85rem",
+                  marginBottom: "0.5rem",
+                  color: "#374151",
+                  lineHeight: 1.45,
+                  wordBreak: "break-word",
+                }}
+              >
                 <strong>Participant:</strong> {selectedNote.participantName}
                 <br />
                 <strong>Worker:</strong> {selectedNote.workerName}
                 <br />
                 <strong>Date:</strong> {fmtShiftDate(selectedNote.date)}
-                {selectedNote.startTime && selectedNote.endTime ? ` (${fmtHm(selectedNote.startTime)}–${fmtHm(selectedNote.endTime)})` : ""}
+                {selectedNote.startTime && selectedNote.endTime
+                  ? ` (${fmtHm(selectedNote.startTime)}–${fmtHm(selectedNote.endTime)})`
+                  : ""}
                 <br />
                 <strong>Location:</strong> {selectedNote.location}
                 <br />
@@ -631,20 +745,33 @@ const fetchNotes = async ({ append = false, cursor = null } = {}) => {
                 {selectedNote.reviewedAt && <> (at {fmtDateTime(selectedNote.reviewedAt)})</>}
               </p>
 
-              <div style={{ marginBottom: "0.55rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 500, color: "#374151" }}>Your name (for review)</label>
-                <input
-                  type="text"
-                  value={reviewerName}
-                  onChange={(e) => setReviewerName(e.target.value)}
-                  placeholder="e.g. Coordinator name"
-                  style={inputBase}
-                />
+              {/* ✅ Replaces typed reviewerName input (backend ignores it) */}
+              <div
+                style={{
+                  marginBottom: "0.6rem",
+                  padding: "0.55rem 0.65rem",
+                  borderRadius: "0.65rem",
+                  border: "1px solid #e5e7eb",
+                  background: "#f9fafb",
+                  fontSize: "0.85rem",
+                  color: "#374151",
+                  lineHeight: 1.45,
+                }}
+              >
+                <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "#111827", marginBottom: "0.15rem" }}>
+                  Audit identity (auto)
+                </div>
+                <div>
+                  <strong>Reviewed by:</strong> {actingName}
+                  <br />
+                  <strong>Archived by:</strong> {actingName}
+                </div>
               </div>
 
               <h4 style={{ marginTop: "0.2rem", marginBottom: "0.2rem", fontSize: "0.9rem", color: "#111827" }}>
                 Final note for this shift (editable)
               </h4>
+
               <textarea
                 rows={7}
                 value={finalNoteEditText}

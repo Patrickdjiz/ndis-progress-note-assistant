@@ -27,8 +27,6 @@ if (NODE_ENV === "production") {
 // Basic security headers
 app.use(helmet());
 
-const morgan = require("morgan");
-
 // logs "/api/notes" instead of "/api/notes?participant=John"
 morgan.token("safe-url", (req) => (req.originalUrl || "").split("?")[0]);
 
