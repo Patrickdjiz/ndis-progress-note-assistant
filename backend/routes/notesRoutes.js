@@ -17,6 +17,43 @@ const { z } = require("zod");
 
 const router = express.Router();
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function isTransientLLMError(err) {
+  const code = err?.code;
+  const status = err?.response?.status;
+
+  // Common Node/axios transient network codes
+  if (code && ["ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "EAI_AGAIN", "ENOTFOUND"].includes(code)) {
+    return true;
+  }
+
+  // Retryable HTTP statuses (rate limit / gateway / timeout)
+  if (status && [408, 409, 429, 500, 502, 503, 504].includes(status)) {
+    return true;
+  }
+
+  const msg = String(err?.message || "").toLowerCase();
+  if (msg.includes("timeout") || msg.includes("rate limit") || msg.includes("temporar")) {
+    return true;
+  }
+
+  return false;
+}
+
+async function chatLLMWithRetry(opts) {
+  try {
+    return await chatLLM(opts);
+  } catch (err) {
+    if (!isTransientLLMError(err)) throw err;
+
+    // retry once (small delay)
+    await sleep(300);
+    return await chatLLM(opts);
+  }
+}
+
+
 
 let RedisStore, Redis, redis, makeStore;
 
@@ -887,7 +924,7 @@ router.post("/generate-note", async (req, res) => {
     `.trim();
 
 
-    const { text: modelOut } = await chatLLM({
+    const { text: modelOut } = await chatLLMWithRetry({
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -896,7 +933,21 @@ router.post("/generate-note", async (req, res) => {
       max_tokens: 700,
     });
 
+
     let modelText = tidyModelText(modelOut);
+
+    // ✅ If the model accidentally included headers, strip them
+    modelText = stripNoteHeader(modelText);
+
+    // Sometimes models repeat headers twice — strip again just in case
+    modelText = stripNoteHeader(modelText);
+
+    // Optional: hard cap the body length (defense-in-depth)
+    const MAX_BODY_CHARS = 9000;
+    if (modelText.length > MAX_BODY_CHARS) {
+      modelText = modelText.slice(0, MAX_BODY_CHARS).trim();
+    }
+
 
     if (modelText.startsWith("ERROR:")) {
       return res.status(400).json({ error: modelText });

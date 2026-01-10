@@ -1,6 +1,8 @@
 // validation.js
 const { z } = require("zod");
 
+const smallString = (max) => z.string().trim().min(1).max(max);
+
 // Reusable pieces
 const emailSchema = z
   .string()
@@ -127,7 +129,7 @@ const notesSearchSchema = z.object({
     (v) => (v === undefined ? undefined : Number(v)),
     z.number().int().min(1).max(200)
   ).optional(),
-  cursor: z.string().optional(),
+  cursor: smallString(300).optional(),     // ✅ add max
 });
 
 // NEW: GET query schema for /api/notes (no participant)
@@ -138,9 +140,8 @@ const notesListQuerySchema = z.object({
     (v) => (v === undefined ? undefined : Number(v)),
     z.number().int().min(1).max(200)
   ).optional(),
-  cursor: z.string().optional(),
+  cursor: smallString(300).optional(),     // ✅ add max
 });
-
 
 
 module.exports = {
