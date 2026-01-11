@@ -143,7 +143,6 @@ function GenerateNotePage({ token, user }) {
       goalsWorkedOn,
       incidentsOrRisks,
       followUpActions,
-      workerName,
     };
 
     const missing = Object.entries(fields)

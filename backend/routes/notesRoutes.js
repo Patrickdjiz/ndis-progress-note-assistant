@@ -21,15 +21,6 @@ const router = express.Router();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const limiterHandler = (req, res, _next, options) => {
-  const payload =
-    typeof options.message === "string"
-      ? { error: options.message }
-      : options.message || { error: "Too many requests" };
-
-  return res.status(options.statusCode).json({ ...payload, requestId: req.id });
-};
-
 
 function isTransientLLMError(err) {
   const code = err?.code;
@@ -308,11 +299,6 @@ function normaliseNoteRow(row) {
     startTime: row.start_time,
     endTime: row.end_time,
     location: row.location,
-    activitiesAndSupports: row.activities_and_supports,
-    participantPresentation: row.participant_presentation,
-    goalsWorkedOn: row.goals_worked_on,
-    incidentsOrRisks: row.incidents_or_risks,
-    followUpActions: row.follow_up_actions,
 
     // ✅ ALWAYS return body-only (works for old + new records)
     noteText: stripNoteHeader(row.note_text),
@@ -818,23 +804,23 @@ router.post("/generate-note", async (req, res) => {
     const safeLocation = location.trim();
     const shiftTime = `${startTime}–${endTime}`;
 
-    const rawCombined =
-      (activitiesAndSupports || "") +
-      " " +
-      (participantPresentation || "") +
-      " " +
-      (goalsWorkedOn || "") +
-      " " +
-      (incidentsOrRisks || "") +
-      " " +
-      (followUpActions || "");
-
-
     const activitiesLLM = redactPII(activitiesAndSupports);
     const presentationLLM = redactPII(participantPresentation);
     const goalsLLM = redactPII(goalsWorkedOn);
     const incidentsLLM = redactPII(incidentsOrRisks);
     const followUpLLM = redactPII(followUpActions);
+
+    const rawCombinedRedacted =
+      (activitiesLLM || "") +
+      " " +
+      (presentationLLM || "") +
+      " " +
+      (goalsLLM || "") +
+      " " +
+      (incidentsLLM || "") +
+      " " +
+      (followUpLLM || "");
+
 
     // Optional: do NOT send participantName/location to LLM at all (minimise PII)
     const participantLLM = "[participant]";
@@ -912,8 +898,6 @@ router.post("/generate-note", async (req, res) => {
 
     Raw input – Follow-up / Next Steps:
     ${clip(followUpLLM, 2000)}
-
-    Support worker: ${clip(workerName, 120)}
     `.trim();
 
 
@@ -946,7 +930,7 @@ router.post("/generate-note", async (req, res) => {
       return sendErr(res, req, 400, modelText);
     }
 
-    const filteredBody = applyComplianceFilter(modelText, rawCombined, workerName);
+    const filteredBody = applyComplianceFilter(modelText, rawCombinedRedacted, workerName);
 
     // ✅ Store BODY ONLY in DB (privacy + future-proofing)
     const storedBody = String(filteredBody || "").trim();
@@ -984,19 +968,15 @@ router.post("/generate-note", async (req, res) => {
         start_time,
         end_time,
         location,
-        activities_and_supports,
-        participant_presentation,
-        goals_worked_on,
-        incidents_or_risks,
-        follow_up_actions,
         note_text,
         incident_flag,
         created_at
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11
       )
       RETURNING id
     `;
+
 
     const { rows } = await query(insertSql, [
       req.user.organisationId,
@@ -1007,18 +987,11 @@ router.post("/generate-note", async (req, res) => {
       startTime,
       endTime,
       safeLocation,
-      activitiesAndSupports,
-      participantPresentation,
-      goalsWorkedOn,
-      incidentsOrRisks,
-      followUpActions,
-
-      // ✅ changed:
-      storedBody,
-
+      storedBody,              // ✅ note_text only
       incidentFlag === true,
       createdAt,
     ]);
+
 
 
     const newId = rows[0].id;
@@ -1069,12 +1042,6 @@ router.get("/notes/:id/pdf", notesPdfIpLimiter, notesPdfUserLimiter, async (req,
         pn.end_time,
         pn.location,
 
-        pn.activities_and_supports,
-        pn.participant_presentation,
-        pn.goals_worked_on,
-        pn.incidents_or_risks,
-        pn.follow_up_actions,
-
         pn.note_text,
         pn.final_note_text,
         pn.incident_flag,
@@ -1091,6 +1058,7 @@ router.get("/notes/:id/pdf", notesPdfIpLimiter, notesPdfUserLimiter, async (req,
       WHERE pn.id = $1
         AND pn.organisation_id = $2
     `;
+
     const params = [id, req.user.organisationId];
     let idx = 3;
 

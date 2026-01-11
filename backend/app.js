@@ -2,7 +2,6 @@
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
 const crypto = require("crypto");
 const { rateLimit, makeStore, limiterHandler } = require("./rateLimit");

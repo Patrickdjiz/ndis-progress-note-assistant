@@ -39,12 +39,6 @@ CREATE TABLE IF NOT EXISTS progress_notes (
   end_time TIME NOT NULL,
   location TEXT NOT NULL,
 
-  activities_and_supports TEXT NOT NULL,
-  participant_presentation TEXT NOT NULL,
-  goals_worked_on TEXT NOT NULL,
-  incidents_or_risks TEXT NOT NULL,
-  follow_up_actions TEXT NOT NULL,
-
   note_text TEXT NOT NULL,
   incident_flag BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

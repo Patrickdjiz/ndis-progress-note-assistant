@@ -50,7 +50,9 @@ async function getSessionUserFromDb(userId) {
 async function requireAuth(req, res, next) {
   const auth = req.headers.authorization || "";
   if (!auth.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Missing auth token" });
+    return res
+      .status(401)
+      .json({ error: "Missing auth token", requestId: req.id });
   }
 
   const token = auth.slice(7);
@@ -62,14 +64,18 @@ async function requireAuth(req, res, next) {
     if (process.env.NODE_ENV !== "test") {
       console.error("JWT verify error:", err.message);
     }
-    return res.status(401).json({ error: "Invalid or expired token" });
+    return res
+      .status(401)
+      .json({ error: "Invalid or expired token", requestId: req.id });
   }
 
   try {
     const dbUser = await getSessionUserFromDb(payload.id);
 
     if (!dbUser) {
-      return res.status(401).json({ error: "Invalid or expired token" });
+      return res
+        .status(401)
+        .json({ error: "Invalid or expired token", requestId: req.id });
     }
 
     // ✅ If account is inactive, treat token as revoked -> 401 so frontend logs out
@@ -77,6 +83,7 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({
         error: "This user account is inactive. Please contact your provider.",
         code: "ACCOUNT_INACTIVE",
+        requestId: req.id,
       });
     }
 
@@ -87,6 +94,7 @@ async function requireAuth(req, res, next) {
         error:
           "This provider account is suspended. Please contact the platform owner or your organisation.",
         code: "ORG_SUSPENDED",
+        requestId: req.id,
       });
     }
 
@@ -101,6 +109,7 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({
         error: "Session expired. Please log in again.",
         code: "PASSWORD_CHANGED",
+        requestId: req.id,
       });
     }
 
@@ -117,14 +126,18 @@ async function requireAuth(req, res, next) {
     next();
   } catch (err) {
     console.error("Auth DB check error:", err.message);
-    return res.status(500).json({ error: "Authentication failed" });
+    return res
+      .status(500)
+      .json({ error: "Authentication failed", requestId: req.id });
   }
 }
 
 function requireRole(...allowed) {
   return (req, res, next) => {
     if (!req.user || !allowed.includes(req.user.role)) {
-      return res.status(403).json({ error: "Forbidden" });
+      return res
+        .status(403)
+        .json({ error: "Forbidden", requestId: req.id });
     }
     next();
   };
