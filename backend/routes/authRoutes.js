@@ -4,16 +4,10 @@ const bcrypt = require("bcryptjs");
 const { generateToken, requireAuth } = require("../authMiddleware");
 const {
   findUserByEmailWithOrg,
-  getUserAuthById,
-  updateUserPasswordHash,
-  updateUserProfile,
 } = require("../dbAdapter");
 const {
   loginSchema,
-  updatePasswordSchema,
-  updateProfileSchema,
 } = require("../validation");
-const crypto = require("crypto");
 
 const sendErr = (res, req, status, msg) =>
   res.status(status).json({ error: msg, requestId: req.id });
@@ -74,9 +68,8 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// GET /api/auth/me  (who am I?)
+// GET /api/auth/me
 router.get("/auth/me", requireAuth, (req, res) => {
-  // req.user is set by requireAuth
   return res.json({
     user: {
       id: req.user.id,
@@ -84,8 +77,10 @@ router.get("/auth/me", requireAuth, (req, res) => {
       role: req.user.role,
       email: req.user.email,
       organisationId: req.user.organisationId,
+      mustChangePassword: !!req.user.mustChangePassword, // ✅ add this
     },
   });
 });
+
 
 module.exports = router;

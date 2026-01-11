@@ -1,7 +1,9 @@
 // src/pages/AccountPage.jsx
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
+import { sessionStore } from "../lib/sessionStore";
+import { useEffect } from "react";
 
 const PRIMARY = "#111827";
 
@@ -24,6 +26,11 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
   // ✅ UI-only: responsive helper (no business logic changes)
   const isMobile = useIsMobile(760);
 
+  useEffect(() => {
+    setFullName(user.fullName || "");
+    setEmail(user.email || "");
+  }, [user.fullName, user.email]);
+
   const cardStyle = {
     borderRadius: "0.75rem",
     border: "1px solid #e5e7eb",
@@ -41,7 +48,6 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
     border: "1px solid #d1d5db",
     fontSize: "0.9rem",
     boxSizing: "border-box",
-    // ✅ Mobile: better tap target without changing visuals
     minHeight: isMobile ? 44 : undefined,
   };
 
@@ -63,12 +69,8 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          fullName,
-          email,
-        }),
+        body: JSON.stringify({ fullName, email }),
       });
 
       setProfileMsg("Profile updated.");
@@ -95,22 +97,44 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
       return;
     }
 
+    // ✅ keep UI aligned with backend (min 10)
+    if (!newPassword || newPassword.length < 10) {
+      setPwErr("New password must be at least 10 characters.");
+      return;
+    }
+
     setSavingPw(true);
     try {
-      await apiFetch("/api/account/change-password", {
+      const data = await apiFetch("/api/account/change-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ currentPassword, newPassword }),
       });
+
+      // ✅ Force re-login if backend says so
+      if (data?.relogin) {
+        const msg = data?.message || "Password updated. Please log in again.";
+
+        // ✅ Clear the real auth store (sessionStorage keys)
+        try { sessionStore.clearAll(); } catch {}
+
+        // Optional legacy cleanup
+        try { localStorage.removeItem("token"); localStorage.removeItem("user"); } catch {}
+
+        // One-time message for login page
+        try { sessionStorage.setItem("flash_login_msg", msg); } catch {}
+
+        window.location.assign("/");
+        return;
+      }
+
 
       setPwMsg("Password updated.");
       setCurrentPassword("");
       setNewPassword("");
       setConfirm("");
-
       onAuthUserPatch?.({ mustChangePassword: false });
     } catch (e2) {
       setPwErr(e2.message || "Failed to change password.");
@@ -299,7 +323,7 @@ export default function AccountPage({ token, user, onAuthUserPatch }) {
                 autoComplete="new-password"
               />
               <div style={{ fontSize: "0.78rem", color: "#6b7280", marginTop: "0.35rem" }}>
-                Minimum 8 characters.
+                Minimum 10 characters.
               </div>
             </div>
 

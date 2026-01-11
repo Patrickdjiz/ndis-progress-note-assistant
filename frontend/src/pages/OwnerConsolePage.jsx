@@ -38,11 +38,7 @@ function OwnerConsolePage({ token, user }) {
     try {
       setLoading(true);
       setErrorMsg("");
-      const data = await apiFetch("/api/owner/overview", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const data = await apiFetch("/api/owner/overview");
 
       setOrganisations(Array.isArray(data.organisations) ? data.organisations : []);
     } catch (err) {
@@ -64,7 +60,6 @@ function OwnerConsolePage({ token, user }) {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ status: newStatus }),
       });
@@ -85,7 +80,6 @@ function OwnerConsolePage({ token, user }) {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ isActive: !currentIsActive }),
       });
@@ -126,7 +120,6 @@ function OwnerConsolePage({ token, user }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           organisationName: organisationName.trim(),

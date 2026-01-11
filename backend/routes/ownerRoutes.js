@@ -145,31 +145,34 @@ router.post("/providers", async (req, res) => {
       );
       const organisation = orgRes.rows[0];
 
-      // 2) Create admin user
-      const adminRes = await client.query(
-        `
-        INSERT INTO users (
-          organisation_id,
-          email,
-          password_hash,
-          role,
-          full_name,
-          is_active,
-          created_at
-        )
-        VALUES ($1, $2, $3, 'ADMIN', $4, TRUE, $5)
-        RETURNING
-          id,
-          organisation_id AS "organisationId",
-          email,
-          full_name AS "fullName",
-          role,
-          is_active AS "isActive",
-          created_at AS "createdAt"
-      `,
-        [organisation.id, normalisedEmail, hash, trimmedFullName, nowIso]
-      );
-      const admin = adminRes.rows[0];
+      // 2) Create admin user  ✅ force change password on first login
+    const adminRes = await client.query(
+      `
+      INSERT INTO users (
+      organisation_id,
+      email,
+      password_hash,
+      role,
+      full_name,
+      is_active,
+      must_change_password,
+      created_at
+    )
+    VALUES ($1, $2, $3, 'ADMIN', $4, TRUE, TRUE, $5)
+      RETURNING
+        id,
+        organisation_id AS "organisationId",
+        email,
+        full_name AS "fullName",
+        role,
+        is_active AS "isActive",
+        must_change_password AS "mustChangePassword",
+        created_at AS "createdAt"
+    `,
+      [organisation.id, normalisedEmail, hash, trimmedFullName, nowIso]
+    );
+    const admin = adminRes.rows[0];
+
 
       await client.query("COMMIT");
 

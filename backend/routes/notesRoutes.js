@@ -1,6 +1,7 @@
 // routes/notesRoutes.js
 const express = require("express");
 const { chatLLM } = require("../llmClient");
+const { rateLimit, makeStore, limiterHandler } = require("../rateLimit");
 
 const applyComplianceFilter = require("../compliance");
 const { timeToMinutes, parseYyyyMmDd, looksLikeJunk } = require("../utils");
@@ -10,7 +11,6 @@ const { query } = require("../dbAdapter");
 const PDFDocument = require("pdfkit");
 const { redactPII } = require("../pii");
 const { audit } = require("../audit");
-const rateLimit = require("express-rate-limit");
 const { z } = require("zod");
 const sendErr = (res, req, status, msg) =>
   res.status(status).json({ error: msg, requestId: req.id });
@@ -63,25 +63,6 @@ async function chatLLMWithRetry(opts) {
     await sleep(300);
     return await chatLLM(opts);
   }
-}
-
-
-
-let RedisStore, Redis, redis, makeStore;
-
-if (process.env.REDIS_URL) {
-  ({ RedisStore } = require("rate-limit-redis"));
-  Redis = require("ioredis");
-
-  redis = new Redis(process.env.REDIS_URL);
-
-  makeStore = (prefix) =>
-    new RedisStore({
-      sendCommand: (...args) => redis.call(...args),
-      prefix, // namespacing so different limiters don't collide
-    });
-} else {
-  makeStore = () => undefined; // dev fallback: memory store
 }
 
 

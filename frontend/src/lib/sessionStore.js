@@ -31,6 +31,10 @@ export const sessionStore = {
     sessionStorage.removeItem(USER_KEY);
   },
 
+  clear() {
+    this.clearAll();
+    },
+
   getLastActive() {
     const v = sessionStorage.getItem(LAST_ACTIVE_KEY);
     return v ? Number(v) : 0;

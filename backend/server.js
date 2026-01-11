@@ -2,6 +2,7 @@
 const app = require("./app");
 const { closePool } = require("./pgClient");
 const { PORT } = require("./config/env");
+const { closeRateLimitRedis } = require("./rateLimit"); // ✅ add
 
 const server = app.listen(PORT, () => {
   console.log(`API listening on port ${PORT}`);
@@ -18,6 +19,14 @@ async function shutdown(signal) {
   // Stop accepting new connections
   server.close(async () => {
     try {
+      // ✅ close Redis first (rate limit store)
+      await closeRateLimitRedis();
+      console.log("Rate-limit Redis closed.");
+    } catch (e) {
+      console.error("Error closing rate-limit Redis:", e);
+    }
+
+    try {
       await closePool();
       console.log("Postgres pool closed.");
     } catch (e) {
@@ -28,7 +37,10 @@ async function shutdown(signal) {
   });
 
   // Force exit if something hangs
-  setTimeout(() => {
+  setTimeout(async () => {
+    try {
+      await closeRateLimitRedis();
+    } catch {}
     console.error("Force shutdown (timeout).");
     process.exit(1);
   }, 10_000).unref();

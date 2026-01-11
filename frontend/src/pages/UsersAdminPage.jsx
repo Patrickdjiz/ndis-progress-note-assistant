@@ -27,11 +27,7 @@ function UsersAdminPage({ token, user }) {
       setLoading(true);
       setErrorMsg("");
 
-      const data = await apiFetch("/api/users", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const data = await apiFetch("/api/users");
 
       setUsers(Array.isArray(data.users) ? data.users : []);
     } catch (err) {
@@ -64,7 +60,6 @@ function UsersAdminPage({ token, user }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           email: newEmail.trim(),
@@ -100,7 +95,6 @@ function UsersAdminPage({ token, user }) {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ isActive: !isActive }),
       });

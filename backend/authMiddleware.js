@@ -4,10 +4,6 @@ const crypto = require("crypto");
 const { JWT_SECRET } = require("./config/env");
 const { query } = require("./dbAdapter");
 
-/**
- * generateToken(user)
- * user must contain: id, organisationId, role, fullName, email
- */
 function generateToken(user) {
   return jwt.sign(
     {
@@ -21,21 +17,12 @@ function generateToken(user) {
     {
       expiresIn: "4h",
       jwtid: crypto.randomUUID(),
-      // optional hardening:
       // issuer: "ndisnotes-api",
       // audience: "ndisnotes-web",
     }
   );
 }
 
-/**
- * Fetch the current user+org state from DB for every request.
- * This ensures:
- * - deactivated users are blocked immediately
- * - suspended orgs are blocked immediately (except OWNER)
- * - token is invalidated if password was changed after token was issued
- * - req.user uses DB truth (not stale token fullName/email)
- */
 async function getSessionUserFromDb(userId) {
   const { rows } = await query(
     `
@@ -50,7 +37,7 @@ async function getSessionUserFromDb(userId) {
       u.password_changed_at AS "passwordChangedAt",
       o.status AS "orgStatus"
     FROM users u
-    JOIN organisations o ON o.id = u.organisation_id
+    LEFT JOIN organisations o ON o.id = u.organisation_id
     WHERE u.id = $1
     LIMIT 1
     `,
@@ -81,28 +68,29 @@ async function requireAuth(req, res, next) {
   try {
     const dbUser = await getSessionUserFromDb(payload.id);
 
-    // If the account was deleted
     if (!dbUser) {
       return res.status(401).json({ error: "Invalid or expired token" });
     }
 
-    // Deactivated user blocked immediately
+    // ✅ If account is inactive, treat token as revoked -> 401 so frontend logs out
     if (!dbUser.isActive) {
-      return res.status(403).json({
+      return res.status(401).json({
         error: "This user account is inactive. Please contact your provider.",
+        code: "ACCOUNT_INACTIVE",
       });
     }
 
-    // Suspended org blocks ADMIN/WORKER immediately (OWNER allowed)
+    // ✅ If org suspended, treat token as revoked -> 401 so frontend logs out
+    // (OWNER allowed regardless of org status)
     if (dbUser.role !== "OWNER" && dbUser.orgStatus !== "ACTIVE") {
-      return res.status(403).json({
+      return res.status(401).json({
         error:
           "This provider account is suspended. Please contact the platform owner or your organisation.",
+        code: "ORG_SUSPENDED",
       });
     }
 
-    // Invalidate token if password changed after token was issued
-    // jwt iat is seconds since epoch
+    // ✅ Invalidate token if password changed after token was issued
     const tokenIatMs = (payload.iat || 0) * 1000;
     const pwdChangedMs = dbUser.passwordChangedAt
       ? new Date(dbUser.passwordChangedAt).getTime()
@@ -110,10 +98,13 @@ async function requireAuth(req, res, next) {
 
     // small slack to avoid edge timing issues
     if (pwdChangedMs && tokenIatMs && tokenIatMs < pwdChangedMs - 1000) {
-      return res.status(401).json({ error: "Session expired. Please log in again." });
+      return res.status(401).json({
+        error: "Session expired. Please log in again.",
+        code: "PASSWORD_CHANGED",
+      });
     }
 
-    // DB truth wins (prevents stale fullName/email from token)
+    // DB truth wins
     req.user = {
       id: dbUser.id,
       organisationId: dbUser.organisationId,
@@ -139,8 +130,4 @@ function requireRole(...allowed) {
   };
 }
 
-module.exports = {
-  generateToken,
-  requireAuth,
-  requireRole,
-};
+module.exports = { generateToken, requireAuth, requireRole };

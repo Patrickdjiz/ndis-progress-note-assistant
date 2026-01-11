@@ -188,15 +188,19 @@ router.post("/reset-password", async (req, res) => {
 
     const { rows } = await query(
       `
-      SELECT id
-      FROM users
-      WHERE reset_token_hash = $1
-        AND reset_token_expires_at IS NOT NULL
-        AND reset_token_expires_at > NOW()
+      SELECT u.id
+      FROM users u
+      JOIN organisations o ON o.id = u.organisation_id
+      WHERE u.reset_token_hash = $1
+        AND u.reset_token_expires_at IS NOT NULL
+        AND u.reset_token_expires_at > NOW()
+        AND u.is_active = TRUE
+        AND o.status = 'ACTIVE'
       LIMIT 1
       `,
       [tokenHash]
     );
+
 
     if (!rows[0]) {
       return sendErr(res, req, 400, "Reset token is invalid or expired");
@@ -205,18 +209,29 @@ router.post("/reset-password", async (req, res) => {
     const newHash = await bcrypt.hash(String(newPassword), 10);
     const nowIso = new Date().toISOString();
 
-    await query(
+    const result = await query(
       `
-      UPDATE users
+      UPDATE users u
       SET password_hash = $1,
           must_change_password = FALSE,
           password_changed_at = $2,
           reset_token_hash = NULL,
           reset_token_expires_at = NULL
-      WHERE id = $3
+      FROM organisations o
+      WHERE u.id = $3
+        AND o.id = u.organisation_id
+        AND u.is_active = TRUE
+        AND o.status = 'ACTIVE'
       `,
       [newHash, nowIso, rows[0].id]
     );
+
+    // pg: result.rowCount, sqlite: result.changes (depending on your adapter)
+    const changed = result?.rowCount ?? result?.changes ?? 0;
+    if (!changed) {
+      return sendErr(res, req, 400, "Reset token is invalid or expired");
+    }
+
 
     return res.json({ ok: true });
   } catch (err) {

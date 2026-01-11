@@ -174,7 +174,6 @@ function GenerateNotePage({ token, user }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           participantName,
@@ -233,7 +232,6 @@ function GenerateNotePage({ token, user }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           finalNoteText,
@@ -391,7 +389,7 @@ function GenerateNotePage({ token, user }) {
               <input
                 type="text"
                 required
-                value={user?.fullName || ""}
+                value={workerName}
                 readOnly
                 style={inputBaseStyle}
                 placeholder="e.g. Fatima Khan"

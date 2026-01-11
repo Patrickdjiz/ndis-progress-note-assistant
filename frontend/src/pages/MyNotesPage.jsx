@@ -33,31 +33,30 @@ function MyNotesPage({ token, user }) {
   };
 
   // ---------- Load list of notes (cursor pagination) ----------
-  const fetchNotes = async ({ append = false, cursor = null } = {}) => {
+const fetchNotes = async ({ append = false, cursor = undefined } = {}) => {
   try {
     append ? setLoadingMore(true) : setLoadingList(true);
     setErrorMsg("");
 
-    // ✅ Don't clear selection on refresh.
-    // Only clear it if the selected note disappears from the refreshed list.
     if (!append) {
       setDetailError("");
       setFinalSaveMsg("");
       setNextCursor(null);
-      // (keep selectedNote + finalNoteEditText intact)
+      // keep selectedNote + finalNoteEditText intact
     }
+
+    const payload = {
+      archived: false,
+      limit: 50,
+      ...(typeof cursor === "string" && cursor.length > 0 ? { cursor } : {}),
+    };
 
     const data = await apiFetch("/api/notes/search", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        archived: false, // hide archived
-        limit: 50,
-        cursor,
-      }),
+      body: JSON.stringify(payload),
     });
 
     const incoming = Array.isArray(data.notes) ? data.notes : [];
@@ -65,8 +64,6 @@ function MyNotesPage({ token, user }) {
     setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
     setNextCursor(data.nextCursor || null);
 
-    // ✅ If NOT appending and the selected note is no longer visible (rare here, but safe),
-    // clear selection (e.g. if backend rules change or note is removed).
     if (!append && selectedNote) {
       const stillVisible = incoming.some((n) => n.id === selectedNote.id);
       if (!stillVisible) {
@@ -85,6 +82,7 @@ function MyNotesPage({ token, user }) {
 
 
 
+
   useEffect(() => {
     fetchNotes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -96,9 +94,7 @@ function MyNotesPage({ token, user }) {
       setDetailError("");
       setFinalSaveMsg("");
 
-      const data = await apiFetch(`/api/notes/${noteSummary.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const data = await apiFetch(`/api/notes/${noteSummary.id}`);
 
       const fullNote = data.note;
       setSelectedNote(fullNote);
@@ -127,7 +123,6 @@ function MyNotesPage({ token, user }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ finalNoteText: finalNoteEditText }),
       });
@@ -179,9 +174,7 @@ function MyNotesPage({ token, user }) {
 
       setDownloadingPdf(true);
 
-      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`);
 
       const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}.pdf`;
       downloadBlob(blob, filename);

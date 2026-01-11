@@ -48,7 +48,7 @@ function NotesDashboardPage({ token, user }) {
   };
 
   // ---------- Load notes list ----------
-  const fetchNotes = async ({ append = false, cursor = null } = {}) => {
+const fetchNotes = async ({ append = false, cursor = undefined } = {}) => {
   try {
     append ? setLoadingMore(true) : setNotesLoading(true);
     setNotesError("");
@@ -62,29 +62,27 @@ function NotesDashboardPage({ token, user }) {
     const archivedValue =
       filterArchived === "all" ? "all" : filterArchived === "true";
 
+    const payload = {
+      participant: debouncedParticipant || undefined,
+      hasIncident: hasIncidentValue,
+      archived: archivedValue,
+      limit,
+      ...(typeof cursor === "string" && cursor.length > 0 ? { cursor } : {}),
+    };
+
     const data = await apiFetch("/api/notes/search", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        participant: debouncedParticipant || undefined,
-        hasIncident: hasIncidentValue,
-        archived: archivedValue,
-        limit,
-        cursor,
-      }),
+      body: JSON.stringify(payload),
     });
 
     const incoming = Array.isArray(data.notes) ? data.notes : [];
 
-    // Build new list
     setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
     setNextCursor(data.nextCursor || null);
 
-    // ✅ If we're NOT appending and the currently selected note is no longer in the list,
-    // clear the selection (important when "Hide archived" is on and you just archived it).
     if (!append && selectedNote) {
       const stillVisible = incoming.some((n) => n.id === selectedNote.id);
       if (!stillVisible) {
@@ -99,14 +97,6 @@ function NotesDashboardPage({ token, user }) {
     append ? setLoadingMore(false) : setNotesLoading(false);
   }
 };
-
-
-
-  // Initial load
-  useEffect(() => {
-    fetchNotes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Auto refresh when filters change (participant is debounced)
   useEffect(() => {
@@ -125,9 +115,7 @@ function NotesDashboardPage({ token, user }) {
       setErrorMsg("");
       setFinalSaveMsg("");
 
-      const data = await apiFetch(`/api/notes/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const data = await apiFetch(`/api/notes/${id}`);
 
       setSelectedNote(data.note);
       setFinalNoteEditText(
@@ -154,7 +142,6 @@ function NotesDashboardPage({ token, user }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           finalNoteText: finalNoteEditText,
@@ -189,7 +176,6 @@ function NotesDashboardPage({ token, user }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         // ✅ Backend uses req.user.fullName — don’t send reviewerName
         body: JSON.stringify({
@@ -239,9 +225,7 @@ function NotesDashboardPage({ token, user }) {
       if (!selectedNote) return setErrorMsg("No note selected.");
 
       setDownloadingPdf(true);
-      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`);
 
       const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}.pdf`;
 
@@ -266,7 +250,6 @@ function NotesDashboardPage({ token, user }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         // ✅ Backend uses req.user.fullName — don’t send archivedBy
         body: JSON.stringify({

@@ -146,12 +146,22 @@ async function getUserAuthById(userId) {
   return rows[0] || null;
 }
 
-async function updateUserPasswordHash(userId, passwordHash) {
-  await query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [
-    passwordHash,
-    userId,
-  ]);
+async function setUserPassword(userId, passwordHash, { mustChangePassword = false } = {}) {
+  const nowIso = new Date().toISOString();
+  await query(
+    `
+    UPDATE users
+    SET password_hash = $1,
+        must_change_password = $2,
+        password_changed_at = $3,
+        reset_token_hash = NULL,
+        reset_token_expires_at = NULL
+    WHERE id = $4
+    `,
+    [passwordHash, !!mustChangePassword, nowIso, userId]
+  );
 }
+
 
 async function updateUserProfile(userId, { email, fullName }) {
   // Optional uniqueness check if email is changing
@@ -162,7 +172,7 @@ async function updateUserProfile(userId, { email, fullName }) {
     );
     if (rows[0]) {
       const err = new Error("A user with this email already exists");
-      err.status = 400;
+      err.status = 409;
       throw err;
     }
   }
@@ -205,6 +215,6 @@ module.exports = {
   findUserByIdInOrg,
   updateUserActiveFlag,
   getUserAuthById,
-  updateUserPasswordHash,
+  setUserPassword,
   updateUserProfile,
 };

@@ -15,6 +15,12 @@ const passwordSchema = z
   .min(10, "Password must be at least 10 characters")
   .max(200);
 
+  const loosePasswordSchema = z
+  .string()
+  .min(1, "Password is required")
+  .max(200, "Password is too long");
+
+
 const nonEmptyString = (fieldName, max = 1000) =>
   z
     .string()
@@ -35,8 +41,9 @@ const timeHhMm = z
 // /login
 const loginSchema = z.object({
   email: emailSchema,
-  password: passwordSchema,
+  password: loosePasswordSchema,
 });
+
 
 // /generate-note
 const generateNoteSchema = z.object({
@@ -96,9 +103,13 @@ const updateProfileSchema = z.object({
 });
 
 const updatePasswordSchema = z.object({
-  currentPassword: passwordSchema,
-  newPassword: passwordSchema,
+  currentPassword: z
+    .string()
+    .min(1, "Current password is required")
+    .max(200, "Current password is too long"),
+  newPassword: passwordSchema, // keep strong rules here
 });
+
 
 const forgotPasswordSchema = z.object({
   email: emailSchema,

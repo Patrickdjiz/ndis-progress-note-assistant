@@ -1,13 +1,26 @@
 // LoginPage.jsx
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
+
 
 function LoginPage({ onLoginSuccess }) {
   const [email, setEmail] = useState(import.meta.env.DEV ? "admin@demo.local" : "");
   const [password, setPassword] = useState(import.meta.env.DEV ? "demo1234" : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [flash, setFlash] = useState("");
+
+  useEffect(() => {
+    try {
+      const msg = sessionStorage.getItem("flash_login_msg");
+      if (msg) {
+        setFlash(msg);
+        sessionStorage.removeItem("flash_login_msg");
+      }
+    } catch {}
+  }, []);
+
 
   // ✅ Purely UI: detect small screens so we can adjust padding/width without changing desktop look
   const isMobile = useMemo(() => {
@@ -67,7 +80,22 @@ function LoginPage({ onLoginSuccess }) {
       >
         Sign in to access your organisation&apos;s shift notes assistant.
       </p>
-
+        {flash && (
+          <div
+            style={{
+              color: "#047857",
+              background: "#ecfdf5",
+              border: "1px solid #a7f3d0",
+              borderRadius: "0.5rem",
+              padding: "0.35rem 0.6rem",
+              marginBottom: "0.75rem",
+              fontSize: "0.85rem",
+              wordBreak: "break-word",
+            }}
+          >
+            {flash}
+          </div>
+        )}
       {error && (
         <div
           style={{

@@ -5,6 +5,8 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
 const crypto = require("crypto");
+const { rateLimit, makeStore, limiterHandler } = require("./rateLimit");
+
 
 const { FRONTEND_ORIGIN, NODE_ENV } = require("./config/env");
 const { testConnection } = require("./pgClient");
@@ -31,26 +33,6 @@ app.use((req, res, next) => {
   res.setHeader("X-Request-Id", req.id);
   next();
 });
-
-
-
-
-// ---- Rate limit store (Redis in prod, memory in dev) ----
-let RedisStore, Redis, redis, makeStore;
-
-if (process.env.REDIS_URL) {
-  ({ RedisStore } = require("rate-limit-redis"));
-  Redis = require("ioredis");
-  redis = new Redis(process.env.REDIS_URL);
-
-  makeStore = (prefix) =>
-    new RedisStore({
-      sendCommand: (...args) => redis.call(...args),
-      prefix,
-    });
-} else {
-  makeStore = () => undefined; // dev fallback
-}
 
 
 app.set("trust proxy", 1);
@@ -117,6 +99,7 @@ const authLimiter = rateLimit({
   store: makeStore("rl:auth:ip:"),
   keyGenerator: (req) => req.ip,
   skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler, // ✅ add this
   message: { error: "Too many login attempts. Please try again later." },
 });
 
@@ -128,6 +111,7 @@ const aiLimiter = rateLimit({
   store: makeStore("rl:ai:ip:"),
   keyGenerator: (req) => req.ip,
   skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler, // ✅ add this
   message: { error: "Too many note generations. Please slow down." },
 });
 
@@ -139,6 +123,7 @@ const passwordLimiter = rateLimit({
   store: makeStore("rl:pwreset:ip:"),
   keyGenerator: (req) => req.ip,
   skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler, // ✅ add this
   message: { error: "Too many password reset requests. Please try again later." },
 });
 
@@ -150,6 +135,7 @@ const accountPwLimiter = rateLimit({
   store: makeStore("rl:accountpw:ip:"),
   keyGenerator: (req) => req.ip,
   skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler, // ✅ add this
   message: { error: "Too many password change attempts. Please try again later." },
 });
 
