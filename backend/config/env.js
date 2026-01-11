@@ -7,7 +7,7 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 
 // Database
-const DB_DRIVER = (process.env.DB_DRIVER || "sqlite").toLowerCase();
+const DB_DRIVER = process.env.DB_DRIVER || "postgres";
 
 // For sqlite, DATABASE_URL should be a file path (or :memory:)
 const DATABASE_URL =
