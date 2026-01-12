@@ -4,7 +4,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const crypto = require("crypto");
-const { rateLimit, makeStore, limiterHandler } = require("./rateLimit");
+const { rateLimit, makeStore, limiterHandler, ipKeyGenerator } = require("./rateLimit");
 
 
 const { FRONTEND_ORIGIN, NODE_ENV } = require("./config/env");
@@ -96,7 +96,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:auth:ip:"),
-  keyGenerator: (req) => req.ip,
+  keyGenerator: (req, res) => ipKeyGenerator(req, res),
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler, // ✅ add this
   message: { error: "Too many login attempts. Please try again later." },
@@ -108,7 +108,7 @@ const aiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:ai:ip:"),
-  keyGenerator: (req) => req.ip,
+  keyGenerator: (req, res) => ipKeyGenerator(req, res),
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler, // ✅ add this
   message: { error: "Too many note generations. Please slow down." },
@@ -120,7 +120,7 @@ const passwordLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:pwreset:ip:"),
-  keyGenerator: (req) => req.ip,
+  keyGenerator: (req, res) => ipKeyGenerator(req, res),
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler, // ✅ add this
   message: { error: "Too many password reset requests. Please try again later." },
@@ -132,7 +132,7 @@ const accountPwLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:accountpw:ip:"),
-  keyGenerator: (req) => req.ip,
+  keyGenerator: (req, res) => ipKeyGenerator(req, res),
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler, // ✅ add this
   message: { error: "Too many password change attempts. Please try again later." },

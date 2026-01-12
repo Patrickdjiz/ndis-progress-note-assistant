@@ -1,16 +1,6 @@
 // backend/rateLimit.js
 const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 
-// ...your makeStore / limiterHandler exports...
-
-module.exports = {
-  rateLimit,
-  ipKeyGenerator,
-  makeStore,
-  limiterHandler,
-};
-
-
 // Shared handler: always include requestId (matches your notesRoutes pattern)
 function limiterHandler(req, res, _next, options) {
   const payload =
@@ -21,9 +11,9 @@ function limiterHandler(req, res, _next, options) {
   return res.status(options.statusCode).json({ ...payload, requestId: req.id });
 }
 
-// Shared Redis store factory (single Redis connection for whole app)
-let makeStore = () => undefined;
+// Redis store factory (optional)
 let redis = null;
+let makeStoreImpl = () => undefined;
 
 if (process.env.REDIS_URL) {
   const { RedisStore } = require("rate-limit-redis");
@@ -31,14 +21,18 @@ if (process.env.REDIS_URL) {
 
   redis = new Redis(process.env.REDIS_URL);
 
-  makeStore = (prefix) =>
+  makeStoreImpl = (prefix) =>
     new RedisStore({
       sendCommand: (...args) => redis.call(...args),
       prefix,
     });
 }
 
-// Graceful shutdown helper (call this from your server entrypoint)
+function makeStore(prefix) {
+  return makeStoreImpl(prefix);
+}
+
+// Graceful shutdown helper (call this from your server entrypoint if you want)
 async function closeRateLimitRedis() {
   if (!redis) return;
   try {
@@ -52,8 +46,8 @@ async function closeRateLimitRedis() {
 
 module.exports = {
   rateLimit,
+  ipKeyGenerator,
   makeStore,
   limiterHandler,
   closeRateLimitRedis,
-  ipKeyGenerator,
 };

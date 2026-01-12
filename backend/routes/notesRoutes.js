@@ -59,13 +59,17 @@ async function chatLLMWithRetry(opts) {
 
 // ---- Rate limiting for notes list/search ----
 // Higher threshold than login because the UI legitimately loads lists/pagination.
+
+const ipKey = (req, res) => ipKeyGenerator(req, res);
+const userOrIpKey = (req, res) => (req.user?.id ? `u:${req.user.id}` : ipKey(req, res));
+
 const notesIpLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:notes:ip:"),   // ✅ add this
-  keyGenerator: (req) => req.ip,      // explicit is good
+  keyGenerator: ipKey,
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many requests to notes. Please slow down." },
@@ -78,7 +82,7 @@ const notesUserLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:notes:user:"), // ✅ add this
-  keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  keyGenerator: userOrIpKey,
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many requests to notes. Please slow down." },
@@ -91,7 +95,7 @@ const notesReadIpLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:notes:read:ip:"),
-  keyGenerator: (req) => req.ip,
+  keyGenerator: ipKey,
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many note reads. Please slow down." },
@@ -104,7 +108,7 @@ const notesReadUserLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:notes:read:user:"),
-  keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  keyGenerator: userOrIpKey,
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many note reads. Please slow down." },
@@ -117,7 +121,7 @@ const notesPdfIpLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:notes:pdf:ip:"),
-  keyGenerator: (req) => req.ip,
+  keyGenerator: ipKey,
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many PDF downloads. Please slow down." },
@@ -130,7 +134,7 @@ const notesPdfUserLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:notes:pdf:user:"),
-  keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  keyGenerator: userOrIpKey,
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many PDF downloads. Please slow down." },
@@ -143,7 +147,7 @@ const notesWriteIpLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:notes:write:ip:"),
-  keyGenerator: (req) => req.ip,
+  keyGenerator: ipKey,
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many note updates. Please slow down." },
@@ -156,7 +160,7 @@ const notesWriteUserLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore("rl:notes:write:user:"),
-  keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  keyGenerator: userOrIpKey,
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many note updates. Please slow down." },
