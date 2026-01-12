@@ -70,9 +70,7 @@ router.post("/", async (req, res) => {
     // Check uniqueness across DB
     const existing = await findUserByEmail(normalisedEmail);
     if (existing) {
-      return res
-        .status(400)
-        .json({ error: "A user with this email already exists" });
+      return sendErr(res, req, 400, "A user with this email already exists");
     }
 
     const hash = await bcrypt.hash(password, 10);
@@ -113,9 +111,7 @@ router.patch("/:id/status", async (req, res) => {
 
     // Can't change your own status
     if (id === req.user.id) {
-      return res
-        .status(400)
-        .json({ error: "You cannot change your own status" });
+      return sendErr(res, req, 400, "You cannot change your own status");
     }
 
     // Ensure user is in same org AND is a WORKER

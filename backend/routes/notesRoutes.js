@@ -131,6 +131,30 @@ const notesPdfUserLimiter = rateLimit({
   message: { error: "Too many PDF downloads. Please slow down." },
 });
 
+const notesWriteIpLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:notes:write:ip:"),
+  keyGenerator: (req) => req.ip,
+  skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
+  message: { error: "Too many note updates. Please slow down." },
+});
+
+const notesWriteUserLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:notes:write:user:"),
+  keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : req.ip),
+  skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
+  message: { error: "Too many note updates. Please slow down." },
+});
+
 
 // ---- Body validation schemas ----
 const reviewBodySchema = z.object({
@@ -429,7 +453,8 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
     return res.json({ notes, nextCursor });
   } catch (err) {
     console.error(`[${req.id}] Error listing notes:`, err);
-    return res.status(500).json({ error: "Failed to list notes", requestId: req.id });
+    return sendErr(res, req, 500, "Failed to list notes");
+     
   }
 });
 
@@ -525,7 +550,7 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
     return res.json({ notes, nextCursor });
   } catch (err) {
     console.error(`[${req.id}] Error searching notes:`, err);
-    return res.status(500).json({ error: "Failed to search notes", requestId: req.id });
+    return sendErr(res, req, 500, "Failed to search notes");
   }
 });
 
@@ -565,7 +590,7 @@ router.get("/notes/:id", notesReadIpLimiter, notesReadUserLimiter, async (req, r
 
 
 // POST /api/notes/:id/review
-router.post("/notes/:id/review", async (req, res) => {
+router.post("/notes/:id/review",  notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -591,35 +616,27 @@ router.post("/notes/:id/review", async (req, res) => {
 
     const nowIso = new Date().toISOString();
 
-    const { rows } = await query(
-      `
-        SELECT id
-        FROM progress_notes
-        WHERE id = $1
-          AND organisation_id = $2
-      `,
-      [id, req.user.organisationId]
-    );
+        let updSql = `
+      UPDATE progress_notes
+      SET reviewed_flag = $1,
+          reviewed_at   = $2,
+          reviewed_by   = $3
+      WHERE id = $4
+        AND organisation_id = $5
+    `;
 
-    if (!rows[0]) {
-      return sendErr(res, req, 404, "Note not found");
-    }
+    const updParams = [
+      reviewedFlag,
+      reviewedFlag ? nowIso : null,
+      reviewedFlag ? reviewerName : null,
+      id,
+      req.user.organisationId,
+    ];
 
-    await query(
-      `
-        UPDATE progress_notes
-        SET reviewed_flag = $1,
-            reviewed_at   = $2,
-            reviewed_by   = $3
-        WHERE id = $4
-      `,
-      [
-        reviewedFlag,
-        reviewedFlag ? nowIso : null,
-        reviewedFlag ? reviewerName : null,
-        id,
-      ]
-    );
+    const upd = await query(updSql, updParams);
+    const changed = upd?.rowCount ?? upd?.changes ?? 0;
+    if (!changed) return sendErr(res, req, 404, "Note not found");
+
 
     await audit(req, reviewedFlag ? "NOTE_REVIEWED" : "NOTE_UNREVIEWED", {
       targetType: "progress_note",
@@ -635,13 +652,13 @@ router.post("/notes/:id/review", async (req, res) => {
     });
   } catch (err) {
     console.error(`[${req.id}] Error updating review status:`, err);
-    return res.status(500).json({ error: "Failed to update review status", requestId: req.id });
+    return sendErr(res, req, 500, "Failed to update review status");
   }
 });
 
 
 // POST /api/notes/:id/finalise
-router.post("/notes/:id/finalise", async (req, res) => {
+router.post("/notes/:id/finalise", notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -667,35 +684,24 @@ router.post("/notes/:id/finalise", async (req, res) => {
     const nowIso = new Date().toISOString();
 
     // Check note exists & belongs to org (and worker, if worker)
-    let sql = `
-      SELECT id
-      FROM progress_notes
-      WHERE id = $1
-        AND organisation_id = $2
+    let updSql = `
+      UPDATE progress_notes
+      SET final_note_text = $1,
+          finalised_at   = $2,
+          finalised_by   = $3
+      WHERE id = $4
+        AND organisation_id = $5
     `;
-    const params = [id, req.user.organisationId];
-    let idx = 3;
+    const updParams = [storedFinalBody, nowIso, finalisedByName, id, req.user.organisationId];
 
     if (req.user.role === "WORKER") {
-      sql += ` AND worker_user_id = $${idx++}`;
-      params.push(req.user.id);
+      updSql += ` AND worker_user_id = $6`;
+      updParams.push(req.user.id);
     }
 
-    const { rows } = await query(sql, params);
-    if (!rows[0]) {
-      return sendErr(res, req, 404, "Note not found");
-    }
-
-    await query(
-      `
-        UPDATE progress_notes
-        SET final_note_text = $1,
-            finalised_at   = $2,
-            finalised_by   = $3
-        WHERE id = $4
-      `,
-      [storedFinalBody, nowIso, finalisedByName, id]
-    );
+    const upd = await query(updSql, updParams);
+    const changed = upd?.rowCount ?? upd?.changes ?? 0;
+    if (!changed) return sendErr(res, req, 404, "Note not found");
 
 
     await audit(req, "NOTE_FINALISED", {
@@ -712,7 +718,7 @@ router.post("/notes/:id/finalise", async (req, res) => {
     });
   } catch (err) {
     console.error(`[${req.id}] Error finalising note:`, err);
-    return res.status(500).json({ error: "Failed to finalise note", requestId: req.id });
+    return sendErr(res, req, 500, "Failed to finalise note");
   }
 });
 
@@ -910,20 +916,32 @@ router.post("/generate-note", async (req, res) => {
       max_tokens: 700,
     });
 
-
     let modelText = tidyModelText(modelOut);
 
     // ✅ If the model accidentally included headers, strip them
     modelText = stripNoteHeader(modelText);
-
     // Sometimes models repeat headers twice — strip again just in case
     modelText = stripNoteHeader(modelText);
+
+    // ✅ If the model refused due to insufficient info, return that as-is
+    if (modelText.startsWith("ERROR:")) {
+      return sendErr(res, req, 400, modelText);
+    }
+
+    // ✅ Hard enforce opening phrase (only for real notes, not ERROR)
+    if (!/^The support worker\b/i.test(modelText)) {
+      modelText = `The support worker ${modelText.replace(/^\s*/, "")}`;
+    }
+
+    // ✅ If the model accidentally started with "The support worker," fix comma case again
+    modelText = tidyModelText(modelText);
 
     // Optional: hard cap the body length (defense-in-depth)
     const MAX_BODY_CHARS = 9000;
     if (modelText.length > MAX_BODY_CHARS) {
       modelText = modelText.slice(0, MAX_BODY_CHARS).trim();
     }
+
 
 
     if (modelText.startsWith("ERROR:")) {
@@ -1006,12 +1024,7 @@ router.post("/generate-note", async (req, res) => {
     return res.json({ note: fullNote, id: newId });
   } catch (error) {
     console.error(`[${req.id}] Error generating note:`, error);
-
-    return res.status(500).json({
-      error:
-        "Failed to generate note. If this keeps happening, please contact the system administrator.",
-      requestId: req.id,
-    });
+    return sendErr(res, req, 500, "Failed to generate note");
   }
 });
 
@@ -1180,9 +1193,9 @@ if (row.reviewed_flag) {
 
     doc.end();
   } catch (err) {
-    console.error(`[${req.id}] Error generating PDF:`, err);
+    console.error(`[${req.id}] Error generating PDF:`);
     if (!res.headersSent) {
-      return res.status(500).json({ error: "Failed to generate PDF", requestId: req.id });
+      return sendErr(res, req, 500, "Failed to generate PDF");
     }
     try { res.destroy(err); } catch {}
   }
@@ -1190,7 +1203,7 @@ if (row.reviewed_flag) {
 
 // POST /api/notes/:id/archive
 // Body: { archivedFlag: boolean, archivedBy?: string }
-router.post("/notes/:id/archive", async (req, res) => {
+router.post("/notes/:id/archive",  notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -1264,8 +1277,8 @@ router.post("/notes/:id/archive", async (req, res) => {
       archivedBy: rows[0].archived_by,
     });
   } catch (err) {
-    console.error(`[${req.id}] Error archiving note:`, err);
-    return res.status(500).json({ error: "Failed to update archive state", requestId: req.id });
+    console.error(`[${req.id}] Error archiving note:`);
+    return sendErr(res, req, 500, "Failed to update archive state");
   }
 });
 

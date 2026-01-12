@@ -117,9 +117,7 @@ router.post("/providers", async (req, res) => {
       );
       if (existingUser.rows.length > 0) {
         await client.query("ROLLBACK");
-        return res
-          .status(400)
-          .json({ error: "A user with this email already exists" });
+        return sendErr(res, req, 400, "A user with this email already exists");
       }
 
       // Existing org with same name?
@@ -129,9 +127,7 @@ router.post("/providers", async (req, res) => {
       );
       if (existingOrg.rows.length > 0) {
         await client.query("ROLLBACK");
-        return res
-          .status(400)
-          .json({ error: "An organisation with this name already exists" });
+        return sendErr(res, req, 400, "An organisation with this name already exists");
       }
 
       // 1) Create org
