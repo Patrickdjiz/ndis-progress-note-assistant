@@ -73,7 +73,6 @@ const notesIpLimiter = rateLimit({
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many requests to notes. Please slow down." },
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
 });
 
 const notesUserLimiter = rateLimit({
@@ -86,7 +85,6 @@ const notesUserLimiter = rateLimit({
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many requests to notes. Please slow down." },
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
 });
 
 const notesReadIpLimiter = rateLimit({
@@ -99,7 +97,6 @@ const notesReadIpLimiter = rateLimit({
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many note reads. Please slow down." },
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
 });
 
 const notesReadUserLimiter = rateLimit({
@@ -112,7 +109,6 @@ const notesReadUserLimiter = rateLimit({
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many note reads. Please slow down." },
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
 });
 
 const notesPdfIpLimiter = rateLimit({
@@ -125,7 +121,6 @@ const notesPdfIpLimiter = rateLimit({
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many PDF downloads. Please slow down." },
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
 });
 
 const notesPdfUserLimiter = rateLimit({
@@ -138,7 +133,6 @@ const notesPdfUserLimiter = rateLimit({
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many PDF downloads. Please slow down." },
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
 });
 
 const notesWriteIpLimiter = rateLimit({
@@ -151,7 +145,6 @@ const notesWriteIpLimiter = rateLimit({
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many note updates. Please slow down." },
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
 });
 
 const notesWriteUserLimiter = rateLimit({
@@ -164,7 +157,6 @@ const notesWriteUserLimiter = rateLimit({
   skip: (req) => req.method === "OPTIONS",
   handler: limiterHandler,
   message: { error: "Too many note updates. Please slow down." },
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
 });
 
 
