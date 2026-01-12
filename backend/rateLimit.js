@@ -1,5 +1,15 @@
 // backend/rateLimit.js
-const rateLimit = require("express-rate-limit");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
+
+// ...your makeStore / limiterHandler exports...
+
+module.exports = {
+  rateLimit,
+  ipKeyGenerator,
+  makeStore,
+  limiterHandler,
+};
+
 
 // Shared handler: always include requestId (matches your notesRoutes pattern)
 function limiterHandler(req, res, _next, options) {
@@ -45,4 +55,5 @@ module.exports = {
   makeStore,
   limiterHandler,
   closeRateLimitRedis,
+  ipKeyGenerator,
 };

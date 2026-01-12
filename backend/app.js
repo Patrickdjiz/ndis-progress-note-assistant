@@ -82,7 +82,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Explicit preflight handling (important for some proxies/platforms)
-app.options("*", cors(corsOptions));
+app.options("/*", cors(corsOptions));
 
 
 // JSON body parsing
