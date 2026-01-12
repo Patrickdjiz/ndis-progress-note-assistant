@@ -737,10 +737,9 @@ router.post("/generate-note", async (req, res) => {
       return sendErr(res, req, 403, "Owners cannot generate notes");
     }
 
-    if (req.user.role !== "WORKER") {
-      return sendErr(res, req, 403, "Only workers can generate notes");
+    if (!["WORKER", "ADMIN"].includes(req.user.role)) {
+      return sendErr(res, req, 403, "Only workers or admins can generate notes");
     }
-
 
     // ✅ Validate body with Zod
     const parsed = generateNoteSchema.safeParse(req.body);
