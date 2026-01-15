@@ -1,6 +1,5 @@
 // backend/audit.js
 const { query } = require("./dbAdapter");
-const { getClientIp } = require("./clientIp");
 
 async function audit(req, action, { targetType = null, targetId = null, meta = null } = {}) {
   try {
@@ -8,11 +7,8 @@ async function audit(req, action, { targetType = null, targetId = null, meta = n
     const actorUserId = req.user?.id ?? null;
     const actorRole = req.user?.role ?? null;
 
-    const ip = getClientIp(req);
+    const ip = req.ip || null;
     const userAgent = req.get("user-agent") || null;
-
-    const requestId = req.id || null;
-    const path = (req.originalUrl || req.path || "").split("?")[0] || null;
 
     await query(
       `
@@ -25,15 +21,14 @@ async function audit(req, action, { targetType = null, targetId = null, meta = n
         target_id,
         meta,
         ip,
-        user_agent,
-        request_id,
-        path
+        user_agent
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       `,
-      [orgId, actorUserId, actorRole, action, targetType, targetId, meta, ip, userAgent, requestId, path]
+      [orgId, actorUserId, actorRole, action, targetType, targetId, meta, ip, userAgent]
     );
   } catch (err) {
+    // Never block primary request if audit insert fails
     if (process.env.NODE_ENV !== "test") {
       console.error("Audit log failed:", err.message);
     }

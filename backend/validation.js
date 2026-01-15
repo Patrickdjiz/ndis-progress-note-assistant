@@ -58,6 +58,7 @@ const generateNoteSchema = z.object({
   incidentsOrRisks: nonEmptyString("incidentsOrRisks", 4000),
   followUpActions: nonEmptyString("followUpActions", 4000),
   incidentOccurred: z.boolean(),
+  consentAcknowledged: z.literal(true),
 });
 
 // POST /api/users
@@ -136,23 +137,27 @@ const notesSearchSchema = z.object({
   participant: z.string().trim().max(200).optional(),
   hasIncident: boolish.optional(),
   archived: z.union([z.boolean(), z.literal("all")]).optional(),
+  includeDeleted: boolish.optional(), // ✅ ADD
   limit: z.preprocess(
     (v) => (v === undefined ? undefined : Number(v)),
     z.number().int().min(1).max(200)
   ).optional(),
-  cursor: smallString(300).optional(),     // ✅ add max
+  cursor: smallString(300).optional(),
 });
+
 
 // NEW: GET query schema for /api/notes (no participant)
 const notesListQuerySchema = z.object({
   hasIncident: z.enum(["true", "false"]).optional(),
   archived: z.enum(["true", "false", "all"]).optional(),
+  includeDeleted: z.enum(["true", "false"]).optional(), // ✅ ADD
   limit: z.preprocess(
     (v) => (v === undefined ? undefined : Number(v)),
     z.number().int().min(1).max(200)
   ).optional(),
-  cursor: smallString(300).optional(),     // ✅ add max
+  cursor: smallString(300).optional(),
 });
+
 
 
 module.exports = {

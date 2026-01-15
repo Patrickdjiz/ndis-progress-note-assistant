@@ -15,11 +15,27 @@ const { z } = require("zod");
 const sendErr = (res, req, status, msg) =>
   res.status(status).json({ error: msg, requestId: req.id });
 
-
-
 const router = express.Router();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+
+function escapeRegExp(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function replaceAllCaseInsensitive(haystack, needle, replacement) {
+  if (!needle) return haystack;
+  const re = new RegExp(escapeRegExp(needle), "gi");
+  return String(haystack || "").replace(re, replacement);
+}
+
+function deidentifyForLLM({ participantName, workerName, text }) {
+  let out = String(text || "");
+  if (participantName) out = replaceAllCaseInsensitive(out, participantName, "[PARTICIPANT]");
+  if (workerName) out = replaceAllCaseInsensitive(out, workerName, "[WORKER]");
+  return redactPII(out); // your existing generic PII redaction
+}
 
 
 function isTransientLLMError(err) {
@@ -173,6 +189,14 @@ const finaliseBodySchema = z.object({
 
 const archiveBodySchema = z.object({
   archivedFlag: z.boolean(),
+});
+
+const deleteBodySchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+});
+
+const legalHoldBodySchema = z.object({
+  legalHold: z.boolean(),
 });
 
 
@@ -345,6 +369,15 @@ function normaliseNoteRow(row) {
     archivedFlag: row.archived_flag,
     archivedAt: row.archived_at,
     archivedBy: row.archived_by,
+
+    deletedAt: row.deleted_at,
+    deletedBy: row.deleted_by,
+    deletedReason: row.deleted_reason,
+
+    legalHold: row.legal_hold,
+    legalHoldSetAt: row.legal_hold_set_at,
+    legalHoldSetBy: row.legal_hold_set_by,
+
   };
 }
 
@@ -377,6 +410,7 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
       archived: req.query.archived,
       limit: req.query.limit,
       cursor: req.query.cursor,
+      includeDeleted: req.query.includeDeleted,
     });
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
@@ -388,6 +422,9 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
     const limit = parsed.data.limit ?? 50;
     const cursor = parsed.data.cursor;
     const take = limit + 1;
+    const includeDeleted =
+    parsed.data.includeDeleted === "true" && req.user.role === "ADMIN";
+
 
     let sql = `
       SELECT *
@@ -414,6 +451,10 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
     } else if (archived === "false") {
       sql += " AND archived_flag = FALSE";
     }
+
+    if (!includeDeleted) {
+      sql += " AND deleted_at IS NULL";
+    } 
 
     // cursor filter
     if (cursor) {
@@ -485,6 +526,7 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
           : archivedRaw
             ? "true"
             : "false";
+    const includeDeleted = parsed.data.includeDeleted === true && req.user.role === "ADMIN";
 
     let sql = `
       SELECT *
@@ -510,6 +552,11 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
     if (archived === "true") sql += " AND archived_flag = TRUE";
     else if (archived === "false") sql += " AND archived_flag = FALSE";
     // if you want "all", skip filter
+
+    if (!includeDeleted) {
+      sql += " AND deleted_at IS NULL";
+    }
+
 
     const limit = parsed.data.limit ?? 50;
     const cursor = parsed.data.cursor;
@@ -563,6 +610,8 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
 router.get("/notes/:id", notesReadIpLimiter, notesReadUserLimiter, async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const includeDeleted = req.query.includeDeleted === "true" && req.user.role === "ADMIN";
+
     if (!Number.isInteger(id)) return sendErr(res, req, 400, "Invalid note id");
 
     if (req.user.role === "OWNER") {
@@ -580,6 +629,10 @@ router.get("/notes/:id", notesReadIpLimiter, notesReadUserLimiter, async (req, r
     if (req.user.role === "WORKER") {
       sql += ` AND worker_user_id = $${idx++}`;
       params.push(req.user.id);
+    }
+
+    if (!includeDeleted) {
+      sql += " AND deleted_at IS NULL";
     }
 
     const { rows } = await query(sql, params);
@@ -627,6 +680,7 @@ router.post("/notes/:id/review",  notesWriteIpLimiter, notesWriteUserLimiter, as
           reviewed_by   = $3
       WHERE id = $4
         AND organisation_id = $5
+        AND deleted_at IS NULL
     `;
 
     const updParams = [
@@ -695,6 +749,7 @@ router.post("/notes/:id/finalise", notesWriteIpLimiter, notesWriteUserLimiter, a
           finalised_by   = $3
       WHERE id = $4
         AND organisation_id = $5
+        AND deleted_at IS NULL
     `;
     const updParams = [storedFinalBody, nowIso, finalisedByName, id, req.user.organisationId];
 
@@ -760,7 +815,12 @@ router.post("/generate-note", async (req, res) => {
       incidentsOrRisks,
       followUpActions,
       incidentOccurred,
+      consentAcknowledged,
     } = parsed.data;
+
+    if (consentAcknowledged !== true) {
+      return sendErr(res, req, 400, "Consent must be acknowledged before generating.");
+    }
 
     // Always take worker name from the logged-in user (prevents spoofing)
     const workerName = (req.user.fullName || "").trim() || "Support Worker";
@@ -813,11 +873,12 @@ router.post("/generate-note", async (req, res) => {
     const safeLocation = location.trim();
     const shiftTime = `${startTime}–${endTime}`;
 
-    const activitiesLLM = redactPII(activitiesAndSupports);
-    const presentationLLM = redactPII(participantPresentation);
-    const goalsLLM = redactPII(goalsWorkedOn);
-    const incidentsLLM = redactPII(incidentsOrRisks);
-    const followUpLLM = redactPII(followUpActions);
+    const activitiesLLM = deidentifyForLLM({ participantName, workerName, text: activitiesAndSupports });
+    const presentationLLM = deidentifyForLLM({ participantName, workerName, text: participantPresentation });
+    const goalsLLM = deidentifyForLLM({ participantName, workerName, text: goalsWorkedOn });
+    const incidentsLLM = deidentifyForLLM({ participantName, workerName, text: incidentsOrRisks });
+    const followUpLLM = deidentifyForLLM({ participantName, workerName, text: followUpActions });
+
 
     const rawCombinedRedacted =
       (activitiesLLM || "") +
@@ -991,13 +1052,18 @@ router.post("/generate-note", async (req, res) => {
         location,
         note_text,
         incident_flag,
-        created_at
+        created_at,
+        consent_acknowledged,
+        consent_acknowledged_at,
+        consent_acknowledged_by_user_id
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
       )
       RETURNING id
     `;
 
+    
+    const consentAckAt = new Date().toISOString();
 
     const { rows } = await query(insertSql, [
       req.user.organisationId,
@@ -1008,14 +1074,22 @@ router.post("/generate-note", async (req, res) => {
       startTime,
       endTime,
       safeLocation,
-      storedBody,              // ✅ note_text only
+      storedBody,
       incidentFlag === true,
       createdAt,
+      consentAcknowledged,  // ✅ use real validated value
+      consentAckAt,
+      req.user.id,
     ]);
 
-
-
     const newId = rows[0].id;
+
+    await audit(req, "NOTE_CONSENT_ACK", {
+      targetType: "progress_note",
+      targetId: String(newId),
+      meta: { date, consentAckAt, consentByUserId: req.user.id },
+    });
+
 
     await audit(req, "NOTE_GENERATED", {
       targetType: "progress_note",
@@ -1035,6 +1109,8 @@ router.post("/generate-note", async (req, res) => {
 router.get("/notes/:id/pdf", notesPdfIpLimiter, notesPdfUserLimiter, async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const includeDeleted = req.query.includeDeleted === "true" && req.user.role === "ADMIN";
+
     if (!Number.isInteger(id)) {
       return sendErr(res, req, 400, "Invalid note id");
     }
@@ -1082,6 +1158,10 @@ router.get("/notes/:id/pdf", notesPdfIpLimiter, notesPdfUserLimiter, async (req,
     if (req.user.role === "WORKER") {
       sql += ` AND pn.worker_user_id = $${idx++}`;
       params.push(req.user.id);
+    }
+
+    if (!includeDeleted) {
+      sql += " AND pn.deleted_at IS NULL";
     }
 
     sql += ` LIMIT 1`;
@@ -1234,6 +1314,7 @@ router.post("/notes/:id/archive",  notesWriteIpLimiter, notesWriteUserLimiter, a
       FROM progress_notes
       WHERE id = $1
         AND organisation_id = $2
+        AND deleted_at IS NULL
     `;
     const params = [id, req.user.organisationId];
     let idx = 3;
@@ -1255,6 +1336,7 @@ router.post("/notes/:id/archive",  notesWriteIpLimiter, notesWriteUserLimiter, a
           archived_by   = $3
       WHERE id = $4
         AND organisation_id = $5
+        AND deleted_at IS NULL
     `;
     const up = [archivedFlag, archivedFlag ? nowIso : null, archivedFlag ? archivedBy : null, id, req.user.organisationId];
 
@@ -1284,6 +1366,148 @@ router.post("/notes/:id/archive",  notesWriteIpLimiter, notesWriteUserLimiter, a
     return sendErr(res, req, 500, "Failed to update archive state");
   }
 });
+
+// POST /api/notes/:id/delete  (ADMIN only)
+router.post("/notes/:id/delete", notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return sendErr(res, req, 400, "Invalid note id");
+
+    if (req.user.role !== "ADMIN") {
+      return sendErr(res, req, 403, "Only admins can delete notes");
+    }
+
+    const parsedBody = deleteBodySchema.safeParse(req.body || {});
+    if (!parsedBody.success) return sendErr(res, req, 400, "Invalid body");
+
+    const reason = parsedBody.data.reason || null;
+    const deletedBy = (req.user.fullName || "").trim() || "Admin";
+    const nowIso = new Date().toISOString();
+
+    const { rows } = await query(
+      `
+      UPDATE progress_notes
+      SET deleted_at = $1,
+          deleted_by = $2,
+          deleted_by_user_id = $3,
+          deleted_reason = $4
+      WHERE id = $5
+        AND organisation_id = $6
+        AND deleted_at IS NULL
+      RETURNING deleted_at, deleted_by, deleted_reason
+      `,
+      [nowIso, deletedBy, req.user.id, reason, id, req.user.organisationId]
+    );
+
+    if (!rows[0]) return sendErr(res, req, 404, "Note not found (or already deleted)");
+
+    await audit(req, "NOTE_DELETED", {
+      targetType: "progress_note",
+      targetId: String(id),
+      meta: { reason: reason || undefined },
+    });
+
+    return res.json({
+      ok: true,
+      deletedAt: rows[0].deleted_at,
+      deletedBy: rows[0].deleted_by,
+      deletedReason: rows[0].deleted_reason,
+    });
+  } catch (err) {
+    console.error(`[${req.id}] Error deleting note:`, err);
+    return sendErr(res, req, 500, "Failed to delete note");
+  }
+});
+
+// POST /api/notes/:id/restore  (ADMIN only)
+router.post("/notes/:id/restore", notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return sendErr(res, req, 400, "Invalid note id");
+
+    if (req.user.role !== "ADMIN") {
+      return sendErr(res, req, 403, "Only admins can restore notes");
+    }
+
+    const { rows } = await query(
+      `
+      UPDATE progress_notes
+      SET deleted_at = NULL,
+          deleted_by = NULL,
+          deleted_by_user_id = NULL,
+          deleted_reason = NULL
+      WHERE id = $1
+        AND organisation_id = $2
+        AND deleted_at IS NOT NULL
+      RETURNING id
+      `,
+      [id, req.user.organisationId]
+    );
+
+    if (!rows[0]) return sendErr(res, req, 404, "Note not found (or not deleted)");
+
+    await audit(req, "NOTE_RESTORED", {
+      targetType: "progress_note",
+      targetId: String(id),
+    });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error(`[${req.id}] Error restoring note:`, err);
+    return sendErr(res, req, 500, "Failed to restore note");
+  }
+});
+
+// POST /api/notes/:id/legal-hold  (ADMIN only)
+router.post("/notes/:id/legal-hold", notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return sendErr(res, req, 400, "Invalid note id");
+
+    if (req.user.role !== "ADMIN") {
+      return sendErr(res, req, 403, "Only admins can set legal hold");
+    }
+
+    const parsedBody = legalHoldBodySchema.safeParse(req.body || {});
+    if (!parsedBody.success) return sendErr(res, req, 400, "Invalid body");
+
+    const { legalHold } = parsedBody.data;
+    const nowIso = new Date().toISOString();
+    const byName = (req.user.fullName || "").trim() || "Admin";
+
+    const { rows } = await query(
+      `
+      UPDATE progress_notes
+      SET legal_hold = $1,
+          legal_hold_set_at = CASE WHEN $1 THEN $2 ELSE NULL END,
+          legal_hold_set_by = CASE WHEN $1 THEN $3 ELSE NULL END,
+          legal_hold_set_by_user_id = CASE WHEN $1 THEN $4 ELSE NULL END
+      WHERE id = $5
+        AND organisation_id = $6
+      RETURNING legal_hold, legal_hold_set_at, legal_hold_set_by
+      `,
+      [legalHold, nowIso, byName, req.user.id, id, req.user.organisationId]
+    );
+
+    if (!rows[0]) return sendErr(res, req, 404, "Note not found");
+
+    await audit(req, legalHold ? "NOTE_LEGAL_HOLD_SET" : "NOTE_LEGAL_HOLD_CLEARED", {
+      targetType: "progress_note",
+      targetId: String(id),
+    });
+
+    return res.json({
+      ok: true,
+      legalHold: rows[0].legal_hold,
+      legalHoldSetAt: rows[0].legal_hold_set_at,
+      legalHoldSetBy: rows[0].legal_hold_set_by,
+    });
+  } catch (err) {
+    console.error(`[${req.id}] Error setting legal hold:`, err);
+    return sendErr(res, req, 500, "Failed to set legal hold");
+  }
+});
+
 
 
 module.exports = router;

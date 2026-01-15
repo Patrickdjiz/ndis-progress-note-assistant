@@ -123,6 +123,26 @@ async function requireAuth(req, res, next) {
       mustChangePassword: !!dbUser.mustChangePassword,
     };
 
+    // backend/authMiddleware.js (inside requireAuth, after req.user = {...})
+
+    const safePath = (req.originalUrl || req.path || "").split("?")[0];
+
+    // Allow only these paths when mustChangePassword is true
+    const allowWhenMustChange = new Set([
+      "/api/account/change-password",
+      "/api/account/profile",
+      "/api/health",
+      "/api/health/db",
+    ]);
+
+    if (req.user.mustChangePassword && !allowWhenMustChange.has(safePath)) {
+      return res.status(403).json({
+        error: "You must change your password before continuing.",
+        code: "MUST_CHANGE_PASSWORD",
+        requestId: req.id,
+      });
+    }
+
     next();
   } catch (err) {
     console.error("Auth DB check error:", err.message);

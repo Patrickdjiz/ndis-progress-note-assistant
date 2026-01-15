@@ -1,0 +1,77 @@
+// backend/purgeJob.js
+const { query } = require("./dbAdapter");
+
+// Use a stable advisory lock key (Postgres only)
+async function tryAdvisoryLock() {
+  const { rows } = await query(
+    `SELECT pg_try_advisory_lock(hashtext('ndisnotes_purge_job')::bigint) AS locked`
+  );
+  return !!rows?.[0]?.locked;
+}
+
+async function releaseAdvisoryLock() {
+  await query(`SELECT pg_advisory_unlock(hashtext('ndisnotes_purge_job')::bigint)`);
+}
+
+async function purgeOnce() {
+  const locked = await tryAdvisoryLock();
+  if (!locked) return; // another instance is running it
+
+  try {
+    // Rules:
+    // 1) soft-deleted notes older than org.delete_grace_days
+    // 2) if org.auto_purge_enabled, purge notes older than org.retention_days (by support date)
+    // Never purge if legal_hold = true
+    await query(`
+      WITH candidates AS (
+        SELECT p.id, p.organisation_id
+        FROM progress_notes p
+        JOIN organisations o ON o.id = p.organisation_id
+        WHERE p.legal_hold = false
+          AND p.purged_at IS NULL
+          AND (
+            (
+              p.deleted_at IS NOT NULL
+              AND p.deleted_at < now() - make_interval(days => o.delete_grace_days)
+            )
+            OR
+            (
+              o.auto_purge_enabled = true
+              AND p.date ~ '^\d{4}-\d{2}-\d{2}$'
+              AND (p.date::date) < (current_date - o.retention_days)
+            )
+          )
+        ORDER BY p.id
+        LIMIT 500
+      ),
+      deleted AS (
+        DELETE FROM progress_notes p
+        USING candidates c
+        WHERE p.id = c.id
+        RETURNING p.id, p.organisation_id
+      )
+      INSERT INTO audit_events (organisation_id, actor_role, action, target_type, target_id, meta)
+      SELECT d.organisation_id, 'SYSTEM', 'NOTE_PURGED', 'progress_note', d.id::text,
+             jsonb_build_object('source','purge_job')
+      FROM deleted d;
+    `);
+  } catch (e) {
+    console.error("purgeOnce error:", e?.message || e);
+  } finally {
+    try {
+      await releaseAdvisoryLock();
+    } catch (e) {
+      console.error("releaseAdvisoryLock error:", e?.message || e);
+    }
+  }
+}
+
+function startPurgeJob() {
+  if (String(process.env.PURGE_JOB_ENABLED || "").toLowerCase() !== "true") return;
+
+  // Run once on boot, then daily
+  purgeOnce();
+  setInterval(purgeOnce, 24 * 60 * 60 * 1000).unref();
+}
+
+module.exports = { startPurgeJob };

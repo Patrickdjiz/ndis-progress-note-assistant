@@ -3,10 +3,14 @@ const app = require("./app");
 const { closePool } = require("./pgClient");
 const { PORT } = require("./config/env");
 const { closeRateLimitRedis } = require("./rateLimit"); // ✅ add
+const { startPurgeJob } = require("./purgeJob");
+
 
 const server = app.listen(PORT, () => {
   console.log(`API listening on port ${PORT}`);
 });
+
+startPurgeJob();
 
 let shuttingDown = false;
 

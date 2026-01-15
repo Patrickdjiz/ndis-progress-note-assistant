@@ -1,53 +1,31 @@
-// backend/rateLimit.js
-const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
-
-// Shared handler: always include requestId (matches your notesRoutes pattern)
-function limiterHandler(req, res, _next, options) {
-  const payload =
-    typeof options.message === "string"
-      ? { error: options.message }
-      : options.message || { error: "Too many requests" };
-
-  return res.status(options.statusCode).json({ ...payload, requestId: req.id });
+// backend/clientIp.js
+function looksLikeIp(v) {
+  if (!v) return false;
+  const s = String(v).trim();
+  // IPv4
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) return true;
+  // IPv6 (loose check)
+  if (/^[0-9a-fA-F:]+$/.test(s) && s.includes(":")) return true;
+  return false;
 }
 
-// Redis store factory (optional)
-let redis = null;
-let makeStoreImpl = () => undefined;
+function getClientIp(req) {
+  // Fly edge header (best signal when running on Fly)
+  const fly = req.get("fly-client-ip");
+  if (looksLikeIp(fly)) return fly.trim();
 
-if (process.env.REDIS_URL) {
-  const { RedisStore } = require("rate-limit-redis");
-  const Redis = require("ioredis");
+  // Cloudflare header (when proxied through CF)
+  const cf = req.get("cf-connecting-ip");
+  if (looksLikeIp(cf)) return cf.trim();
 
-  redis = new Redis(process.env.REDIS_URL);
-
-  makeStoreImpl = (prefix) =>
-    new RedisStore({
-      sendCommand: (...args) => redis.call(...args),
-      prefix,
-    });
-}
-
-function makeStore(prefix) {
-  return makeStoreImpl(prefix);
-}
-
-// Graceful shutdown helper (call this from your server entrypoint if you want)
-async function closeRateLimitRedis() {
-  if (!redis) return;
-  try {
-    await redis.quit();
-  } catch {
-    try {
-      redis.disconnect();
-    } catch {}
+  // Standard proxy header (first hop)
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string") {
+    const first = xff.split(",")[0].trim();
+    if (looksLikeIp(first)) return first;
   }
+
+  return looksLikeIp(req.ip) ? req.ip : null;
 }
 
-module.exports = {
-  rateLimit,
-  ipKeyGenerator,
-  makeStore,
-  limiterHandler,
-  closeRateLimitRedis,
-};
+module.exports = { getClientIp };

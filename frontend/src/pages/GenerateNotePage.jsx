@@ -32,6 +32,7 @@ function GenerateNotePage({ token, user }) {
   const [errorMsg, setErrorMsg] = useState("");
   const [copied, setCopied] = useState(false);
   const [finalSaveMsg, setFinalSaveMsg] = useState("");
+  const [consentAck, setConsentAck] = useState(false);
 
   // ✅ UI-only: responsive helper (no business logic changes)
   const isMobile = useIsMobile(760);
@@ -159,6 +160,11 @@ function GenerateNotePage({ token, user }) {
       return;
     }
 
+    if (!consentAck) {
+      setErrorMsg("Please confirm you are authorised and participant consent has been obtained before generating.");
+      return;
+    }
+
     setLoading(true);
     setErrorMsg("");
     setGeneratedNote("");
@@ -186,6 +192,7 @@ function GenerateNotePage({ token, user }) {
           incidentsOrRisks,
           followUpActions,
           incidentOccurred,
+          consentAcknowledged: true,
         }),
       });
 
@@ -541,6 +548,40 @@ function GenerateNotePage({ token, user }) {
             <div style={counterStyle}>{followUpActions.length} characters</div>
           </div>
         </div>
+
+        <div
+          style={{
+            marginTop: "1rem",
+            padding: "0.75rem 0.9rem",
+            border: "1px solid #e5e7eb",
+            borderRadius: "0.75rem",
+            background: "#f9fafb",
+            lineHeight: 1.45,
+            fontSize: "0.9rem",
+            color: "#374151",
+          }}
+        >
+          <div style={{ fontWeight: 600, color: "#111827", marginBottom: "0.25rem" }}>
+            Privacy & consent confirmation
+          </div>
+          <div style={{ fontSize: "0.85rem", color: "#4b5563" }}>
+            This tool drafts notes that may include sensitive health information. Only enter information you are authorised to record,
+            and ensure your organisation has obtained participant consent for collection and use.
+          </div>
+
+          <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", marginTop: "0.6rem", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={consentAck}
+              onChange={(e) => setConsentAck(e.target.checked)}
+              style={isMobile ? { transform: "scale(1.05)", marginTop: 3 } : { marginTop: 3 }}
+            />
+            <span>
+              I confirm I am authorised to enter this information and participant consent has been obtained in line with our organisation’s policies.
+            </span>
+          </label>
+        </div>
+
 
         {/* Actions */}
         <div
