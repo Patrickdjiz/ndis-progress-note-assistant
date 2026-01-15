@@ -677,7 +677,8 @@ router.post("/notes/:id/review",  notesWriteIpLimiter, notesWriteUserLimiter, as
       UPDATE progress_notes
       SET reviewed_flag = $1,
           reviewed_at   = $2,
-          reviewed_by   = $3
+          reviewed_by   = $3,
+          updated_at    = now()
       WHERE id = $4
         AND organisation_id = $5
         AND deleted_at IS NULL
@@ -746,21 +747,48 @@ router.post("/notes/:id/finalise", notesWriteIpLimiter, notesWriteUserLimiter, a
       UPDATE progress_notes
       SET final_note_text = $1,
           finalised_at   = $2,
-          finalised_by   = $3
+          finalised_by   = $3,
+          updated_at    = now(),
+          current_version_no = current_version_no + 1
       WHERE id = $4
         AND organisation_id = $5
         AND deleted_at IS NULL
+      RETURNING id, current_version_no
     `;
+
     const updParams = [storedFinalBody, nowIso, finalisedByName, id, req.user.organisationId];
 
     if (req.user.role === "WORKER") {
-      updSql += ` AND worker_user_id = $6`;
+      updSql = `
+        UPDATE progress_notes
+        SET final_note_text = $1,
+            finalised_at   = $2,
+            finalised_by   = $3,
+            current_version_no = current_version_no + 1
+        WHERE id = $4
+          AND organisation_id = $5
+          AND worker_user_id = $6
+          AND deleted_at IS NULL
+        RETURNING id, current_version_no
+      `;
       updParams.push(req.user.id);
     }
 
     const upd = await query(updSql, updParams);
-    const changed = upd?.rowCount ?? upd?.changes ?? 0;
-    if (!changed) return sendErr(res, req, 404, "Note not found");
+    if (!upd.rows?.[0]) return sendErr(res, req, 404, "Note not found");
+
+    const versionNo = upd.rows[0].current_version_no;
+
+    // ✅ write version snapshot (body-only)
+    await query(
+      `
+      INSERT INTO progress_note_versions
+        (note_id, version_no, text, edited_at, edited_by_user_id, edited_by_name)
+      VALUES ($1, $2, $3, now(), $4, $5)
+      `,
+      [id, versionNo, storedFinalBody, req.user.id, finalisedByName]
+    );
+
 
 
     await audit(req, "NOTE_FINALISED", {
@@ -774,6 +802,7 @@ router.post("/notes/:id/finalise", notesWriteIpLimiter, notesWriteUserLimiter, a
       finalisedAt: nowIso,
       finalisedBy: finalisedByName,
       finalNoteText: storedFinalBody,
+      versionNo,
     });
   } catch (err) {
     console.error(`[${req.id}] Error finalising note:`, err);
@@ -1055,12 +1084,14 @@ router.post("/generate-note", async (req, res) => {
         created_at,
         consent_acknowledged,
         consent_acknowledged_at,
-        consent_acknowledged_by_user_id
+        consent_acknowledged_by_user_id,
+        current_version_no
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
       )
       RETURNING id
     `;
+
 
     
     const consentAckAt = new Date().toISOString();
@@ -1077,12 +1108,24 @@ router.post("/generate-note", async (req, res) => {
       storedBody,
       incidentFlag === true,
       createdAt,
-      consentAcknowledged,  // ✅ use real validated value
+      consentAcknowledged,
       consentAckAt,
       req.user.id,
+      1, // ✅ current_version_no
     ]);
 
     const newId = rows[0].id;
+
+    // ✅ write version 1 snapshot (body-only)
+    await query(
+      `
+      INSERT INTO progress_note_versions
+        (note_id, version_no, text, edited_at, edited_by_user_id, edited_by_name)
+      VALUES ($1, 1, $2, $3, $4, $5)
+      `,
+      [newId, storedBody, createdAt, req.user.id, (req.user.fullName || workerName)]
+    );
+
 
     await audit(req, "NOTE_CONSENT_ACK", {
       targetType: "progress_note",
@@ -1333,7 +1376,8 @@ router.post("/notes/:id/archive",  notesWriteIpLimiter, notesWriteUserLimiter, a
       UPDATE progress_notes
       SET archived_flag = $1,
           archived_at   = $2,
-          archived_by   = $3
+          archived_by   = $3,
+          updated_at    = now()
       WHERE id = $4
         AND organisation_id = $5
         AND deleted_at IS NULL
@@ -1390,7 +1434,8 @@ router.post("/notes/:id/delete", notesWriteIpLimiter, notesWriteUserLimiter, asy
       SET deleted_at = $1,
           deleted_by = $2,
           deleted_by_user_id = $3,
-          deleted_reason = $4
+          deleted_reason = $4,
+          updated_at = now()
       WHERE id = $5
         AND organisation_id = $6
         AND deleted_at IS NULL
@@ -1435,7 +1480,8 @@ router.post("/notes/:id/restore", notesWriteIpLimiter, notesWriteUserLimiter, as
       SET deleted_at = NULL,
           deleted_by = NULL,
           deleted_by_user_id = NULL,
-          deleted_reason = NULL
+          deleted_reason = NULL,
+          updated_at    = now()
       WHERE id = $1
         AND organisation_id = $2
         AND deleted_at IS NOT NULL
@@ -1481,9 +1527,11 @@ router.post("/notes/:id/legal-hold", notesWriteIpLimiter, notesWriteUserLimiter,
       SET legal_hold = $1,
           legal_hold_set_at = CASE WHEN $1 THEN $2 ELSE NULL END,
           legal_hold_set_by = CASE WHEN $1 THEN $3 ELSE NULL END,
-          legal_hold_set_by_user_id = CASE WHEN $1 THEN $4 ELSE NULL END
+          legal_hold_set_by_user_id = CASE WHEN $1 THEN $4 ELSE NULL END,
+          updated_at    = now()
       WHERE id = $5
-        AND organisation_id = $6
+        AND organisation_id = $6,
+        AND deleted_at IS NULL
       RETURNING legal_hold, legal_hold_set_at, legal_hold_set_by
       `,
       [legalHold, nowIso, byName, req.user.id, id, req.user.organisationId]
