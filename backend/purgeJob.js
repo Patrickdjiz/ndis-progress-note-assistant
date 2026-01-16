@@ -15,20 +15,15 @@ async function releaseAdvisoryLock() {
 
 async function purgeOnce() {
   const locked = await tryAdvisoryLock();
-  if (!locked) return; // another instance is running it
+  if (!locked) return;
 
   try {
-    // Rules:
-    // 1) soft-deleted notes older than org.delete_grace_days
-    // 2) if org.auto_purge_enabled, purge notes older than org.retention_days (by support date)
-    // Never purge if legal_hold = true
     await query(`
       WITH candidates AS (
         SELECT p.id, p.organisation_id
         FROM progress_notes p
         JOIN organisations o ON o.id = p.organisation_id
         WHERE p.legal_hold = false
-          AND p.purged_at IS NULL
           AND (
             (
               p.deleted_at IS NOT NULL
@@ -37,12 +32,18 @@ async function purgeOnce() {
             OR
             (
               o.auto_purge_enabled = true
-              AND p.date ~ '^\d{4}-\d{2}-\d{2}$'
+              AND p.date ~ '^\\d{4}-\\d{2}-\\d{2}$'
               AND (p.date::date) < (current_date - o.retention_days)
             )
           )
         ORDER BY p.id
         LIMIT 500
+      ),
+      del_versions AS (
+        DELETE FROM progress_note_versions v
+        USING candidates c
+        WHERE v.note_id = c.id
+        RETURNING v.note_id
       ),
       deleted AS (
         DELETE FROM progress_notes p
@@ -58,9 +59,7 @@ async function purgeOnce() {
   } catch (e) {
     console.error("purgeOnce error:", e?.message || e);
   } finally {
-    try {
-      await releaseAdvisoryLock();
-    } catch (e) {
+    try { await releaseAdvisoryLock(); } catch (e) {
       console.error("releaseAdvisoryLock error:", e?.message || e);
     }
   }
@@ -70,8 +69,9 @@ function startPurgeJob() {
   if (String(process.env.PURGE_JOB_ENABLED || "").toLowerCase() !== "true") return;
 
   // Run once on boot, then daily
-  purgeOnce();
-  setInterval(purgeOnce, 24 * 60 * 60 * 1000).unref();
+  purgeOnce().catch((e) => console.error("purgeOnce error:", e?.message || e));
+  setInterval(() => purgeOnce().catch((e) => console.error("purgeOnce error:", e?.message || e)), 24 * 60 * 60 * 1000).unref();
 }
+
 
 module.exports = { startPurgeJob };

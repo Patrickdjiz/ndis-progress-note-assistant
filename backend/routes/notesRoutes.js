@@ -199,6 +199,39 @@ const legalHoldBodySchema = z.object({
   legalHold: z.boolean(),
 });
 
+const metadataBodySchema = z.object({
+  participantName: z.string().trim().min(1).max(200).optional(),
+  date: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  startTime: z.string().trim().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
+  endTime: z.string().trim().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
+  location: z.string().trim().min(1).max(200).optional(),
+  incidentFlag: z.boolean().optional(),
+}).refine((v) => {
+  // if changing times, require both
+  const touchingTimes = v.startTime !== undefined || v.endTime !== undefined;
+  if (!touchingTimes) return true;
+  return typeof v.startTime === "string" && typeof v.endTime === "string";
+}, { message: "If updating shift times, provide both startTime and endTime." });
+
+function diffChanges(before, after, keys) {
+  const changes = {};
+  for (const k of keys) {
+    if (before[k] !== after[k] && after[k] !== undefined) {
+      changes[k] = { from: before[k], to: after[k] };
+    }
+  }
+  return changes;
+}
+
+const exportBodySchema = z.object({
+  participant: z.string().trim().max(200).optional(),
+  dateFrom: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dateTo: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
+  includeArchived: z.boolean().optional().default(true),
+  includeDeleted: z.boolean().optional().default(false),
+  format: z.enum(["csv", "json"]).optional().default("csv"),
+});
+
 
 function clip(s, max = 1500) {
   if (!s) return "";
@@ -1556,6 +1589,251 @@ router.post("/notes/:id/legal-hold", notesWriteIpLimiter, notesWriteUserLimiter,
   }
 });
 
+// POST /api/notes/:id/metadata  (ADMIN only)
+// Allows correction of participantName/date/times/location/incidentFlag (audited)
+router.post("/notes/:id/metadata", notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return sendErr(res, req, 400, "Invalid note id");
+
+    if (req.user.role !== "ADMIN") {
+      return sendErr(res, req, 403, "Only admins can update note metadata");
+    }
+
+    const parsedBody = metadataBodySchema.safeParse(req.body || {});
+    if (!parsedBody.success) {
+      const msg = parsedBody.error.issues.map((i) => i.message).join("; ");
+      return sendErr(res, req, 400, msg || "Invalid body");
+    }
+
+    const patch = parsedBody.data;
+
+    // Require at least one field
+    const keys = ["participantName", "date", "startTime", "endTime", "location", "incidentFlag"];
+    const hasAny = keys.some((k) => patch[k] !== undefined);
+    if (!hasAny) return sendErr(res, req, 400, "No changes provided");
+
+    // Load existing
+    const { rows: existingRows } = await query(
+      `
+      SELECT *
+      FROM progress_notes
+      WHERE id = $1
+        AND organisation_id = $2
+        AND deleted_at IS NULL
+      LIMIT 1
+      `,
+      [id, req.user.organisationId]
+    );
+    const existing = existingRows[0];
+    if (!existing) return sendErr(res, req, 404, "Note not found");
+
+    const before = {
+      participantName: existing.participant_name,
+      date: existing.date,
+      startTime: existing.start_time,
+      endTime: existing.end_time,
+      location: existing.location,
+      incidentFlag: existing.incident_flag,
+    };
+
+    // Compose new values (use existing when not provided)
+    const after = {
+      participantName: patch.participantName ?? before.participantName,
+      date: patch.date ?? before.date,
+      startTime: patch.startTime ?? before.startTime,
+      endTime: patch.endTime ?? before.endTime,
+      location: patch.location ?? before.location,
+      incidentFlag: patch.incidentFlag ?? before.incidentFlag,
+    };
+
+    // Date sanity: not future
+    if (patch.date !== undefined) {
+      const d = parseYyyyMmDd(after.date);
+      if (!d) return sendErr(res, req, 400, "Invalid date format");
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      d.setHours(0, 0, 0, 0);
+      if (d > today) return sendErr(res, req, 400, "Date of support cannot be in the future.");
+    }
+
+    // Time sanity if touched
+    if (patch.startTime !== undefined || patch.endTime !== undefined) {
+      const s = timeToMinutes(after.startTime);
+      const e = timeToMinutes(after.endTime);
+      if (s === null || e === null) return sendErr(res, req, 400, "Invalid start or end time format.");
+      if (e <= s) return sendErr(res, req, 400, "End time must be after start time.");
+    }
+
+    // Build update (fixed set list so RETURNING gives us full row)
+    const { rows } = await query(
+      `
+      UPDATE progress_notes
+      SET participant_name = $1,
+          date            = $2,
+          start_time      = $3,
+          end_time        = $4,
+          location        = $5,
+          incident_flag   = $6,
+          updated_at      = now()
+      WHERE id = $7
+        AND organisation_id = $8
+        AND deleted_at IS NULL
+      RETURNING *
+      `,
+      [
+        after.participantName,
+        after.date,
+        after.startTime,
+        after.endTime,
+        after.location,
+        after.incidentFlag === true,
+        id,
+        req.user.organisationId,
+      ]
+    );
+
+    const updated = rows[0];
+    if (!updated) return sendErr(res, req, 404, "Note not found");
+
+    const changes = diffChanges(before, patch, keys);
+    await audit(req, "NOTE_METADATA_UPDATED", {
+      targetType: "progress_note",
+      targetId: String(id),
+      meta: { changes },
+    });
+
+    return res.json({ ok: true, note: normaliseNoteRow(updated) });
+  } catch (err) {
+    console.error(`[${req.id}] Error updating note metadata:`, err);
+    return sendErr(res, req, 500, "Failed to update note metadata");
+  }
+});
+
+function csvEscape(v) {
+  if (v === null || v === undefined) return '""';
+  const s = String(v).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+function toCsv(rows, columns) {
+  const header = columns.map((c) => csvEscape(c)).join(",");
+  const lines = rows.map((r) => columns.map((c) => csvEscape(r[c])).join(","));
+  return [header, ...lines].join("\n");
+}
+
+router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (req, res) => {
+  try {
+    if (req.user.role !== "ADMIN") {
+      return sendErr(res, req, 403, "Only admins can export notes");
+    }
+
+    const parsed = exportBodySchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => i.message).join("; ");
+      return sendErr(res, req, 400, msg || "Invalid export body");
+    }
+
+    const { participant, dateFrom, dateTo, includeArchived, includeDeleted, format } = parsed.data;
+
+    // Validate range sanity
+    const df = parseYyyyMmDd(dateFrom);
+    const dt = parseYyyyMmDd(dateTo);
+    if (!df || !dt) return sendErr(res, req, 400, "Invalid dateFrom/dateTo");
+    if (dt < df) return sendErr(res, req, 400, "dateTo must be after dateFrom");
+
+    const canIncludeDeleted = includeDeleted === true; // ADMIN only already
+
+    let sql = `
+      SELECT
+        id,
+        participant_name AS "participantName",
+        worker_name AS "workerName",
+        date,
+        start_time AS "startTime",
+        end_time AS "endTime",
+        location,
+        incident_flag AS "incidentFlag",
+        reviewed_flag AS "reviewedFlag",
+        reviewed_at AS "reviewedAt",
+        reviewed_by AS "reviewedBy",
+        finalised_at AS "finalisedAt",
+        finalised_by AS "finalisedBy",
+        archived_flag AS "archivedFlag",
+        archived_at AS "archivedAt",
+        archived_by AS "archivedBy",
+        deleted_at AS "deletedAt",
+        deleted_by AS "deletedBy",
+        deleted_reason AS "deletedReason",
+        created_at AS "createdAt",
+        COALESCE(NULLIF(final_note_text,''), note_text) AS "noteBody"
+      FROM progress_notes
+      WHERE organisation_id = $1
+        AND date ~ '^\\d{4}-\\d{2}-\\d{2}$'
+        AND (date::date) BETWEEN $2::date AND $3::date
+    `;
+    const params = [req.user.organisationId, dateFrom, dateTo];
+    let idx = 4;
+
+    if (participant && participant.trim()) {
+      sql += ` AND participant_name ILIKE $${idx++}`;
+      params.push(`%${participant.trim()}%`);
+    }
+
+    if (!includeArchived) {
+      sql += ` AND archived_flag = FALSE`;
+    }
+
+    if (!canIncludeDeleted) {
+      sql += ` AND deleted_at IS NULL`;
+    }
+
+    sql += ` ORDER BY date DESC, created_at DESC, id DESC LIMIT 5000`;
+
+    const { rows } = await query(sql, params);
+
+    await audit(req, "NOTES_EXPORTED", {
+      targetType: "progress_note",
+      targetId: null,
+      meta: {
+        filters: { participant: participant || null, dateFrom, dateTo, includeArchived, includeDeleted: canIncludeDeleted },
+        count: rows.length,
+        format,
+      },
+    });
+
+    if (format === "json") {
+      return res.json({ ok: true, count: rows.length, notes: rows.map((r) => ({ ...r, noteBody: stripNoteHeader(r.noteBody) })) });
+    }
+
+    // CSV
+    const cols = [
+      "id","participantName","workerName","date","startTime","endTime","location",
+      "incidentFlag",
+      "reviewedFlag","reviewedAt","reviewedBy",
+      "finalisedAt","finalisedBy",
+      "archivedFlag","archivedAt","archivedBy",
+      "deletedAt","deletedBy","deletedReason",
+      "createdAt",
+      "noteBody",
+    ];
+
+    const csvRows = rows.map((r) => ({
+      ...r,
+      noteBody: stripNoteHeader(r.noteBody || ""),
+    }));
+
+    const csv = toCsv(csvRows, cols);
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="ndis_notes_export_${dateFrom}_to_${dateTo}.csv"`);
+
+    return res.send(csv);
+  } catch (err) {
+    console.error(`[${req.id}] Error exporting notes:`, err);
+    return sendErr(res, req, 500, "Failed to export notes");
+  }
+});
 
 
 module.exports = router;

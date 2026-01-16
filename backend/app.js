@@ -17,6 +17,10 @@ const notesRoutes = require("./routes/notesRoutes");
 const accountRoutes = require("./routes/accountRoutes");
 const passwordResetRoutes = require("./routes/passwordResetRoutes");
 const auditRoutes = require("./routes/auditRoutes");
+const orgSettingsRoutes = require("./routes/orgSettingsRoutes");
+const { getClientIp } = require("./clientIp");
+
+
 
 const app = express();
 
@@ -42,18 +46,40 @@ app.disable("x-powered-by");
 // Basic security headers
 app.use(
   helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }, // or disable it
+    // You’re serving an API, not HTML pages, so CSP can cause false positives.
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+
+    // Keep if your frontend and API are on different subdomains
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+
+    // Strong defaults
+    frameguard: { action: "deny" },
+    referrerPolicy: { policy: "no-referrer" },
+
+    // Only meaningful in production (prevents downgrade)
+    hsts: NODE_ENV === "production"
+      ? { maxAge: 15552000, includeSubDomains: true, preload: true }
+      : false,
   })
 );
+
+// Optional: lock down browser features (safe even for APIs)
+app.use((req, res, next) => {
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
+});
+
 
 
 // logs "/api/notes" instead of "/api/notes?participant=John"
 morgan.token("safe-url", (req) => (req.originalUrl || "").split("?")[0]);
 morgan.token("reqid", (req) => req.id || "-");
+morgan.token("client-ip", (req) => getClientIp(req) || req.ip || "-");
 
 app.use(
   morgan(
-    ':reqid :remote-addr :method :safe-url :status :res[content-length] - :response-time ms ":user-agent"'
+    ':reqid :client-ip :method :safe-url :status :res[content-length] - :response-time ms ":user-agent"'
   )
 );
 
@@ -184,6 +210,7 @@ app.use("/api/owner", ownerRoutes);
 app.use("/api", notesRoutes);
 app.use("/api", accountRoutes);
 app.use("/api/audit", auditRoutes);
+app.use("/api/org", orgSettingsRoutes);
 
 
 // 404 handler
