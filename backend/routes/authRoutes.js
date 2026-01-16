@@ -8,11 +8,18 @@ const {
 const {
   loginSchema,
 } = require("../validation");
+const crypto = require("crypto");
+const { auditEvent } = require("../audit");
+
 
 const sendErr = (res, req, status, msg) =>
   res.status(status).json({ error: msg, requestId: req.id });
 
 const router = express.Router();
+
+function sha256Hex(s) {
+  return crypto.createHash("sha256").update(String(s || "")).digest("hex");
+}
 
 // POST /api/login
 router.post("/login", async (req, res) => {
@@ -26,6 +33,68 @@ router.post("/login", async (req, res) => {
     const { email, password } = parsed.data;
 
     const normalisedEmail = email.trim().toLowerCase();
+
+    const emailHash = sha256Hex(normalisedEmail);
+
+    // if (!row)
+    if (!row) {
+      await auditEvent(req, "LOGIN_FAILED", {
+        targetType: "auth",
+        targetId: null,
+        meta: { emailHash, reason: "invalid_credentials" },
+        actorRole: "ANON",
+      });
+      return sendErr(res, req, 401, "Invalid email or password");
+    }
+
+    // if inactive
+    if (!row.isActive) {
+      await auditEvent(req, "LOGIN_BLOCKED", {
+        organisationId: row.organisationId ?? null,
+        actorUserId: row.id ?? null,
+        actorRole: row.role ?? null,
+        targetType: "user",
+        targetId: String(row.id),
+        meta: { reason: "user_inactive" },
+      });
+      return sendErr(res, req, 403, "This user account is inactive.");
+    }
+
+    // if org suspended (non-owner)
+    if (row.role !== "OWNER" && row.orgStatus !== "ACTIVE") {
+      await auditEvent(req, "LOGIN_BLOCKED", {
+        organisationId: row.organisationId ?? null,
+        actorUserId: row.id ?? null,
+        actorRole: row.role ?? null,
+        targetType: "organisation",
+        targetId: String(row.organisationId),
+        meta: { reason: "org_suspended" },
+      });
+      return sendErr(res, req, 403, "This provider account is suspended.");
+    }
+
+    // password mismatch
+    if (!ok) {
+      await auditEvent(req, "LOGIN_FAILED", {
+        organisationId: row.organisationId ?? null,
+        actorUserId: row.id ?? null,
+        actorRole: row.role ?? null,
+        targetType: "auth",
+        targetId: String(row.id),
+        meta: { reason: "invalid_credentials" },
+      });
+      return sendErr(res, req, 401, "Invalid email or password");
+    }
+
+    // success (right before return res.json)
+    await auditEvent(req, "LOGIN_SUCCESS", {
+      organisationId: row.organisationId ?? null,
+      actorUserId: row.id ?? null,
+      actorRole: row.role ?? null,
+      targetType: "user",
+      targetId: String(row.id),
+      meta: { mustChangePassword: !!row.mustChangePassword },
+    });
 
     // ✅ Use adapter (Postgres)
     const row = await findUserByEmailWithOrg(normalisedEmail);

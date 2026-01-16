@@ -2,11 +2,34 @@
 const { query } = require("./dbAdapter");
 const { getClientIp } = require("./clientIp");
 
-async function audit(req, action, { targetType = null, targetId = null, meta = null } = {}) {
+const MAX_META_BYTES = 10_000;
+
+function safeMeta(meta) {
+  if (meta === null || meta === undefined) return null;
+
   try {
-    const orgId = req.user?.organisationId ?? null;
-    const actorUserId = req.user?.id ?? null;
-    const actorRole = req.user?.role ?? null;
+    // Ensure we never store massive blobs
+    const json = JSON.stringify(meta);
+    if (Buffer.byteLength(json, "utf8") > MAX_META_BYTES) {
+      return { truncated: true };
+    }
+    return meta; // node-postgres will serialize objects into json/jsonb correctly
+  } catch {
+    return { meta_unserializable: true };
+  }
+}
+
+// Generic audit writer that does NOT rely on req.user
+async function auditEvent(req, action, payload = {}) {
+  try {
+    const {
+      organisationId = null,
+      actorUserId = null,
+      actorRole = null,
+      targetType = null,
+      targetId = null,
+      meta = null,
+    } = payload;
 
     const ip = getClientIp(req);
     const userAgent = req.get("user-agent") || null;
@@ -31,7 +54,19 @@ async function audit(req, action, { targetType = null, targetId = null, meta = n
       )
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       `,
-      [orgId, actorUserId, actorRole, action, targetType, targetId, meta, ip, userAgent, requestId, path]
+      [
+        organisationId,
+        actorUserId,
+        actorRole,
+        action,
+        targetType,
+        targetId,
+        safeMeta(meta),
+        ip,
+        userAgent,
+        requestId,
+        path,
+      ]
     );
   } catch (err) {
     if (process.env.NODE_ENV !== "test") {
@@ -40,4 +75,16 @@ async function audit(req, action, { targetType = null, targetId = null, meta = n
   }
 }
 
-module.exports = { audit };
+// Backwards-compatible helper (uses req.user)
+async function audit(req, action, { targetType = null, targetId = null, meta = null } = {}) {
+  return auditEvent(req, action, {
+    organisationId: req.user?.organisationId ?? null,
+    actorUserId: req.user?.id ?? null,
+    actorRole: req.user?.role ?? null,
+    targetType,
+    targetId,
+    meta,
+  });
+}
+
+module.exports = { audit, auditEvent };

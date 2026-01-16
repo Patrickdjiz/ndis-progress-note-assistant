@@ -26,16 +26,16 @@ async function purgeOnce() {
         WHERE p.legal_hold = false
           AND (
             (
-              p.deleted_at IS NOT NULL
-              AND p.deleted_at < now() - make_interval(days => o.delete_grace_days)
+                p.deleted_at IS NOT NULL
+                AND p.deleted_at < now() - make_interval(days => COALESCE(o.delete_grace_days, 30))
             )
             OR
             (
-              o.auto_purge_enabled = true
-              AND p.date ~ '^\\d{4}-\\d{2}-\\d{2}$'
-              AND (p.date::date) < (current_date - o.retention_days)
+                o.auto_purge_enabled = true
+                AND p.date ~ '^\\d{4}-\\d{2}-\\d{2}$'
+                AND (p.date::date) < (current_date - COALESCE(o.retention_days, 365))
             )
-          )
+        )
         ORDER BY p.id
         LIMIT 500
       ),

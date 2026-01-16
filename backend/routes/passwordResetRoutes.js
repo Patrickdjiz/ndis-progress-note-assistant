@@ -8,6 +8,7 @@ const { sendMail } = require("../mailer");
 const { query } = require("../dbAdapter");
 const { forgotPasswordSchema, resetPasswordSchema } = require("../validation");
 const { FRONTEND_ORIGIN } = require("../config/env");
+const { auditEvent } = require("../audit");
 
 const router = express.Router();
 
@@ -26,6 +27,7 @@ function addMinutes(date, minutes) {
 // POST /api/forgot-password
 router.post("/forgot-password", async (req, res) => {
   try {
+    
     const parsed = forgotPasswordSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
@@ -33,6 +35,16 @@ router.post("/forgot-password", async (req, res) => {
     }
 
     const email = parsed.data.email.trim().toLowerCase();
+    const emailHash = sha256Hex(email);
+
+    // log request (do NOT leak whether the account exists to the client, but audit can store found/not-found)
+    await auditEvent(req, "PASSWORD_RESET_REQUESTED", {
+      actorRole: "ANON",
+      targetType: "auth",
+      targetId: null,
+      meta: { emailHash },
+    });
+
 
     // Always return ok to prevent email enumeration
     const okResponse = {
@@ -43,7 +55,7 @@ router.post("/forgot-password", async (req, res) => {
     // Find eligible user (active user in active org)
     const { rows } = await query(
       `
-      SELECT u.id, u.email
+      SELECT u.id, u.email, u.organisation_id
       FROM users u
       JOIN organisations o ON o.id = u.organisation_id
       WHERE lower(u.email) = lower($1)
@@ -73,6 +85,16 @@ router.post("/forgot-password", async (req, res) => {
     );
 
     const resetLink = `${FRONTEND_ORIGIN.replace(/\/+$/, "")}/reset-password?token=${rawToken}`;
+
+    await auditEvent(req, "PASSWORD_RESET_TOKEN_ISSUED", {
+      organisationId: rows[0].organisation_id,
+      actorUserId: rows[0].id,
+      actorRole: "USER",
+      targetType: "user",
+      targetId: String(rows[0].id),
+      meta: { emailHash },
+    });
+
 
   // ✅ Replace payload with branded version
   const brandName = "NDIS Notes";
@@ -162,8 +184,25 @@ router.post("/forgot-password", async (req, res) => {
     console.error("Password reset email failed:", e?.message || e);
     if (process.env.NODE_ENV !== "production") {
       console.log("PASSWORD RESET LINK (dev):", resetLink);
+
+      await auditEvent(req, "PASSWORD_RESET_EMAIL_FAILED", {
+      organisationId: rows[0].organisation_id,
+      actorUserId: rows[0].id,
+      actorRole: "USER",
+      targetType: "user",
+      targetId: String(rows[0].id),
+      meta: { error: String(e?.message || e).slice(0, 200) },
+    });
     }
   }
+
+  await auditEvent(req, "PASSWORD_RESET_EMAIL_SENT", {
+    organisationId: rows[0].organisation_id,
+    actorUserId: rows[0].id,
+    actorRole: "USER",
+    targetType: "user",
+    targetId: String(rows[0].id),
+  });
 
 
     return res.json(okResponse);
@@ -188,7 +227,7 @@ router.post("/reset-password", async (req, res) => {
 
     const { rows } = await query(
       `
-      SELECT u.id
+      SELECT u.id, u.organisation_id
       FROM users u
       JOIN organisations o ON o.id = u.organisation_id
       WHERE u.reset_token_hash = $1
@@ -232,6 +271,14 @@ router.post("/reset-password", async (req, res) => {
       return sendErr(res, req, 400, "Reset token is invalid or expired");
     }
 
+
+    await auditEvent(req, "PASSWORD_RESET_COMPLETED", {
+      organisationId: rows[0].organisation_id,
+      actorUserId: rows[0].id,
+      actorRole: "USER",
+      targetType: "user",
+      targetId: String(rows[0].id),
+    });
 
     return res.json({ ok: true });
   } catch (err) {

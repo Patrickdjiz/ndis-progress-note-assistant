@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const { requireAuth } = require("../authMiddleware"); // adjust path/name to your project
 const { updateProfileSchema, updatePasswordSchema } = require("../validation");
 const { updateUserProfile, query } = require("../dbAdapter"); // updateUserProfile already exists in dbAdapter
+const { audit } = require("../audit");
 
 const sendErr = (res, req, status, msg) =>
   res.status(status).json({ error: msg, requestId: req.id });
@@ -44,6 +45,11 @@ router.post("/account/change-password", requireAuth, async (req, res) => {
       `,
       [newHash, nowIso, req.user.id]
     );
+
+    await audit(req, "PASSWORD_CHANGED", {
+      targetType: "user",
+      targetId: String(req.user.id),
+    });
 
     return res.json({
       ok: true,
@@ -97,6 +103,16 @@ router.patch("/account/profile", requireAuth, async (req, res) => {
       `,
       [req.user.id]
     );
+
+    const changed = {};
+    if (nameTrim) changed.fullName = true;
+    if (emailTrim) changed.email = true;
+
+    await audit(req, "PROFILE_UPDATED", {
+      targetType: "user",
+      targetId: String(req.user.id),
+      meta: { changed },
+    });
 
     return res.json({ ok: true, user: rows[0] });
   } catch (err) {

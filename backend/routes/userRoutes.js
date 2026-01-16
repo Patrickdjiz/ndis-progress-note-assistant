@@ -13,6 +13,10 @@ const {
   findUserByIdInOrg,
   updateUserActiveFlag,
 } = require("../dbAdapter");
+const { audit } = require("../audit");
+const crypto = require("crypto");
+const sha256Hex = (s) => crypto.createHash("sha256").update(String(s || "")).digest("hex");
+
 
 const sendErr = (res, req, status, msg) =>
   res.status(status).json({ error: msg, requestId: req.id });
@@ -82,6 +86,13 @@ router.post("/", async (req, res) => {
       passwordHash: hash,
     });
 
+    await audit(req, "USER_CREATED", {
+      targetType: "user",
+      targetId: String(user.id),
+      meta: { role: "WORKER", emailHash: sha256Hex(normalisedEmail) },
+    });
+
+
     return res.status(201).json({ user });
   } catch (err) {
     console.error("Error creating user:", err.message);
@@ -128,6 +139,13 @@ router.patch("/:id/status", async (req, res) => {
     }
 
     await updateUserActiveFlag(id, !!isActive);
+
+    await audit(req, isActive ? "USER_REACTIVATED" : "USER_DEACTIVATED", {
+      targetType: "user",
+      targetId: String(id),
+      meta: { role: "WORKER" },
+    });
+
 
     return res.json({ ok: true, id, isActive: !!isActive });
   } catch (err) {

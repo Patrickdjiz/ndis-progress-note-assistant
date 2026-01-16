@@ -9,6 +9,7 @@ const {
 } = require("../validation");
 const { query } = require("../dbAdapter");
 const { pool } = require("../pgClient");
+const { audit } = require("../audit");
 
 const router = express.Router();
 
@@ -172,6 +173,13 @@ router.post("/providers", async (req, res) => {
 
       await client.query("COMMIT");
 
+      await audit(req, "PROVIDER_CREATED", {
+      targetType: "organisation",
+      targetId: String(organisation.id),
+      meta: { organisationName: organisation.name, adminUserId: admin.id },
+    });
+
+
       return res.status(201).json({ organisation, admin });
     } catch (err) {
       await client.query("ROLLBACK");
@@ -212,6 +220,11 @@ router.patch("/organisations/:id/status", async (req, res) => {
     if (rowCount === 0) {
       return sendErr(res, req, 404, "Organisation not found");
     }
+
+    await audit(req, status === "SUSPENDED" ? "PROVIDER_SUSPENDED" : "PROVIDER_ACTIVATED", {
+      targetType: "organisation",
+      targetId: String(id),
+    });
 
     return res.json({ ok: true, id, status });
   } catch (err) {
@@ -261,6 +274,11 @@ router.patch("/users/:id/status", async (req, res) => {
       isActive,
       id,
     ]);
+
+    await audit(req, isActive ? "USER_REACTIVATED" : "USER_DEACTIVATED", {
+      targetType: "user",
+      targetId: String(id),
+    });
 
     return res.json({ ok: true, id, isActive: !!isActive });
   } catch (err) {
