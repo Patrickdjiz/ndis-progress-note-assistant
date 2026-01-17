@@ -57,7 +57,8 @@ router.get("/overview", async (req, res) => {
           full_name AS "fullName",
           role,
           is_active AS "isActive",
-          created_at AS "createdAt"
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
         FROM users
         WHERE organisation_id = $1
         ORDER BY role DESC, created_at DESC

@@ -1076,8 +1076,9 @@ router.post("/generate-note", async (req, res) => {
 
     const filteredBody = applyComplianceFilter(modelText, rawCombinedRedacted, workerName);
 
-    // ✅ Store BODY ONLY in DB (privacy + future-proofing)
-    const storedBody = String(filteredBody || "").trim();
+    // ✅ defense-in-depth: guarantee DB storage is body-only
+    const storedBody = stripNoteHeader(String(filteredBody || "")).trim();
+
 
     // Optional: still build a display note for the immediate response (copy/paste convenience)
     const header = [
@@ -1361,8 +1362,8 @@ if (row.reviewed_flag) {
 });
 
 // POST /api/notes/:id/archive
-// Body: { archivedFlag: boolean, archivedBy?: string }
-router.post("/notes/:id/archive",  notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
+// Body: { archivedFlag: boolean }
+router.post("/notes/:id/archive", notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -1373,39 +1374,37 @@ router.post("/notes/:id/archive",  notesWriteIpLimiter, notesWriteUserLimiter, a
       return sendErr(res, req, 403, "Owners cannot access notes API");
     }
 
+    // ✅ Admin-only archive rule
+    if (req.user.role !== "ADMIN") {
+      return sendErr(res, req, 403, "Only admins can archive notes");
+    }
+
     const parsedBody = archiveBodySchema.safeParse(req.body || {});
     if (!parsedBody.success) {
       return sendErr(res, req, 400, "Invalid body");
     }
 
     const { archivedFlag } = parsedBody.data;
-
-
     const archivedBy = (req.user.fullName || "").trim();
+    const nowIso = new Date().toISOString();
 
-
-    // Must exist in org (+ if WORKER, must be their own note)
-    let sqlCheck = `
+    // Must exist in org (ADMIN scoped)
+    const { rows: exists } = await query(
+      `
       SELECT id
       FROM progress_notes
       WHERE id = $1
         AND organisation_id = $2
         AND deleted_at IS NULL
-    `;
-    const params = [id, req.user.organisationId];
-    let idx = 3;
+      LIMIT 1
+      `,
+      [id, req.user.organisationId]
+    );
 
-    if (req.user.role === "WORKER") {
-      sqlCheck += ` AND worker_user_id = $${idx++}`;
-      params.push(req.user.id);
-    }
-
-    const { rows: exists } = await query(sqlCheck, params);
     if (!exists[0]) return sendErr(res, req, 404, "Note not found");
 
-    const nowIso = new Date().toISOString();
-
-    let sqlUpdate = `
+    const { rows } = await query(
+      `
       UPDATE progress_notes
       SET archived_flag = $1,
           archived_at   = $2,
@@ -1414,23 +1413,21 @@ router.post("/notes/:id/archive",  notesWriteIpLimiter, notesWriteUserLimiter, a
       WHERE id = $4
         AND organisation_id = $5
         AND deleted_at IS NULL
-    `;
-    const up = [archivedFlag, archivedFlag ? nowIso : null, archivedFlag ? archivedBy : null, id, req.user.organisationId];
-
-    if (req.user.role === "WORKER") {
-      sqlUpdate += ` AND worker_user_id = $6`;
-      up.push(req.user.id);
-    }
-
-    sqlUpdate += ` RETURNING archived_flag, archived_at, archived_by`;
-
-    const { rows } = await query(sqlUpdate, up);
+      RETURNING archived_flag, archived_at, archived_by
+      `,
+      [
+        archivedFlag,
+        archivedFlag ? nowIso : null,
+        archivedFlag ? archivedBy : null,
+        id,
+        req.user.organisationId,
+      ]
+    );
 
     await audit(req, archivedFlag ? "NOTE_ARCHIVED" : "NOTE_UNARCHIVED", {
       targetType: "progress_note",
       targetId: String(id),
     });
-
 
     return res.json({
       ok: true,
@@ -1439,10 +1436,11 @@ router.post("/notes/:id/archive",  notesWriteIpLimiter, notesWriteUserLimiter, a
       archivedBy: rows[0].archived_by,
     });
   } catch (err) {
-    console.error(`[${req.id}] Error archiving note:`);
+    console.error(`[${req.id}] Error archiving note:`, err);
     return sendErr(res, req, 500, "Failed to update archive state");
   }
 });
+
 
 // POST /api/notes/:id/delete  (ADMIN only)
 router.post("/notes/:id/delete", notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
