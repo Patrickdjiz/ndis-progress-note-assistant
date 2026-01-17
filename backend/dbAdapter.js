@@ -159,8 +159,10 @@ async function setUserPassword(userId, passwordHash, { mustChangePassword = fals
         must_change_password = $2,
         password_changed_at = $3,
         reset_token_hash = NULL,
-        reset_token_expires_at = NULL
+        reset_token_expires_at = NULL,
+        updated_at = now()
     WHERE id = $4
+
     `,
     [passwordHash, !!mustChangePassword, nowIso, userId]
   );
@@ -198,7 +200,11 @@ async function updateUserProfile(userId, { email, fullName }) {
 
   params.push(userId);
 
-  await query(`UPDATE users SET ${fields.join(", ")} WHERE id = $${idx}`, params);
+  await query(
+    `UPDATE users SET ${fields.join(", ")}, updated_at = now() WHERE id = $${idx}`,
+    params
+  );
+
 }
 
 
