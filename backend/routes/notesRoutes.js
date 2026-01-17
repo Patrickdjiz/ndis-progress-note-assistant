@@ -1767,7 +1767,6 @@ router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (re
         COALESCE(NULLIF(final_note_text,''), note_text) AS "noteBody"
       FROM progress_notes
       WHERE organisation_id = $1
-        AND date ~ '^\\d{4}-\\d{2}-\\d{2}$'
         AND (date::date) BETWEEN $2::date AND $3::date
     `;
     const params = [req.user.organisationId, dateFrom, dateTo];

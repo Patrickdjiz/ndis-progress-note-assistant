@@ -32,7 +32,6 @@ async function purgeOnce() {
             OR
             (
                 o.auto_purge_enabled = true
-                AND p.date ~ '^\\d{4}-\\d{2}-\\d{2}$'
                 AND (p.date::date) < (current_date - COALESCE(o.retention_days, 365))
             )
         )
