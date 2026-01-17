@@ -10,18 +10,15 @@ function generateToken(user) {
       id: user.id,
       orgId: user.organisationId,
       role: user.role,
-      fullName: user.fullName,
-      email: user.email,
     },
     JWT_SECRET,
     {
       expiresIn: "4h",
       jwtid: crypto.randomUUID(),
-      // issuer: "ndisnotes-api",
-      // audience: "ndisnotes-web",
     }
   );
 }
+
 
 async function getSessionUserFromDb(userId) {
   const { rows } = await query(
@@ -131,6 +128,7 @@ async function requireAuth(req, res, next) {
     const allowWhenMustChange = new Set([
       "/api/account/change-password",
       "/api/account/profile",
+      "/api/auth/me",
       "/api/health",
       "/api/health/db",
     ]);

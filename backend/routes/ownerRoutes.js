@@ -213,7 +213,7 @@ router.patch("/organisations/:id/status", async (req, res) => {
     const { status } = parsed.data;
 
     const { rowCount } = await query(
-      `UPDATE organisations SET status = $1 WHERE id = $2`,
+      `UPDATE organisations SET status = $1, updated_at = now() WHERE id = $2`,
       [status, id]
     );
 
@@ -270,10 +270,11 @@ router.patch("/users/:id/status", async (req, res) => {
       return sendErr(res, req, 400, "You cannot change status of OWNER accounts");
     }
 
-    await query(`UPDATE users SET is_active = $1 WHERE id = $2`, [
+    await query(`UPDATE users SET is_active = $1, updated_at = now() WHERE id = $2`, [
       isActive,
       id,
     ]);
+
 
     await audit(req, isActive ? "USER_REACTIVATED" : "USER_DEACTIVATED", {
       targetType: "user",

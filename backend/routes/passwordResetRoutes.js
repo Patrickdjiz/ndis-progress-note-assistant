@@ -178,14 +178,15 @@ router.post("/forgot-password", async (req, res) => {
     </body>
   </html>`;
 
+  let sent = false;
+
   try {
     await sendMail({ to: rows[0].email, from, replyTo, subject, text, html });
+    sent = true;
   } catch (e) {
     console.error("Password reset email failed:", e?.message || e);
-    if (process.env.NODE_ENV !== "production") {
-      console.log("PASSWORD RESET LINK (dev):", resetLink);
 
-      await auditEvent(req, "PASSWORD_RESET_EMAIL_FAILED", {
+    await auditEvent(req, "PASSWORD_RESET_EMAIL_FAILED", {
       organisationId: rows[0].organisation_id,
       actorUserId: rows[0].id,
       actorRole: "USER",
@@ -193,17 +194,21 @@ router.post("/forgot-password", async (req, res) => {
       targetId: String(rows[0].id),
       meta: { error: String(e?.message || e).slice(0, 200) },
     });
+
+    if (process.env.NODE_ENV !== "production") {
+      console.log("PASSWORD RESET LINK (dev):", resetLink);
     }
   }
 
-  await auditEvent(req, "PASSWORD_RESET_EMAIL_SENT", {
-    organisationId: rows[0].organisation_id,
-    actorUserId: rows[0].id,
-    actorRole: "USER",
-    targetType: "user",
-    targetId: String(rows[0].id),
-  });
-
+  if (sent) {
+    await auditEvent(req, "PASSWORD_RESET_EMAIL_SENT", {
+      organisationId: rows[0].organisation_id,
+      actorUserId: rows[0].id,
+      actorRole: "USER",
+      targetType: "user",
+      targetId: String(rows[0].id),
+    });
+  }
 
     return res.json(okResponse);
   } catch (err) {

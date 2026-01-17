@@ -13,10 +13,7 @@ const auditSearchSchema = z.object({
   ),
   action: z.string().trim().max(100).optional(),
   targetType: z.string().trim().max(100).optional(),
-  cursor: z.preprocess(
-    (v) => (v === undefined || v === null || v === "" ? undefined : Number(v)),
-    z.number().int().positive().optional()
-  ),
+  cursor: z.string().regex(/^\d+$/).optional(),
   limit: z.preprocess(
     (v) => (v === undefined ? undefined : Number(v)),
     z.number().int().min(1).max(500).optional()
@@ -66,7 +63,7 @@ router.post(
       }
 
       if (body.cursor) {
-        where.push(`id < $${i++}`);
+        where.push(`id < $${i++}::bigint`);
         params.push(body.cursor);
       }
 

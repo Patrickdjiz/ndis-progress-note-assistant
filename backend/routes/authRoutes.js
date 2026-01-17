@@ -31,28 +31,29 @@ router.post("/login", async (req, res) => {
     }
 
     const { email, password } = parsed.data;
-
     const normalisedEmail = email.trim().toLowerCase();
-
     const emailHash = sha256Hex(normalisedEmail);
 
-    // if (!row)
+    // Fetch user
+    const row = await findUserByEmailWithOrg(normalisedEmail);
+
+    // Not found -> audit (hashed) + generic error
     if (!row) {
       await auditEvent(req, "LOGIN_FAILED", {
+        actorRole: "ANON",
         targetType: "auth",
         targetId: null,
         meta: { emailHash, reason: "invalid_credentials" },
-        actorRole: "ANON",
       });
       return sendErr(res, req, 401, "Invalid email or password");
     }
 
-    // if inactive
+    // Inactive -> audit + block
     if (!row.isActive) {
       await auditEvent(req, "LOGIN_BLOCKED", {
         organisationId: row.organisationId ?? null,
-        actorUserId: row.id ?? null,
-        actorRole: row.role ?? null,
+        actorUserId: row.id,
+        actorRole: row.role,
         targetType: "user",
         targetId: String(row.id),
         meta: { reason: "user_inactive" },
@@ -60,12 +61,12 @@ router.post("/login", async (req, res) => {
       return sendErr(res, req, 403, "This user account is inactive.");
     }
 
-    // if org suspended (non-owner)
+    // Suspended org -> audit + block (OWNER allowed)
     if (row.role !== "OWNER" && row.orgStatus !== "ACTIVE") {
       await auditEvent(req, "LOGIN_BLOCKED", {
         organisationId: row.organisationId ?? null,
-        actorUserId: row.id ?? null,
-        actorRole: row.role ?? null,
+        actorUserId: row.id,
+        actorRole: row.role,
         targetType: "organisation",
         targetId: String(row.organisationId),
         meta: { reason: "org_suspended" },
@@ -73,12 +74,13 @@ router.post("/login", async (req, res) => {
       return sendErr(res, req, 403, "This provider account is suspended.");
     }
 
-    // password mismatch
+    // Password verify
+    const ok = await bcrypt.compare(String(password), row.passwordHash);
     if (!ok) {
       await auditEvent(req, "LOGIN_FAILED", {
         organisationId: row.organisationId ?? null,
-        actorUserId: row.id ?? null,
-        actorRole: row.role ?? null,
+        actorUserId: row.id,
+        actorRole: row.role,
         targetType: "auth",
         targetId: String(row.id),
         meta: { reason: "invalid_credentials" },
@@ -86,37 +88,15 @@ router.post("/login", async (req, res) => {
       return sendErr(res, req, 401, "Invalid email or password");
     }
 
-    // success (right before return res.json)
+    // Success audit
     await auditEvent(req, "LOGIN_SUCCESS", {
       organisationId: row.organisationId ?? null,
-      actorUserId: row.id ?? null,
-      actorRole: row.role ?? null,
+      actorUserId: row.id,
+      actorRole: row.role,
       targetType: "user",
       targetId: String(row.id),
       meta: { mustChangePassword: !!row.mustChangePassword },
     });
-
-    // ✅ Use adapter (Postgres)
-    const row = await findUserByEmailWithOrg(normalisedEmail);
-
-    if (!row) {
-      return sendErr(res, req, 401, "Invalid email or password");
-    }
-
-    // Block deactivated users
-    if (!row.isActive) {
-      return sendErr(res, req, 403, "This user account is inactive.");
-    }
-
-    // Block users from a suspended provider (but still allow OWNER)
-    if (row.role !== "OWNER" && row.orgStatus !== "ACTIVE") {
-      return sendErr(res, req, 403, "This provider account is suspended.");
-    }
-
-    const ok = await bcrypt.compare(password, row.passwordHash);
-    if (!ok) {
-      return sendErr(res, req, 401, "Invalid email or password");
-    }
 
     const token = generateToken(row);
 
@@ -136,6 +116,7 @@ router.post("/login", async (req, res) => {
     return sendErr(res, req, 500, "Login failed");
   }
 });
+
 
 // GET /api/auth/me
 router.get("/auth/me", requireAuth, (req, res) => {
