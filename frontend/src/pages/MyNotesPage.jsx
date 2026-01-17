@@ -231,7 +231,7 @@ const fetchNotes = async ({ append = false, cursor = undefined } = {}) => {
         }}
       >
         <span style={{ fontSize: "0.85rem", color: "#6b7280", wordBreak: "break-word", flex: "1 1 auto" }}>
-          Logged in as <strong>{user.fullName}</strong> – worker view
+          Logged in as <strong>{user?.fullName || "User"}</strong> – worker view
         </span>
         <button
           type="button"
