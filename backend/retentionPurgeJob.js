@@ -1,5 +1,5 @@
 // jobs/retentionPurgeJob.js
-const { query } = require("../dbAdapter");
+const { query } = require("./dbAdapter");
 
 // Use a fixed advisory lock key (any int is fine; keep stable)
 const LOCK_KEY = 91345217;
