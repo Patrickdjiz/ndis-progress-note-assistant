@@ -201,13 +201,15 @@ function NotesDashboardPage({ token, user }) {
   };
 
   const pillBtn = (overrides = {}) => ({
-    padding: "0.5rem 1.2rem",
-    borderRadius: "999px",
+    padding: isMobile ? "0.7rem 1rem" : "0.55rem 0.9rem",
+    borderRadius: 12, // ✅ normal button instead of pill
     fontSize: "0.85rem",
-    fontWeight: 500,
+    fontWeight: 700,
+    lineHeight: 1.2,
     ...(isMobile ? { width: "100%", minHeight: 44 } : {}),
     ...overrides,
   });
+
 
   // -------------------- Fetch Notes --------------------
   const fetchNotes = async ({ append = false, cursor = undefined } = {}) => {
@@ -459,43 +461,49 @@ function NotesDashboardPage({ token, user }) {
   };
 
   const handleToggleLegalHold = async () => {
-    try {
-      setErrorMsg("");
-      if (!selectedNote) return;
+  try {
+    setErrorMsg("");
+    if (!selectedNote) return;
 
-      const next = !selectedNote.legalHold;
-      const ok = window.confirm(
-        next
-          ? "Enable legal hold? This blocks retention purge for this note."
-          : "Disable legal hold? This allows retention purge to run when due."
-      );
-      if (!ok) return;
+    const next = !selectedNote.legalHold;
 
-      setActing(true);
-      const data = await apiFetch(`/api/notes/${selectedNote.id}/legal-hold`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ legalHold: next }),
-      });
+    const ok = window.confirm(
+      next
+        ? "Enable legal hold? This blocks retention purge for this note."
+        : "Disable legal hold? This allows retention purge to run when due."
+    );
+    if (!ok) return;
 
-      setSelectedNote((prev) =>
-        prev
-          ? {
-              ...prev,
-              legalHold: data.legalHold,
-              legalHoldSetAt: data.legalHoldSetAt,
-              legalHoldSetBy: data.legalHoldSetBy,
-            }
-          : prev
-      );
+    setActing(true);
 
-      fetchNotes();
-    } catch (e) {
-      setErrorMsg(e?.message || "Failed to update legal hold.");
-    } finally {
-      setActing(false);
-    }
-  };
+    const resp = await apiFetch(`/api/notes/${selectedNote.id}/legal-hold`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ legalHold: next }),
+    });
+
+    const out = resp?.note ?? resp; // ✅ supports both response shapes
+
+    setSelectedNote((prev) =>
+      prev
+        ? {
+            ...prev,
+            legalHold: out.legalHold,
+            legalHoldSetAt: out.legalHoldSetAt,
+            legalHoldSetBy: out.legalHoldSetBy,
+          }
+        : prev
+    );
+
+    fetchNotes();
+  } catch (e) {
+    console.error("Legal hold error:", e);
+    setErrorMsg(e?.message || String(e) || "Failed to set legal hold.");
+  } finally {
+    setActing(false);
+  }
+};
+
 
   // -------------------- METADATA EDIT --------------------
   const openMetadataModal = () => {
@@ -1123,7 +1131,7 @@ function NotesDashboardPage({ token, user }) {
                       cursor: "pointer",
                     })}
                   >
-                    {selectedNote.legalHold ? "Legal hold ON" : "Legal hold OFF"}
+                    {selectedNote.legalHold ? "Disable legal hold" : "Enable legal hold"}
                   </button>
 
                   {!selectedNote.deletedAt ? (

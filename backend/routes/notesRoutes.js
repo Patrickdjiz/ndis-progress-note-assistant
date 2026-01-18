@@ -1602,14 +1602,15 @@ router.post("/notes/:id/legal-hold", notesWriteIpLimiter, notesWriteUserLimiter,
           legal_hold_set_at = CASE WHEN $1 THEN $2 ELSE NULL END,
           legal_hold_set_by = CASE WHEN $1 THEN $3 ELSE NULL END,
           legal_hold_set_by_user_id = CASE WHEN $1 THEN $4 ELSE NULL END,
-          updated_at    = now()
+          updated_at = now()
       WHERE id = $5
         AND organisation_id = $6
-        AND deleted_at IS NULL
+        AND purged_at IS NULL
       RETURNING legal_hold, legal_hold_set_at, legal_hold_set_by
       `,
       [legalHold, nowIso, byName, req.user.id, id, req.user.organisationId]
     );
+
 
     if (!rows[0]) return sendErr(res, req, 404, "Note not found");
 
