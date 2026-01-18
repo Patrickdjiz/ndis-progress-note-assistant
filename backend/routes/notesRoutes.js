@@ -1599,7 +1599,7 @@ router.post("/notes/:id/legal-hold", notesWriteIpLimiter, notesWriteUserLimiter,
       `
       UPDATE progress_notes
       SET legal_hold = $1,
-          legal_hold_set_at = CASE WHEN $1 THEN $2 ELSE NULL END,
+          legal_hold_set_at = CASE WHEN $1 THEN $2::timestamptz ELSE NULL END,
           legal_hold_set_by = CASE WHEN $1 THEN $3 ELSE NULL END,
           legal_hold_set_by_user_id = CASE WHEN $1 THEN $4 ELSE NULL END,
           updated_at = now()
@@ -1610,6 +1610,7 @@ router.post("/notes/:id/legal-hold", notesWriteIpLimiter, notesWriteUserLimiter,
       `,
       [legalHold, now, byName, req.user.id, id, req.user.organisationId]
     );
+
 
 
     if (!rows[0]) return sendErr(res, req, 404, "Note not found");
