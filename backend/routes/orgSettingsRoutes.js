@@ -9,9 +9,9 @@ const router = express.Router();
 router.use(requireAuth);
 
 const updateSchema = z.object({
-  organisationId: z.number().int().positive().optional(), // OWNER only
-  retentionDays: z.number().int().min(30).max(36500).optional(),
-  deleteGraceDays: z.number().int().min(1).max(365).optional(),
+  retentionDays: z.coerce.number().int().min(30).max(36500).optional(),
+deleteGraceDays: z.coerce.number().int().min(1).max(365).optional(),
+organisationId: z.coerce.number().int().positive().optional(),
   autoPurgeEnabled: z.boolean().optional(),
 }).refine((v) => v.retentionDays !== undefined || v.deleteGraceDays !== undefined || v.autoPurgeEnabled !== undefined, {
   message: "Provide at least one setting to update.",
@@ -25,9 +25,13 @@ router.get("/settings", async (req, res) => {
 
     // ADMIN -> own org, OWNER -> can query ?organisationId=
     let orgId = req.user.organisationId;
+
     if (req.user.role === "OWNER") {
-      const q = req.query.organisationId ? Number(req.query.organisationId) : null;
-      if (q && Number.isInteger(q)) orgId = q;
+    const q = req.query.organisationId ? Number(req.query.organisationId) : null;
+    if (!q || !Number.isInteger(q) || q <= 0) {
+        return res.status(400).json({ error: "organisationId is required for OWNER", requestId: req.id });
+    }
+    orgId = q;
     }
 
     const { rows } = await query(

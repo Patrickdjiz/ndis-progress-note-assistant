@@ -411,6 +411,9 @@ function normaliseNoteRow(row) {
     legalHoldSetAt: row.legal_hold_set_at,
     legalHoldSetBy: row.legal_hold_set_by,
 
+    purgedAt: row.purged_at,
+    deletedByUserId: row.deleted_by_user_id,
+    legalHoldSetByUserId: row.legal_hold_set_by_user_id,
   };
 }
 
@@ -797,6 +800,7 @@ router.post("/notes/:id/finalise", notesWriteIpLimiter, notesWriteUserLimiter, a
         SET final_note_text = $1,
             finalised_at   = $2,
             finalised_by   = $3,
+            updated_at    = now(),
             current_version_no = current_version_no + 1
         WHERE id = $4
           AND organisation_id = $5
@@ -885,7 +889,44 @@ router.post("/generate-note", async (req, res) => {
     }
 
     // Always take worker name from the logged-in user (prevents spoofing)
-    const workerName = (req.user.fullName || "").trim() || "Support Worker";
+    // --- worker attribution (provider-ready) ---
+    let workerUserId = req.user.id;
+    let workerName = (req.user.fullName || "").trim() || "Support Worker";
+
+    // ADMIN can generate ONLY on behalf of an actual worker in the same org
+    if (req.user.role === "ADMIN") {
+      const selectedWorkerId = parsed.data.workerUserId;
+
+      if (!selectedWorkerId) {
+        return sendErr(res, req, 400, "Admins must select a worker before generating.");
+      }
+
+      const { rows: wRows } = await query(
+        `
+        SELECT id, full_name
+        FROM users
+        WHERE id = $1
+          AND organisation_id = $2
+          AND role = 'WORKER'
+          AND is_active = TRUE
+        LIMIT 1
+        `,
+        [selectedWorkerId, req.user.organisationId]
+      );
+
+      if (!wRows[0]) {
+        return sendErr(res, req, 400, "Selected worker is invalid or not active.");
+      }
+
+      workerUserId = wRows[0].id;
+      workerName = (wRows[0].full_name || "").trim() || "Support Worker";
+    } else {
+      // WORKER must NOT spoof workerUserId
+      if (parsed.data.workerUserId) {
+        return sendErr(res, req, 400, "Workers cannot set workerUserId.");
+      }
+    }
+
 
     // 2. Date sanity
     const shiftDate = parseYyyyMmDd(date);
@@ -1132,9 +1173,9 @@ router.post("/generate-note", async (req, res) => {
 
     const { rows } = await query(insertSql, [
       req.user.organisationId,
-      req.user.id,
+      workerUserId,                 // ✅ attributed worker
       participantName,
-      workerName,
+      workerName,                   // ✅ name snapshot of that worker
       date,
       startTime,
       endTime,
@@ -1144,9 +1185,10 @@ router.post("/generate-note", async (req, res) => {
       createdAt,
       consentAcknowledged,
       consentAckAt,
-      req.user.id,
-      1, // ✅ current_version_no
+      req.user.id,                  // ✅ actor who acknowledged (admin/worker)
+      1,
     ]);
+
 
     const newId = rows[0].id;
 
@@ -1512,10 +1554,11 @@ router.post("/notes/:id/restore", notesWriteIpLimiter, notesWriteUserLimiter, as
           deleted_by = NULL,
           deleted_by_user_id = NULL,
           deleted_reason = NULL,
-          updated_at    = now()
+          updated_at = now()
       WHERE id = $1
         AND organisation_id = $2
         AND deleted_at IS NOT NULL
+        AND purged_at IS NULL
       RETURNING id
       `,
       [id, req.user.organisationId]
@@ -1764,6 +1807,7 @@ router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (re
         deleted_by AS "deletedBy",
         deleted_reason AS "deletedReason",
         created_at AS "createdAt",
+        purged_at AS "purgedAt",
         COALESCE(NULLIF(final_note_text,''), note_text) AS "noteBody"
       FROM progress_notes
       WHERE organisation_id = $1
@@ -1813,6 +1857,7 @@ router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (re
       "deletedAt","deletedBy","deletedReason",
       "createdAt",
       "noteBody",
+      "purgedAt",
     ];
 
     const csvRows = rows.map((r) => ({

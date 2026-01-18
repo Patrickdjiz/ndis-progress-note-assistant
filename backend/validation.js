@@ -59,6 +59,11 @@ const generateNoteSchema = z.object({
   followUpActions: nonEmptyString("followUpActions", 4000),
   incidentOccurred: z.boolean(),
   consentAcknowledged: z.literal(true),
+  workerUserId: z
+    .preprocess((v) => (v === undefined || v === null || v === "" ? undefined : Number(v)),
+      z.number().int().positive()
+    )
+    .optional(),
 });
 
 // POST /api/users

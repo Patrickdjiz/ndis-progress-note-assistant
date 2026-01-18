@@ -2,15 +2,33 @@
 const app = require("./app");
 const { closePool } = require("./pgClient");
 const { PORT } = require("./config/env");
-const { closeRateLimitRedis } = require("./rateLimit"); // ✅ add
-const { startPurgeJob } = require("./purgeJob");
-
+const { closeRateLimitRedis } = require("./rateLimit");
+const { runRetentionPurgeJob } = require("./retentionPurgeJob");
 
 const server = app.listen(PORT, () => {
   console.log(`API listening on port ${PORT}`);
 });
 
-startPurgeJob();
+
+// ✅ Retention + purge job (daily)
+if (process.env.RETENTION_JOB_ENABLED === "true") {
+  const run = async () => {
+    try {
+      const out = await runRetentionPurgeJob();
+      console.log("Retention job:", out);
+    } catch (e) {
+      console.error("Retention job failed:", e);
+    }
+  };
+
+  // optional: run once on boot
+  if (process.env.RETENTION_JOB_RUN_ON_BOOT === "true") {
+    run();
+  }
+
+  // run every 24 hours
+  setInterval(run, 24 * 60 * 60 * 1000).unref();
+}
 
 let shuttingDown = false;
 
@@ -20,10 +38,8 @@ async function shutdown(signal) {
 
   console.log(`${signal} received — shutting down gracefully...`);
 
-  // Stop accepting new connections
   server.close(async () => {
     try {
-      // ✅ close Redis first (rate limit store)
       await closeRateLimitRedis();
       console.log("Rate-limit Redis closed.");
     } catch (e) {
@@ -40,7 +56,6 @@ async function shutdown(signal) {
     }
   });
 
-  // Force exit if something hangs
   setTimeout(async () => {
     try {
       await closeRateLimitRedis();
