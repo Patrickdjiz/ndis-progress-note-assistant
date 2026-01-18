@@ -1127,7 +1127,7 @@ function NotesDashboardPage({ token, user }) {
                       border: "1px solid #e5e7eb",
                       background: selectedNote.legalHold ? "#5b21b6" : "#ffffff",
                       color: selectedNote.legalHold ? "#ffffff" : PRIMARY,
-                      fontWeight: 800,
+                      fontWeight: 700,
                       cursor: "pointer",
                     })}
                   >
@@ -1143,7 +1143,7 @@ function NotesDashboardPage({ token, user }) {
                         border: "1px solid #fecaca",
                         background: "#fef2f2",
                         color: "#b91c1c",
-                        fontWeight: 800,
+                        fontWeight: 700,
                         cursor: "pointer",
                       })}
                     >
@@ -1158,7 +1158,7 @@ function NotesDashboardPage({ token, user }) {
                         border: "1px solid #e5e7eb",
                         background: "#ffffff",
                         color: PRIMARY,
-                        fontWeight: 800,
+                        fontWeight: 700,
                         cursor: "pointer",
                       })}
                     >
@@ -1234,7 +1234,7 @@ function NotesDashboardPage({ token, user }) {
                     background: selectedNote?.archivedFlag ? "#111827" : "#ffffff",
                     color: selectedNote?.archivedFlag ? "#ffffff" : PRIMARY,
                     fontSize: "0.8rem",
-                    fontWeight: 800,
+                    fontWeight: 700,
                     cursor: archiving ? "wait" : "pointer",
                   })}
                 >
@@ -1308,7 +1308,7 @@ function NotesDashboardPage({ token, user }) {
               type="button"
               onClick={saveMetadata}
               disabled={metaSaving}
-              style={pillBtn({ border: "none", background: PRIMARY, color: "#fff", fontWeight: 800, cursor: metaSaving ? "wait" : "pointer" })}
+              style={pillBtn({ border: "none", background: PRIMARY, color: "#fff", fontWeight: 700, cursor: metaSaving ? "wait" : "pointer" })}
             >
               {metaSaving ? "Saving…" : "Save"}
             </button>
@@ -1413,7 +1413,7 @@ function NotesDashboardPage({ token, user }) {
               type="button"
               onClick={runExport}
               disabled={exporting}
-              style={pillBtn({ border: "none", background: PRIMARY, color: "#fff", fontWeight: 900, cursor: exporting ? "wait" : "pointer" })}
+              style={pillBtn({ border: "none", background: PRIMARY, color: "#fff", fontWeight: 700, cursor: exporting ? "wait" : "pointer" })}
             >
               {exporting ? "Exporting…" : "Download"}
             </button>

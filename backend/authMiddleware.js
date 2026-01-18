@@ -66,8 +66,17 @@ async function requireAuth(req, res, next) {
       .json({ error: "Invalid or expired token", requestId: req.id });
   }
 
+    // ✅ Force numeric user id from token (JWT payloads can be strings)
+  const tokenUserId = Number(payload.id);
+  if (!Number.isInteger(tokenUserId)) {
+    return res.status(401).json({
+      error: "Invalid token payload",
+      requestId: req.id,
+    });
+  }
+
   try {
-    const dbUser = await getSessionUserFromDb(payload.id);
+    const dbUser = await getSessionUserFromDb(tokenUserId);
 
     if (!dbUser) {
       return res
@@ -112,13 +121,14 @@ async function requireAuth(req, res, next) {
 
     // DB truth wins
     req.user = {
-      id: dbUser.id,
-      organisationId: dbUser.organisationId,
+      id: Number(dbUser.id),
+      organisationId: Number(dbUser.organisationId),
       role: dbUser.role,
       fullName: dbUser.fullName,
       email: dbUser.email,
       mustChangePassword: !!dbUser.mustChangePassword,
     };
+
 
     // backend/authMiddleware.js (inside requireAuth, after req.user = {...})
 
