@@ -1592,7 +1592,7 @@ router.post("/notes/:id/legal-hold", notesWriteIpLimiter, notesWriteUserLimiter,
     if (!parsedBody.success) return sendErr(res, req, 400, "Invalid body");
 
     const { legalHold } = parsedBody.data;
-    const nowIso = new Date().toISOString();
+    const now = new Date();
     const byName = (req.user.fullName || "").trim() || "Admin";
 
     const { rows } = await query(
@@ -1608,7 +1608,7 @@ router.post("/notes/:id/legal-hold", notesWriteIpLimiter, notesWriteUserLimiter,
         AND purged_at IS NULL
       RETURNING legal_hold, legal_hold_set_at, legal_hold_set_by
       `,
-      [legalHold, nowIso, byName, req.user.id, id, req.user.organisationId]
+      [legalHold, now, byName, req.user.id, id, req.user.organisationId]
     );
 
 
