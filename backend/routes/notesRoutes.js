@@ -1579,58 +1579,69 @@ router.post("/notes/:id/restore", notesWriteIpLimiter, notesWriteUserLimiter, as
 });
 
 // POST /api/notes/:id/legal-hold  (ADMIN only)
-router.post("/notes/:id/legal-hold", notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) return sendErr(res, req, 400, "Invalid note id");
+router.post(
+  "/notes/:id/legal-hold",
+  notesWriteIpLimiter,
+  notesWriteUserLimiter,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return sendErr(res, req, 400, "Invalid note id");
 
-    if (req.user.role !== "ADMIN") {
-      return sendErr(res, req, 403, "Only admins can set legal hold");
+      if (req.user.role !== "ADMIN") {
+        return sendErr(res, req, 403, "Only admins can set legal hold");
+      }
+
+      const parsedBody = legalHoldBodySchema.safeParse(req.body || {});
+      if (!parsedBody.success) return sendErr(res, req, 400, "Invalid body");
+
+      const { legalHold } = parsedBody.data;
+
+      // ✅ force numeric IDs (JWT payloads are often strings)
+      const actorUserId = Number(req.user.id);
+      const orgId = Number(req.user.organisationId);
+      if (!Number.isInteger(actorUserId) || !Number.isInteger(orgId)) {
+        return sendErr(res, req, 401, "Invalid session");
+      }
+
+      const byName = (req.user.fullName || "").trim() || "Admin";
+
+      const { rows } = await query(
+        `
+        UPDATE progress_notes
+        SET legal_hold = $1,
+            legal_hold_set_at = CASE WHEN $1 THEN now() ELSE NULL END,
+            legal_hold_set_by = CASE WHEN $1 THEN $2 ELSE NULL END,
+            legal_hold_set_by_user_id = CASE WHEN $1 THEN $3::int ELSE NULL END,
+            updated_at = now()
+        WHERE id = $4
+          AND organisation_id = $5
+          AND purged_at IS NULL
+        RETURNING legal_hold, legal_hold_set_at, legal_hold_set_by
+        `,
+        [legalHold, byName, actorUserId, id, orgId]
+      );
+
+      if (!rows[0]) return sendErr(res, req, 404, "Note not found");
+
+      await audit(req, legalHold ? "NOTE_LEGAL_HOLD_SET" : "NOTE_LEGAL_HOLD_CLEARED", {
+        targetType: "progress_note",
+        targetId: String(id),
+      });
+
+      return res.json({
+        ok: true,
+        legalHold: rows[0].legal_hold,
+        legalHoldSetAt: rows[0].legal_hold_set_at,
+        legalHoldSetBy: rows[0].legal_hold_set_by,
+      });
+    } catch (err) {
+      console.error(`[${req.id}] Error setting legal hold:`, err);
+      return sendErr(res, req, 500, "Failed to set legal hold");
     }
-
-    const parsedBody = legalHoldBodySchema.safeParse(req.body || {});
-    if (!parsedBody.success) return sendErr(res, req, 400, "Invalid body");
-
-    const { legalHold } = parsedBody.data;
-    const now = new Date();
-    const byName = (req.user.fullName || "").trim() || "Admin";
-
-    const { rows } = await query(
-      `
-      UPDATE progress_notes
-      SET legal_hold = $1,
-          legal_hold_set_at = CASE WHEN $1 THEN $2::timestamptz ELSE NULL END,
-          legal_hold_set_by = CASE WHEN $1 THEN $3 ELSE NULL END,
-          legal_hold_set_by_user_id = CASE WHEN $1 THEN $4 ELSE NULL END,
-          updated_at = now()
-      WHERE id = $5
-        AND organisation_id = $6
-        AND purged_at IS NULL
-      RETURNING legal_hold, legal_hold_set_at, legal_hold_set_by
-      `,
-      [legalHold, now, byName, req.user.id, id, req.user.organisationId]
-    );
-
-
-
-    if (!rows[0]) return sendErr(res, req, 404, "Note not found");
-
-    await audit(req, legalHold ? "NOTE_LEGAL_HOLD_SET" : "NOTE_LEGAL_HOLD_CLEARED", {
-      targetType: "progress_note",
-      targetId: String(id),
-    });
-
-    return res.json({
-      ok: true,
-      legalHold: rows[0].legal_hold,
-      legalHoldSetAt: rows[0].legal_hold_set_at,
-      legalHoldSetBy: rows[0].legal_hold_set_by,
-    });
-  } catch (err) {
-    console.error(`[${req.id}] Error setting legal hold:`, err);
-    return sendErr(res, req, 500, "Failed to set legal hold");
   }
-});
+);
+
 
 // POST /api/notes/:id/metadata  (ADMIN only)
 // Allows correction of participantName/date/times/location/incidentFlag (audited)
