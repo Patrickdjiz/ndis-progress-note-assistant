@@ -564,53 +564,68 @@ function NotesDashboardPage({ token, user }) {
   };
 
   // -------------------- EXPORT --------------------
-  const runExport = async () => {
-    try {
-      setExportMsg("");
-      setErrorMsg("");
-      setExporting(true);
+  // put these helpers inside NotesDashboardPage (above runExport) or outside component
+const todayYmd = () => new Date().toISOString().slice(0, 10);
+const daysAgoYmd = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
 
-      const payload = {
-        participant: exportParticipant.trim() || undefined,
-        dateFrom: exportFrom || undefined,
-        dateTo: exportTo || undefined,
-        includeArchived: exportIncludeArchived, // backend can interpret "all"/true/false
-        includeDeleted: !!exportIncludeDeleted,
-        format: exportFormat, // csv|json
-      };
+const runExport = async () => {
+  try {
+    setExportMsg("");
+    setErrorMsg("");
+    setExporting(true);
 
-      if (exportFormat === "csv") {
-        const blob = await apiFetchBlob("/api/notes/export", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+    // default to last 30 days if blank
+    const dateFrom = exportFrom || daysAgoYmd(30);
+    const dateTo = exportTo || todayYmd();
 
-        const fname = `notes_export_${payload.participant ? payload.participant.replace(/\s+/g, "_") + "_" : ""}${payload.dateFrom || "from"}_${payload.dateTo || "to"}.csv`;
-        downloadBlob(blob, fname);
-        setExportMsg("Export downloaded.");
-        setExportOpen(false);
-        return;
-      }
+    // backend currently expects includeArchived BOOLEAN.
+    // We'll map your dropdown:
+    // - "all" => include archived => true
+    // - "false" => exclude archived => false
+    // - "true" (archived only) is NOT supported by current backend (see backend patch below)
+    const includeArchived =
+      exportIncludeArchived === "false" ? false : true;
 
-      // json: download as a file too
-      const data = await apiFetch("/api/notes/export", {
+    const payload = {
+      participant: exportParticipant.trim() || undefined,
+      dateFrom,
+      dateTo,
+      includeArchived,
+      includeDeleted: !!exportIncludeDeleted,
+      format: exportFormat, // csv|json
+    };
+
+    if (exportFormat === "csv") {
+      const blob = await apiFetchBlob("/api/notes/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const fname = `notes_export_${payload.participant ? payload.participant.replace(/\s+/g, "_") + "_" : ""}${payload.dateFrom || "from"}_${payload.dateTo || "to"}.json`;
-      downloadBlob(jsonBlob, fname);
+      const fname = `notes_export_${payload.participant ? payload.participant.replace(/\s+/g, "_") + "_" : ""}${dateFrom}_${dateTo}.csv`;
+      downloadBlob(blob, fname);
       setExportMsg("Export downloaded.");
       setExportOpen(false);
-    } catch (e) {
-      setExportMsg(e?.message || "Export failed.");
-    } finally {
-      setExporting(false);
+      return;
     }
-  };
+
+    const data = await apiFetch("/api/notes/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const fname = `notes_export_${payload.participant ? payload.participant.replace(/\s+/g, "_") + "_" : ""}${dateFrom}_${dateTo}.json`;
+    downloadBlob(jsonBlob, fname);
+    setExportMsg("Export downloaded.");
+    setExportOpen(false);
+  } catch (e) {
+    setExportMsg(e?.message || "Export failed.");
+  } finally {
+    setExporting(false);
+  }
+};
 
   // -------------------- RETENTION SETTINGS --------------------
   const loadSettings = async () => {
@@ -632,38 +647,47 @@ function NotesDashboardPage({ token, user }) {
   };
 
   const saveSettings = async () => {
-    try {
-      setSettingsMsg("");
-      setSettingsSaving(true);
+  try {
+    setSettingsMsg("");
+    setSettingsSaving(true);
 
-      const payload = {
-        retentionDays: Number(orgSettings.retentionDays),
-        deleteGraceDays: Number(orgSettings.deleteGraceDays),
-        autoPurgeEnabled: !!orgSettings.autoPurgeEnabled,
-      };
+    const retentionDays = Number(orgSettings.retentionDays);
+    const deleteGraceDays = Number(orgSettings.deleteGraceDays);
 
-      // basic constraints
-      if (!Number.isFinite(payload.retentionDays) || payload.retentionDays < 1) {
-        return setSettingsMsg("Retention days must be >= 1.");
-      }
-      if (!Number.isFinite(payload.deleteGraceDays) || payload.deleteGraceDays < 0) {
-        return setSettingsMsg("Delete grace days must be >= 0.");
-      }
-
-      await apiFetch("/api/org/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      setSettingsMsg("Saved.");
-      setSettingsOpen(false);
-    } catch (e) {
-      setSettingsMsg(e?.message || "Failed to save settings.");
-    } finally {
-      setSettingsSaving(false);
+    if (!Number.isFinite(retentionDays) || retentionDays < 30) {
+      return setSettingsMsg("Retention must be at least 30 days.");
     }
-  };
+    if (!Number.isFinite(deleteGraceDays) || deleteGraceDays < 0) {
+      return setSettingsMsg("Delete grace days must be 0 or more.");
+    }
+
+    const payload = {
+      retentionDays,
+      deleteGraceDays,
+      autoPurgeEnabled: !!orgSettings.autoPurgeEnabled,
+    };
+
+    await apiFetch("/api/org/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    setSettingsMsg("Saved.");
+    setSettingsOpen(false);
+  } catch (e) {
+    // Optional “polish”: convert known backend message into a nicer one
+    const raw = e?.message || "Failed to save settings.";
+    const nice =
+      raw.includes("Too small") && raw.includes(">=30")
+        ? "Retention must be at least 30 days."
+        : raw;
+
+    setSettingsMsg(nice);
+  } finally {
+    setSettingsSaving(false);
+  }
+};
 
   // open settings modal and load
   const openSettings = async () => {
@@ -1534,11 +1558,14 @@ function NotesDashboardPage({ token, user }) {
               </label>
               <input
                 type="number"
-                min={1}
+                min={30}
                 value={orgSettings.retentionDays}
                 onChange={(e) => setOrgSettings((p) => ({ ...p, retentionDays: e.target.value }))}
                 style={inputBase}
               />
+              <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#6b7280" }}>
+                Minimum 30 days.
+              </div>
             </div>
 
             <div>

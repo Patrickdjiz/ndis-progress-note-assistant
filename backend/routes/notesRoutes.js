@@ -227,7 +227,12 @@ const exportBodySchema = z.object({
   participant: z.string().trim().max(200).optional(),
   dateFrom: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
   dateTo: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
-  includeArchived: z.boolean().optional().default(true),
+
+  // accept the UI values
+  includeArchived: z.union([z.literal("all"), z.literal("true"), z.literal("false"), z.boolean()])
+    .optional()
+    .default("all"),
+
   includeDeleted: z.boolean().optional().default(false),
   format: z.enum(["csv", "json"]).optional().default("csv"),
 });
@@ -1834,9 +1839,18 @@ router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (re
       params.push(`%${participant.trim()}%`);
     }
 
-    if (!includeArchived) {
-      sql += ` AND archived_flag = FALSE`;
-    }
+    // includeArchived can be: "all" | "true" | "false" | boolean
+    let archivedMode = includeArchived;
+
+    // normalize booleans into "all"/"false"
+    if (archivedMode === true) archivedMode = "all";
+    if (archivedMode === false) archivedMode = "false";
+
+    if (archivedMode === "true") {
+      sql += ` AND archived_flag = TRUE`;       // archived only
+    } else if (archivedMode === "false") {
+      sql += ` AND archived_flag = FALSE`;      // exclude archived
+    } // "all" => no filter
 
     if (!canIncludeDeleted) {
       sql += ` AND deleted_at IS NULL`;
