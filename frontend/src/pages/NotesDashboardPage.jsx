@@ -846,6 +846,7 @@ const runExport = async () => {
             background: PRIMARY,
             color: "#f9fafb",
             cursor: notesLoading ? "wait" : "pointer",
+            fontWeight: 500,
           })}
         >
           {notesLoading ? "Loading…" : "Refresh"}
