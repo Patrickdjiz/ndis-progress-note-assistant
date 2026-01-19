@@ -708,7 +708,7 @@ function NotesDashboardPage({ token, user }) {
                   border: "1px solid #e5e7eb",
                   background: "#ffffff",
                   color: PRIMARY,
-                  fontWeight: 700,
+                  fontWeight: 500,
                   cursor: "pointer",
                 })}
               >
@@ -722,7 +722,7 @@ function NotesDashboardPage({ token, user }) {
                   border: "1px solid #e5e7eb",
                   background: "#ffffff",
                   color: PRIMARY,
-                  fontWeight: 700,
+                  fontWeight: 500,
                   cursor: "pointer",
                 })}
               >
@@ -989,7 +989,7 @@ function NotesDashboardPage({ token, user }) {
                   background: "#ffffff",
                   color: PRIMARY,
                   fontSize: "0.8rem",
-                  fontWeight: 600,
+                  fontWeight: 500,
                   cursor: loadingMore ? "wait" : "pointer",
                 })}
               >
@@ -1112,7 +1112,7 @@ function NotesDashboardPage({ token, user }) {
                       border: "1px solid #e5e7eb",
                       background: "#ffffff",
                       color: PRIMARY,
-                      fontWeight: 700,
+                      fontWeight: 500,
                       cursor: "pointer",
                     })}
                   >
@@ -1127,7 +1127,7 @@ function NotesDashboardPage({ token, user }) {
                       border: "1px solid #e5e7eb",
                       background: selectedNote.legalHold ? "#5b21b6" : "#ffffff",
                       color: selectedNote.legalHold ? "#ffffff" : PRIMARY,
-                      fontWeight: 700,
+                      fontWeight: 500,
                       cursor: "pointer",
                     })}
                   >
@@ -1143,7 +1143,7 @@ function NotesDashboardPage({ token, user }) {
                         border: "1px solid #fecaca",
                         background: "#fef2f2",
                         color: "#b91c1c",
-                        fontWeight: 700,
+                        fontWeight: 500,
                         cursor: "pointer",
                       })}
                     >
@@ -1158,7 +1158,7 @@ function NotesDashboardPage({ token, user }) {
                         border: "1px solid #e5e7eb",
                         background: "#ffffff",
                         color: PRIMARY,
-                        fontWeight: 700,
+                        fontWeight: 500,
                         cursor: "pointer",
                       })}
                     >
@@ -1218,7 +1218,7 @@ function NotesDashboardPage({ token, user }) {
                     background: "#ffffff",
                     color: PRIMARY,
                     fontSize: "0.8rem",
-                    fontWeight: 700,
+                    fontWeight: 500,
                     cursor: downloadingPdf ? "wait" : "pointer",
                   })}
                 >
@@ -1234,7 +1234,7 @@ function NotesDashboardPage({ token, user }) {
                     background: selectedNote?.archivedFlag ? "#111827" : "#ffffff",
                     color: selectedNote?.archivedFlag ? "#ffffff" : PRIMARY,
                     fontSize: "0.8rem",
-                    fontWeight: 700,
+                    fontWeight: 500,
                     cursor: archiving ? "wait" : "pointer",
                   })}
                 >
@@ -1300,7 +1300,7 @@ function NotesDashboardPage({ token, user }) {
             <button
               type="button"
               onClick={() => setMetaOpen(false)}
-              style={pillBtn({ border: "1px solid #e5e7eb", background: "#fff", color: PRIMARY, fontWeight: 700 })}
+              style={pillBtn({ border: "1px solid #e5e7eb", background: "#fff", color: PRIMARY, fontWeight: 500 })}
             >
               Cancel
             </button>
@@ -1308,7 +1308,7 @@ function NotesDashboardPage({ token, user }) {
               type="button"
               onClick={saveMetadata}
               disabled={metaSaving}
-              style={pillBtn({ border: "none", background: PRIMARY, color: "#fff", fontWeight: 700, cursor: metaSaving ? "wait" : "pointer" })}
+              style={pillBtn({ border: "none", background: PRIMARY, color: "#fff", fontWeight: 500, cursor: metaSaving ? "wait" : "pointer" })}
             >
               {metaSaving ? "Saving…" : "Save"}
             </button>
@@ -1405,7 +1405,7 @@ function NotesDashboardPage({ token, user }) {
             <button
               type="button"
               onClick={() => setExportOpen(false)}
-              style={pillBtn({ border: "1px solid #e5e7eb", background: "#fff", color: PRIMARY, fontWeight: 700 })}
+              style={pillBtn({ border: "1px solid #e5e7eb", background: "#fff", color: PRIMARY, fontWeight: 500 })}
             >
               Cancel
             </button>
@@ -1413,7 +1413,7 @@ function NotesDashboardPage({ token, user }) {
               type="button"
               onClick={runExport}
               disabled={exporting}
-              style={pillBtn({ border: "none", background: PRIMARY, color: "#fff", fontWeight: 700, cursor: exporting ? "wait" : "pointer" })}
+              style={pillBtn({ border: "none", background: PRIMARY, color: "#fff", fontWeight: 500, cursor: exporting ? "wait" : "pointer" })}
             >
               {exporting ? "Exporting…" : "Download"}
             </button>
@@ -1503,7 +1503,7 @@ function NotesDashboardPage({ token, user }) {
             <button
               type="button"
               onClick={() => setSettingsOpen(false)}
-              style={pillBtn({ border: "1px solid #e5e7eb", background: "#fff", color: PRIMARY, fontWeight: 700 })}
+              style={pillBtn({ border: "1px solid #e5e7eb", background: "#fff", color: PRIMARY, fontWeight: 500 })}
             >
               Cancel
             </button>
@@ -1511,7 +1511,7 @@ function NotesDashboardPage({ token, user }) {
               type="button"
               onClick={saveSettings}
               disabled={settingsSaving}
-              style={pillBtn({ border: "none", background: PRIMARY, color: "#fff", fontWeight: 900, cursor: settingsSaving ? "wait" : "pointer" })}
+              style={pillBtn({ border: "none", background: PRIMARY, color: "#fff", fontWeight: 500, cursor: settingsSaving ? "wait" : "pointer" })}
             >
               {settingsSaving ? "Saving…" : "Save"}
             </button>
