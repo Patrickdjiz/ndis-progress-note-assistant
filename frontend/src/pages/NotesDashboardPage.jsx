@@ -906,101 +906,94 @@ const runExport = async () => {
             </span>
           </div>
 
-          <div
-            style={{
-              maxHeight: isMobile ? "320px" : "360px",
-              overflowY: "auto",
-              overflowX: "auto",
-              WebkitOverflowScrolling: "touch",
-            }}
-          >
-            <table
+            <div
               style={{
-                width: "100%",
-                minWidth: isMobile ? 900 : undefined,
-                borderCollapse: "collapse",
-                fontSize: "0.85rem",
+                maxHeight: isMobile ? "320px" : "360px",
+                overflowY: "auto",
+                WebkitOverflowScrolling: "touch",
+                padding: "0.65rem 0.75rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.6rem",
               }}
             >
-              <thead>
-                <tr>
-                  {["Date", "Participant", "Worker", "Location", "Incident", "Status"].map((h) => (
-                    <th
-                      key={h}
+              {notes.length === 0 && !notesLoading && (
+                <p style={{ fontSize: "0.9rem", color: "#6b7280", margin: 0 }}>
+                  No notes found. Generate a note and click Refresh.
+                </p>
+              )}
+
+              {notes.map((n) => {
+                const isSelected = selectedNote && selectedNote.id === n.id;
+                const rowFaded = !!n.deletedAt || !!n.purgedAt;
+
+                const topBadges = (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {badge(n.finalisedAt ? "Finalised" : "Draft", n.finalisedAt ? { bg: "#eff6ff", color: "#1d4ed8" } : { bg: "#f3f4f6", color: "#4b5563" })}
+                    {badge(n.incidentFlag ? "Incident" : "No incident", n.incidentFlag ? { bg: "#fef2f2", color: "#b91c1c" } : { bg: "#ecfdf3", color: "#166534" })}
+                    {badge(n.reviewedFlag ? "Reviewed" : "Not reviewed", n.reviewedFlag ? { bg: "#fef3c7", color: "#92400e" } : { bg: "#f3f4f6", color: "#4b5563" })}
+                    {badge(n.archivedFlag ? "Archived" : "Active", n.archivedFlag ? { bg: "#f3f4f6", color: "#111827" } : { bg: "#f3f4f6", color: "#4b5563" })}
+                    {!!n.deletedAt && badge("Deleted", { bg: "#fef2f2", color: "#b91c1c" })}
+                    {!!n.legalHold && badge("Legal hold", { bg: "#ede9fe", color: "#5b21b6" })}
+                    {!!n.purgedAt && badge("Purged", { bg: "#111827", color: "#ffffff" })}
+                  </div>
+                );
+
+                return (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => handleSelectNote(n.id)}
+                    style={{
+                      textAlign: "left",
+                      borderRadius: "0.75rem",
+                      border: isSelected ? "2px solid #2563eb" : "1px solid #e5e7eb",
+                      padding: isMobile ? "0.75rem 0.8rem" : "0.65rem 0.75rem",
+                      background: isSelected ? "#eff6ff" : "#ffffff",
+                      cursor: "pointer",
+                      touchAction: "manipulation",
+                      boxSizing: "border-box",
+                      opacity: rowFaded ? 0.78 : 1,
+                    }}
+                  >
+                    {/* Row 1: Participant + date */}
+                    <div
                       style={{
-                        textAlign: "left",
-                        padding: "0.45rem 0.7rem",
-                        borderBottom: "1px solid #e5e7eb",
-                        color: "#4b5563",
-                        fontWeight: 600,
-                        background: "#f9fafb",
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 1,
-                        whiteSpace: "nowrap",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        gap: "0.75rem",
+                        flexWrap: "wrap",
+                        marginBottom: 6,
                       }}
                     >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {notes.length === 0 && !notesLoading && (
-                  <tr>
-                    <td colSpan={6} style={{ padding: "0.8rem", textAlign: "center", color: "#6b7280" }}>
-                      No notes found. Generate a note and click Refresh.
-                    </td>
-                  </tr>
-                )}
-
-                {notes.map((n) => {
-                  const isSelected = selectedNote && selectedNote.id === n.id;
-                  const rowFaded = !!n.deletedAt || !!n.purgedAt;
-
-                  return (
-                    <tr
-                      key={n.id}
-                      onClick={() => handleSelectNote(n.id)}
-                      style={{
-                        cursor: "pointer",
-                        background: isSelected ? "#eff6ff" : "#ffffff",
-                        touchAction: "manipulation",
-                        opacity: rowFaded ? 0.75 : 1,
-                      }}
-                    >
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
+                      <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#111827", wordBreak: "break-word" }}>
+                        {n.participantName || "Unknown participant"}
+                      </div>
+                      <div style={{ fontSize: "0.75rem", color: "#6b7280", whiteSpace: "nowrap" }}>
                         {fmtShiftDate(n.date)}
-                      </td>
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
-                        {n.participantName}
-                      </td>
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
-                        {n.workerName}
-                      </td>
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
-                        {n.location}
-                      </td>
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6" }}>
-                        {n.incidentFlag
-                          ? badge("Incident", { bg: "#fef2f2", color: "#b91c1c" })
-                          : badge("No incident", { bg: "#ecfdf3", color: "#166534" })}
-                      </td>
-                      <td style={{ padding: isMobile ? "0.55rem 0.7rem" : "0.4rem 0.7rem", borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {badge(n.finalisedAt ? "Finalised" : "Draft", n.finalisedAt ? { bg: "#eff6ff", color: "#1d4ed8" } : { bg: "#f3f4f6", color: "#4b5563" })}
-                          {!!n.reviewedFlag && badge("Reviewed", { bg: "#fef3c7", color: "#92400e" })}
-                          {!!n.archivedFlag && badge("Archived", { bg: "#f3f4f6", color: "#111827" })}
-                          {!!n.deletedAt && badge("Deleted", { bg: "#fef2f2", color: "#b91c1c" })}
-                          {!!n.legalHold && badge("Legal hold", { bg: "#ede9fe", color: "#5b21b6" })}
-                          {!!n.purgedAt && badge("Purged", { bg: "#111827", color: "#ffffff" })}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {n.startTime && n.endTime ? ` (${fmtHm(n.startTime)}–${fmtHm(n.endTime)})` : ""}
+                      </div>
+                    </div>
+
+                    {/* Row 2: Worker + location */}
+                    <div style={{ fontSize: "0.82rem", color: "#374151", marginBottom: 8, lineHeight: 1.35 }}>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <span>
+                          <strong>Worker:</strong> {n.workerName || "—"}
+                        </span>
+                        <span style={{ color: "#9ca3af" }}>•</span>
+                        <span style={{ wordBreak: "break-word" }}>
+                          <strong>Location:</strong> {n.location || "—"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Row 3: Status badges (ALL visible, no scrolling) */}
+                    {topBadges}
+                  </button>
+                );
+              })}
           </div>
 
           {nextCursor && (
