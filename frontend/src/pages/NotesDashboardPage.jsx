@@ -424,7 +424,12 @@ function NotesDashboardPage({ token, user }) {
         body: JSON.stringify({ reason }),
       });
 
-      setSelectedNote((prev) => (prev ? { ...prev, ...data.note } : prev));
+      setSelectedNote(prev => prev ? ({
+        ...prev,
+        deletedAt: data.deletedAt,
+        deletedBy: data.deletedBy,
+        deletedReason: data.deletedReason,
+      }) : prev);
       fetchNotes();
     } catch (e) {
       setErrorMsg(e?.message || "Failed to delete note.");
@@ -451,7 +456,12 @@ function NotesDashboardPage({ token, user }) {
         headers: { "Content-Type": "application/json" },
       });
 
-      setSelectedNote((prev) => (prev ? { ...prev, ...data.note } : prev));
+      setSelectedNote(prev => prev ? ({
+        ...prev,
+        deletedAt: null,
+        deletedBy: null,
+        deletedReason: null,
+      }) : prev);
       fetchNotes();
     } catch (e) {
       setErrorMsg(e?.message || "Failed to restore note.");
@@ -537,18 +547,23 @@ function NotesDashboardPage({ token, user }) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(metaForm.date)) return setMetaMsg("Date must be YYYY-MM-DD.");
 
       setMetaSaving(true);
+
+      const payload = {
+        participantName: metaForm.participantName.trim(),
+        location: metaForm.location.trim(),
+        date: metaForm.date,
+        incidentFlag: !!metaForm.incidentFlag,
+      };
+
+      if (metaForm.startTime) payload.startTime = metaForm.startTime;
+      if (metaForm.endTime) payload.endTime = metaForm.endTime;
+
       const data = await apiFetch(`/api/notes/${selectedNote.id}/metadata`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantName: metaForm.participantName.trim(),
-          location: metaForm.location.trim(),
-          date: metaForm.date,
-          startTime: metaForm.startTime || null,
-          endTime: metaForm.endTime || null,
-          incidentFlag: !!metaForm.incidentFlag,
-        }),
+        body: JSON.stringify(payload),
       });
+
 
       // backend likely returns { note: {...} }
       const updated = data.note || data;
@@ -581,17 +596,12 @@ const runExport = async () => {
     const participant = exportParticipant.trim();
 
     const payload = {
-      participant: participant || undefined,
+      participant: exportParticipant.trim() || undefined,
       dateFrom,
       dateTo,
-
-      // ✅ send exactly what UI uses: "all" | "true" | "false"
-      includeArchived: exportIncludeArchived,
-
-      // ✅ booleans are fine here
+      includeArchived: exportIncludeArchived, // "all" | "true" | "false"
       includeDeleted: !!exportIncludeDeleted,
-
-      format: exportFormat, // "csv" | "json"
+      format: exportFormat,
     };
 
     if (payload.format === "csv") {

@@ -209,3 +209,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_target
 
 CREATE INDEX IF NOT EXISTS idx_audit_actor_created
   ON audit_events (actor_user_id, occurred_at DESC);
+
+-- Retention job helper indexes (faster candidate scans)
+CREATE INDEX IF NOT EXISTS idx_pn_retention_candidates
+ON progress_notes (organisation_id, date, id)
+WHERE deleted_at IS NULL AND legal_hold = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_pn_purge_candidates
+ON progress_notes (organisation_id, deleted_at, id)
+WHERE deleted_at IS NOT NULL AND purged_at IS NULL AND legal_hold = FALSE;
+
