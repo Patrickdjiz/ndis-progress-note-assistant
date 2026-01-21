@@ -578,31 +578,30 @@ const runExport = async () => {
     const dateFrom = exportFrom || daysAgoYmd(30);
     const dateTo = exportTo || todayYmd();
 
-    // backend currently expects includeArchived BOOLEAN.
-    // We'll map your dropdown:
-    // - "all" => include archived => true
-    // - "false" => exclude archived => false
-    // - "true" (archived only) is NOT supported by current backend (see backend patch below)
-    const includeArchived =
-      exportIncludeArchived === "false" ? false : true;
+    const participant = exportParticipant.trim();
 
     const payload = {
-      participant: exportParticipant.trim() || undefined,
+      participant: participant || undefined,
       dateFrom,
       dateTo,
-      includeArchived,
+
+      // ✅ send exactly what UI uses: "all" | "true" | "false"
+      includeArchived: exportIncludeArchived,
+
+      // ✅ booleans are fine here
       includeDeleted: !!exportIncludeDeleted,
-      format: exportFormat, // csv|json
+
+      format: exportFormat, // "csv" | "json"
     };
 
-    if (exportFormat === "csv") {
+    if (payload.format === "csv") {
       const blob = await apiFetchBlob("/api/notes/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const fname = `notes_export_${payload.participant ? payload.participant.replace(/\s+/g, "_") + "_" : ""}${dateFrom}_${dateTo}.csv`;
+      const fname = `notes_export_${participant ? participant.replace(/\s+/g, "_") + "_" : ""}${dateFrom}_${dateTo}.csv`;
       downloadBlob(blob, fname);
       setExportMsg("Export downloaded.");
       setExportOpen(false);
@@ -615,9 +614,13 @@ const runExport = async () => {
       body: JSON.stringify(payload),
     });
 
-    const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const fname = `notes_export_${payload.participant ? payload.participant.replace(/\s+/g, "_") + "_" : ""}${dateFrom}_${dateTo}.json`;
+    const jsonBlob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+
+    const fname = `notes_export_${participant ? participant.replace(/\s+/g, "_") + "_" : ""}${dateFrom}_${dateTo}.json`;
     downloadBlob(jsonBlob, fname);
+
     setExportMsg("Export downloaded.");
     setExportOpen(false);
   } catch (e) {
@@ -626,6 +629,7 @@ const runExport = async () => {
     setExporting(false);
   }
 };
+
 
   // -------------------- RETENTION SETTINGS --------------------
   const loadSettings = async () => {
