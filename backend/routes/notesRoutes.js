@@ -7,7 +7,7 @@ const applyComplianceFilter = require("../compliance");
 const { timeToMinutes, parseYyyyMmDd, looksLikeJunk } = require("../utils");
 const { requireAuth } = require("../authMiddleware");
 const { generateNoteSchema, notesListQuerySchema, notesSearchSchema } = require("../validation");
-const { query } = require("../dbAdapter");
+const { query, withTx } = require("../dbAdapter");
 const PDFDocument = require("pdfkit");
 const { redactPII } = require("../pii");
 const { audit } = require("../audit");
@@ -78,6 +78,43 @@ async function chatLLMWithRetry(opts) {
 
 const ipKey = (req, res) => ipKeyGenerator(req, res);
 const userOrIpKey = (req, res) => (req.user?.id ? `u:${req.user.id}` : ipKey(req, res));
+
+const notesGenIpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 200, // higher so one office network doesn't get punished
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:notes:gen:ip:"),
+  keyGenerator: ipKey,
+  skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
+  message: { error: "Too many note generations from this network." },
+});
+
+const notesGenUserBurstLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:notes:gen:user:burst:"),
+  keyGenerator: userOrIpKey,
+  skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
+  message: { error: "You're generating notes too quickly." },
+});
+
+const notesGenUserSustainedLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:notes:gen:user:sustained:"),
+  keyGenerator: userOrIpKey,
+  skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
+  message: { error: "Too many note generations in a short period." },
+});
+
 
 const notesIpLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -433,10 +470,17 @@ router.use((req, res, next) => {
   next();
 });
 
+router.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 
 // GET /api/notes  (list recent notes with filters, org-scoped)
 router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
     try {
+      res.setHeader("Cache-Control", "no-store");
+
     if (req.user.role === "OWNER") {
       return sendErr(res, req, 403, "Owners cannot access notes API");
     }
@@ -546,6 +590,8 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
 
 router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) => {
   try {
+    res.setHeader("Cache-Control", "no-store");
+
     if (req.user.role === "OWNER") {
       return sendErr(res, req, 403, "Owners cannot access notes API");
     }
@@ -650,6 +696,8 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
 // GET /api/notes/:id (single note, org-scoped)
 router.get("/notes/:id", notesReadIpLimiter, notesReadUserLimiter, async (req, res) => {
   try {
+    res.setHeader("Cache-Control", "no-store");
+
     const id = Number(req.params.id);
     const includeDeleted = req.query.includeDeleted === "true" && req.user.role === "ADMIN";
 
@@ -761,13 +809,9 @@ router.post("/notes/:id/review",  notesWriteIpLimiter, notesWriteUserLimiter, as
 router.post("/notes/:id/finalise", notesWriteIpLimiter, notesWriteUserLimiter, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    if (!Number.isInteger(id)) {
-      return sendErr(res, req, 400, "Invalid note id");
-    }
+    if (!Number.isInteger(id)) return sendErr(res, req, 400, "Invalid note id");
 
-    if (req.user.role === "OWNER") {
-      return sendErr(res, req, 403, "Owners cannot finalise notes");
-    }
+    if (req.user.role === "OWNER") return sendErr(res, req, 403, "Owners cannot finalise notes");
 
     const parsedBody = finaliseBodySchema.safeParse(req.body || {});
     if (!parsedBody.success) {
@@ -775,76 +819,72 @@ router.post("/notes/:id/finalise", notesWriteIpLimiter, notesWriteUserLimiter, a
       return sendErr(res, req, 400, msg || "Invalid body");
     }
 
-    const { finalNoteText } = parsedBody.data; // already trimmed + validated
-
-    // ✅ Enforce body-only storage (even if someone pasted a full header)
-    const storedFinalBody = stripNoteHeader(finalNoteText).trim();  
-
+    const storedFinalBody = stripNoteHeader(parsedBody.data.finalNoteText).trim();
     const finalisedByName = req.user.fullName || "";
     const nowIso = new Date().toISOString();
 
-    // Check note exists & belongs to org (and worker, if worker)
-    let updSql = `
-      UPDATE progress_notes
-      SET final_note_text = $1,
-          finalised_at   = $2,
-          finalised_by   = $3,
-          updated_at    = now(),
-          current_version_no = current_version_no + 1
-      WHERE id = $4
-        AND organisation_id = $5
-        AND deleted_at IS NULL
-      RETURNING id, current_version_no
-    `;
-
-    const updParams = [storedFinalBody, nowIso, finalisedByName, id, req.user.organisationId];
-
-    if (req.user.role === "WORKER") {
-      updSql = `
+    const txOut = await withTx(async (q) => {
+      let updSql = `
         UPDATE progress_notes
         SET final_note_text = $1,
             finalised_at   = $2,
             finalised_by   = $3,
-            updated_at    = now(),
+            updated_at     = now(),
             current_version_no = current_version_no + 1
         WHERE id = $4
           AND organisation_id = $5
-          AND worker_user_id = $6
           AND deleted_at IS NULL
         RETURNING id, current_version_no
       `;
-      updParams.push(req.user.id);
-    }
+      const updParams = [storedFinalBody, nowIso, finalisedByName, id, req.user.organisationId];
 
-    const upd = await query(updSql, updParams);
-    if (!upd.rows?.[0]) return sendErr(res, req, 404, "Note not found");
+      if (req.user.role === "WORKER") {
+        updSql = `
+          UPDATE progress_notes
+          SET final_note_text = $1,
+              finalised_at   = $2,
+              finalised_by   = $3,
+              updated_at     = now(),
+              current_version_no = current_version_no + 1
+          WHERE id = $4
+            AND organisation_id = $5
+            AND worker_user_id  = $6
+            AND deleted_at IS NULL
+          RETURNING id, current_version_no
+        `;
+        updParams.push(req.user.id);
+      }
 
-    const versionNo = upd.rows[0].current_version_no;
+      const upd = await q(updSql, updParams);
+      if (!upd.rows?.[0]) return null;
 
-    // ✅ write version snapshot (body-only)
-    await query(
-      `
-      INSERT INTO progress_note_versions
-        (note_id, version_no, text, edited_at, edited_by_user_id, edited_by_name)
-      VALUES ($1, $2, $3, now(), $4, $5)
-      `,
-      [id, versionNo, storedFinalBody, req.user.id, finalisedByName]
-    );
+      const versionNo = upd.rows[0].current_version_no;
 
+      await q(
+        `
+        INSERT INTO progress_note_versions
+          (note_id, version_no, text, edited_at, edited_by_user_id, edited_by_name)
+        VALUES ($1, $2, $3, now(), $4, $5)
+        `,
+        [id, versionNo, storedFinalBody, req.user.id, finalisedByName]
+      );
 
+      return { versionNo };
+    });
+
+    if (!txOut) return sendErr(res, req, 404, "Note not found");
 
     await audit(req, "NOTE_FINALISED", {
       targetType: "progress_note",
       targetId: String(id),
     });
 
-
     return res.json({
       ok: true,
       finalisedAt: nowIso,
       finalisedBy: finalisedByName,
       finalNoteText: storedFinalBody,
-      versionNo,
+      versionNo: txOut.versionNo,
     });
   } catch (err) {
     console.error(`[${req.id}] Error finalising note:`, err);
@@ -853,8 +893,9 @@ router.post("/notes/:id/finalise", notesWriteIpLimiter, notesWriteUserLimiter, a
 });
 
 
+
 // POST /api/generate-note  (org-scoped)
-router.post("/generate-note", async (req, res) => {
+router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notesGenUserSustainedLimiter, async (req, res) => {
   req.setTimeout(260_000);
   res.setTimeout(260_000);
 
@@ -1108,6 +1149,10 @@ router.post("/generate-note", async (req, res) => {
     // ✅ If the model accidentally started with "The support worker," fix comma case again
     modelText = tidyModelText(modelText);
 
+    modelText = modelText
+      .replace(/\[participant\]/gi, "the participant")
+      .replace(/\[location\]/gi, "the location");
+
     // Optional: hard cap the body length (defense-in-depth)
     const MAX_BODY_CHARS = 9000;
     if (modelText.length > MAX_BODY_CHARS) {
@@ -1149,78 +1194,78 @@ router.post("/generate-note", async (req, res) => {
     const createdAt = new Date().toISOString();
 
     // ---------- Postgres insert ----------
-    const insertSql = `
-      INSERT INTO progress_notes (
-        organisation_id,
-        worker_user_id,
-        participant_name,
-        worker_name,
-        date,
-        start_time,
-        end_time,
-        location,
-        note_text,
-        incident_flag,
-        created_at,
-        consent_acknowledged,
-        consent_acknowledged_at,
-        consent_acknowledged_by_user_id,
-        current_version_no
-      ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
-      )
-      RETURNING id
-    `;
-
-
-    
     const consentAckAt = new Date().toISOString();
 
-    const { rows } = await query(insertSql, [
-      req.user.organisationId,
-      workerUserId,                 // ✅ attributed worker
-      participantName,
-      workerName,                   // ✅ name snapshot of that worker
-      date,
-      startTime,
-      endTime,
-      safeLocation,
-      storedBody,
-      incidentFlag === true,
-      createdAt,
-      consentAcknowledged,
-      consentAckAt,
-      req.user.id,                  // ✅ actor who acknowledged (admin/worker)
-      1,
-    ]);
+    const txOut = await withTx(async (q) => {
+      const insertSql = `
+        INSERT INTO progress_notes (
+          organisation_id,
+          worker_user_id,
+          participant_name,
+          worker_name,
+          date,
+          start_time,
+          end_time,
+          location,
+          note_text,
+          incident_flag,
+          created_at,
+          consent_acknowledged,
+          consent_acknowledged_at,
+          consent_acknowledged_by_user_id,
+          current_version_no
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
+        )
+        RETURNING id
+      `;
 
+      const ins = await q(insertSql, [
+        req.user.organisationId,
+        workerUserId,
+        participantName,
+        workerName,
+        date,
+        startTime,
+        endTime,
+        safeLocation,
+        storedBody,
+        incidentFlag === true,
+        createdAt,
+        consentAcknowledged,
+        consentAckAt,
+        req.user.id,
+        1,
+      ]);
 
-    const newId = rows[0].id;
+      const newId = ins.rows[0].id;
 
-    // ✅ write version 1 snapshot (body-only)
-    await query(
-      `
-      INSERT INTO progress_note_versions
-        (note_id, version_no, text, edited_at, edited_by_user_id, edited_by_name)
-      VALUES ($1, 1, $2, $3, $4, $5)
-      `,
-      [newId, storedBody, createdAt, req.user.id, (req.user.fullName || workerName)]
-    );
+      await q(
+        `
+        INSERT INTO progress_note_versions
+          (note_id, version_no, text, edited_at, edited_by_user_id, edited_by_name)
+        VALUES ($1, 1, $2, $3, $4, $5)
+        `,
+        [newId, storedBody, createdAt, req.user.id, (req.user.fullName || workerName)]
+      );
 
+      return { newId };
+    });
 
+    const newId = txOut.newId;
+
+    // audits after commit (fine)
     await audit(req, "NOTE_CONSENT_ACK", {
       targetType: "progress_note",
       targetId: String(newId),
       meta: { date, consentAckAt, consentByUserId: req.user.id },
     });
 
-
     await audit(req, "NOTE_GENERATED", {
       targetType: "progress_note",
       targetId: String(newId),
       meta: { date, incidentFlag: incidentFlag === true },
     });
-
 
     return res.json({ note: fullNote, id: newId });
   } catch (error) {
@@ -1232,6 +1277,8 @@ router.post("/generate-note", async (req, res) => {
 // GET /api/notes/:id/pdf  (download note as PDF, org-scoped)
 router.get("/notes/:id/pdf", notesPdfIpLimiter, notesPdfUserLimiter, async (req, res) => {
   try {
+    res.setHeader("Cache-Control", "no-store");
+
     const id = Number(req.params.id);
     const includeDeleted = req.query.includeDeleted === "true" && req.user.role === "ADMIN";
 
@@ -1321,13 +1368,15 @@ res.setHeader(
 
     doc.pipe(res);
 
-    doc.on("error", (e) => {
-      console.error(`[${req.id}] PDF stream error:`, e);
-      try { res.destroy(e); } catch {}
-    });
-    res.on("close", () => {
+    let ended = false;
+    const safeEnd = () => {
+      if (ended) return;
+      ended = true;
       try { doc.end(); } catch {}
-    });
+    };
+
+    doc.on("error", (e) => { try { res.destroy(e); } catch {} });
+    res.on("close", safeEnd);
 
 
     // Helpers
@@ -1398,9 +1447,9 @@ if (row.reviewed_flag) {
     section("Final note", finalBody || "-");
 
 
-    doc.end();
+    safeEnd();
   } catch (err) {
-    console.error(`[${req.id}] Error generating PDF:`);
+    console.error(`[${req.id}] Error generating PDF:`, err);
     if (!res.headersSent) {
       return sendErr(res, req, 500, "Failed to generate PDF");
     }
@@ -1783,6 +1832,8 @@ function toCsv(rows, columns) {
 
 router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (req, res) => {
   try {
+    res.setHeader("Cache-Control", "no-store");
+
     if (req.user.role !== "ADMIN") {
       return sendErr(res, req, 403, "Only admins can export notes");
     }
@@ -1840,20 +1891,17 @@ router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (re
     }
 
     // includeArchived can be: "all" | "true" | "false" | boolean
-    let archivedMode = includeArchived;
+    // Meaning:
+    // - "false"/false => exclude archived
+    // - "true"/true/"all" => include archived + non-archived (no filter)
+    const excludeArchived = includeArchived === "false" || includeArchived === false;
 
-    // normalize booleans into "all"/"false"
-    if (archivedMode === true) archivedMode = "all";
-    if (archivedMode === false) archivedMode = "false";
-
-    if (archivedMode === "true") {
-      sql += ` AND archived_flag = TRUE`;       // archived only
-    } else if (archivedMode === "false") {
-      sql += ` AND archived_flag = FALSE`;      // exclude archived
-    } // "all" => no filter
-
-    if (!canIncludeDeleted) {
-      sql += ` AND deleted_at IS NULL`;
+    if (excludeArchived) {
+      sql += ` AND archived_flag = FALSE`;
+    }
+    // else: no filter (include both)
+        if (!canIncludeDeleted) {
+          sql += ` AND deleted_at IS NULL`;
     }
 
     sql += ` ORDER BY date DESC, created_at DESC, id DESC LIMIT 5000`;
@@ -1897,7 +1945,7 @@ router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (re
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="ndis_notes_export_${dateFrom}_to_${dateTo}.csv"`);
 
-    return res.send(csv);
+    return res.send("\ufeff" + csv);
   } catch (err) {
     console.error(`[${req.id}] Error exporting notes:`, err);
     return sendErr(res, req, 500, "Failed to export notes");

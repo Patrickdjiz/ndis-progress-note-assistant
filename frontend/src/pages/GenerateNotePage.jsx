@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { apiFetch } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
+import { useMemo, useState, useEffect } from "react";
 
 
 function GenerateNotePage({ token, user }) {
@@ -38,11 +39,41 @@ function GenerateNotePage({ token, user }) {
   const isMobile = useIsMobile(760);
 
 
+  const isAdmin = user?.role === "ADMIN";
+  const [workers, setWorkers] = useState([]);
+  const [selectedWorkerId, setSelectedWorkerId] = useState("");
+
   useEffect(() => {
     if (user?.fullName) {
       setWorkerName(user.fullName);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    (async () => {
+      try {
+        // assumes you already have GET /api/users (you used it elsewhere)
+        const data = await apiFetch("/api/users");
+        const list = Array.isArray(data.users) ? data.users : [];
+
+        const onlyWorkers = list
+          .filter((u) => u.role === "WORKER" && u.isActive)
+          .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
+
+        setWorkers(onlyWorkers);
+
+        // default select first worker (optional)
+        if (!selectedWorkerId && onlyWorkers[0]?.id) {
+          setSelectedWorkerId(String(onlyWorkers[0].id));
+        }
+      } catch (e) {
+        console.error("Failed to load workers:", e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
 
   // --- shared styles to keep things consistent with login ---
   const cardStyle = {
@@ -131,6 +162,34 @@ function GenerateNotePage({ token, user }) {
     cursor: loading ? "not-allowed" : "pointer",
   };
 
+  const selectedWorker = useMemo(() => {
+    if (!isAdmin) return null;
+    return workers.find((w) => String(w.id) === String(selectedWorkerId)) || null;
+  }, [isAdmin, workers, selectedWorkerId]);
+
+  // ✅ change your workerName display logic:
+  const displayWorkerName = isAdmin
+    ? (selectedWorker?.fullName || "")
+    : workerName;
+
+  function stripNoteHeader(txt) {
+  const s = String(txt || "");
+  const lines = s.split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length && lines[i].trim() === "") i++;
+
+  const headerRe = /^(Support Worker|Date of Support|Shift Time|Location|Participant):/i;
+  let sawHeader = false;
+
+  while (i < lines.length && headerRe.test(lines[i])) {
+    sawHeader = true;
+    i++;
+  }
+  if (sawHeader) while (i < lines.length && lines[i].trim() === "") i++;
+
+  return lines.slice(i).join("\n").trim();
+}
+
   // --- handlers (unchanged except for formatting) ---
   const handleGenerate = async () => {
     const fields = {
@@ -174,6 +233,11 @@ function GenerateNotePage({ token, user }) {
     setNoteHasIncident(false);
     setLatestNoteId(null);
 
+    if (isAdmin && !selectedWorkerId) {
+      setErrorMsg("Admins must select a worker before generating.");
+      return;
+    }
+
     try {
       const data = await apiFetch("/api/generate-note", {
         method: "POST",
@@ -182,22 +246,25 @@ function GenerateNotePage({ token, user }) {
         },
         body: JSON.stringify({
           participantName,
-          date,
-          startTime,
-          endTime,
-          location,
-          activitiesAndSupports,
-          participantPresentation,
-          goalsWorkedOn,
-          incidentsOrRisks,
-          followUpActions,
-          incidentOccurred,
-          consentAcknowledged: true,
+        date,
+        startTime,
+        endTime,
+        location,
+        activitiesAndSupports,
+        participantPresentation,
+        goalsWorkedOn,
+        incidentsOrRisks,
+        followUpActions,
+        incidentOccurred,
+        consentAcknowledged: true,
+
+        // ✅ ONLY send for admin
+        ...(isAdmin ? { workerUserId: Number(selectedWorkerId) } : {}),
         }),
       });
 
       setGeneratedNote(data.note || "");
-      setFinalNoteText(data.note || "");
+      setFinalNoteText(stripNoteHeader(data.note || ""));
       setLatestNoteId(data.id || null);
 
       const incText = (incidentsOrRisks || "").trim();
@@ -288,6 +355,9 @@ function GenerateNotePage({ token, user }) {
     setErrorMsg("");
     setCopied(false);
     setFinalSaveMsg("");
+    setConsentAck(false);
+
+    if (isAdmin) { setSelectedWorkerId(""); }
   };
 
   return (
@@ -392,14 +462,30 @@ function GenerateNotePage({ token, user }) {
             </div>
             <div>
               <label style={labelStyle}>Support worker name*</label>
-              <input
-                type="text"
-                required
-                value={workerName}
-                readOnly
-                style={inputBaseStyle}
-                placeholder="e.g. Fatima Khan"
-              />
+
+              {isAdmin ? (
+                <select
+                  value={selectedWorkerId}
+                  onChange={(e) => setSelectedWorkerId(e.target.value)}
+                  style={inputBaseStyle}
+                >
+                  <option value="">Select a worker…</option>
+                  {workers.map((w) => (
+                    <option key={w.id} value={String(w.id)}>
+                      {w.fullName} ({w.email})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  required
+                  value={displayWorkerName}
+                  readOnly
+                  style={inputBaseStyle}
+                  placeholder="e.g. Fatima Khan"
+                />
+              )}
             </div>
           </div>
 

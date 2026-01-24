@@ -13,6 +13,7 @@ const auditSearchSchema = z.object({
   ),
   action: z.string().trim().max(100).optional(),
   targetType: z.string().trim().max(100).optional(),
+  targetId: z.string().trim().max(200).optional(),
   cursor: z.string().regex(/^\d+$/).optional(),
   limit: z.preprocess(
     (v) => (v === undefined ? undefined : Number(v)),
@@ -60,6 +61,11 @@ router.post(
       if (body.targetType) {
         where.push(`target_type = $${i++}`);
         params.push(body.targetType);
+      }
+
+      if (body.targetId) {
+        where.push(`target_id = $${i++}`);
+        params.push(body.targetId);
       }
 
       if (body.cursor) {

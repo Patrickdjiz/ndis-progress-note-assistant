@@ -7,19 +7,29 @@ const MAX_META_BYTES = 10_000;
 function safeMeta(meta) {
   if (meta === null || meta === undefined) return null;
 
+  // Ensure meta is always a JSON-friendly object/array (avoid jsonb cast issues)
+  let normalised = meta;
+
+  if (meta instanceof Date) {
+    normalised = { value: meta.toISOString() };
+  } else if (typeof meta !== "object") {
+    normalised = { value: meta };
+  }
+
   try {
-    // Ensure we never store massive blobs
-    const json = JSON.stringify(meta);
-    if (Buffer.byteLength(json, "utf8") > MAX_META_BYTES) {
-      return { truncated: true };
+    const json = JSON.stringify(normalised);
+    const bytes = Buffer.byteLength(json, "utf8");
+
+    if (bytes > MAX_META_BYTES) {
+      return { truncated: true, originalBytes: bytes };
     }
-    return meta; // node-postgres will serialize objects into json/jsonb correctly
+    return normalised;
   } catch {
     return { meta_unserializable: true };
   }
 }
 
-// Generic audit writer that does NOT rely on req.user
+// Generic audit writer. req is OPTIONAL (useful for cron/jobs).
 async function auditEvent(req, action, payload = {}) {
   try {
     const {
@@ -31,11 +41,13 @@ async function auditEvent(req, action, payload = {}) {
       meta = null,
     } = payload;
 
-    const ip = getClientIp(req);
-    const userAgent = req.get("user-agent") || null;
+    const ip = req ? getClientIp(req) : null;
+    const userAgent = req?.get ? (req.get("user-agent") || null) : null;
 
-    const requestId = req.id || null;
-    const path = (req.originalUrl || req.path || "").split("?")[0] || null;
+    const requestId = req?.id || null;
+    const path = req
+      ? ((req.originalUrl || req.path || "").split("?")[0] || null)
+      : null;
 
     await query(
       `
@@ -78,9 +90,9 @@ async function auditEvent(req, action, payload = {}) {
 // Backwards-compatible helper (uses req.user)
 async function audit(req, action, { targetType = null, targetId = null, meta = null } = {}) {
   return auditEvent(req, action, {
-    organisationId: req.user?.organisationId ?? null,
-    actorUserId: req.user?.id ?? null,
-    actorRole: req.user?.role ?? null,
+    organisationId: req?.user?.organisationId ?? null,
+    actorUserId: req?.user?.id ?? null,
+    actorRole: req?.user?.role ?? null,
     targetType,
     targetId,
     meta,

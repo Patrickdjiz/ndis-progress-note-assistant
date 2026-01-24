@@ -167,6 +167,12 @@ function NotesDashboardPage({ token, user }) {
     autoPurgeEnabled: false,
   });
 
+  const [auditEvents, setAuditEvents] = useState([]);
+  const [auditCursor, setAuditCursor] = useState(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState("");
+
+
   // ✅ UI-only: responsive helper
   const isMobile = useIsMobile(760);
 
@@ -671,8 +677,8 @@ const runExport = async () => {
     if (!Number.isFinite(retentionDays) || retentionDays < 30) {
       return setSettingsMsg("Retention must be at least 30 days.");
     }
-    if (!Number.isFinite(deleteGraceDays) || deleteGraceDays < 0) {
-      return setSettingsMsg("Delete grace days must be 0 or more.");
+    if (!Number.isFinite(deleteGraceDays) || deleteGraceDays < 1) {
+      return setSettingsMsg("Delete grace days must be at least 1.");
     }
 
     const payload = {
@@ -702,6 +708,46 @@ const runExport = async () => {
     setSettingsSaving(false);
   }
 };
+
+const loadAuditForSelected = async ({ append = false } = {}) => {
+  try {
+    setAuditError("");
+    if (!selectedNote) return;
+
+    setAuditLoading(true);
+
+    const body = {
+      targetType: "progress_note",
+      targetId: String(selectedNote.id),
+      limit: 20,
+      ...(append && auditCursor ? { cursor: auditCursor } : {}),
+    };
+
+    const data = await apiFetch("/api/audit/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const incoming = Array.isArray(data.events) ? data.events : [];
+    setAuditEvents((prev) => (append ? [...prev, ...incoming] : incoming));
+    setAuditCursor(data.nextCursor || null);
+  } catch (e) {
+    setAuditError(e?.message || "Failed to load audit log.");
+  } finally {
+    setAuditLoading(false);
+  }
+};
+
+useEffect(() => {
+  setAuditEvents([]);
+  setAuditCursor(null);
+  setAuditError("");
+  if (selectedNote) loadAuditForSelected();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [selectedNote?.id]);
+
+
 
   // open settings modal and load
   const openSettings = async () => {
@@ -1121,6 +1167,55 @@ const runExport = async () => {
                   <strong>Action by:</strong> {actingName}
                 </div>
               </div>
+
+              <div style={{ marginTop: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#111827" }}>Audit log</div>
+                  <button
+                    type="button"
+                    onClick={() => loadAuditForSelected()}
+                    disabled={auditLoading || !selectedNote}
+                    style={pillBtn({ border: "1px solid #e5e7eb", background: "#fff", color: PRIMARY, fontWeight: 600 })}
+                  >
+                    {auditLoading ? "Loading…" : "Refresh log"}
+                  </button>
+                </div>
+
+                {auditError && <p style={{ color: "#b91c1c", marginTop: 6 }}>{auditError}</p>}
+
+                <div style={{ marginTop: 8, border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+                  {auditEvents.length === 0 && !auditLoading ? (
+                    <div style={{ padding: 10, color: "#6b7280", fontSize: "0.85rem" }}>No audit events for this note yet.</div>
+                  ) : (
+                    auditEvents.map((ev) => (
+                      <div key={ev.id} style={{ padding: 10, borderTop: "1px solid #f3f4f6", fontSize: "0.82rem" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                          <strong>{ev.action}</strong>
+                          <span style={{ color: "#6b7280" }}>{fmtDateTime(ev.occurredAt)}</span>
+                        </div>
+                        <div style={{ color: "#374151", marginTop: 2 }}>
+                          <span style={{ color: "#6b7280" }}>Role:</span> {ev.actorRole || "—"}
+                          {ev.path ? <> · <span style={{ color: "#6b7280" }}>Path:</span> {ev.path}</> : null}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {auditCursor && (
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => loadAuditForSelected({ append: true })}
+                      disabled={auditLoading}
+                      style={pillBtn({ border: "1px solid #e5e7eb", background: "#fff", color: PRIMARY, fontWeight: 600 })}
+                    >
+                      {auditLoading ? "Loading…" : "Load more"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
 
               {/* Admin-only compliance actions */}
               {isAdmin && (
@@ -1582,7 +1677,7 @@ const runExport = async () => {
               </label>
               <input
                 type="number"
-                min={0}
+                min={1}
                 value={orgSettings.deleteGraceDays}
                 onChange={(e) => setOrgSettings((p) => ({ ...p, deleteGraceDays: e.target.value }))}
                 style={inputBase}

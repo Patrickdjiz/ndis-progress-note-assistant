@@ -1,11 +1,10 @@
-//backend/dbAdapter.js
-const { query: pgQuery } = require("./pgClient");
+// backend/dbAdapter.js
+const { query: pgQuery, pool } = require("./pgClient");
 const { DB_DRIVER } = require("./config/env");
 
-const isPostgres = DB_DRIVER === "postgres";
+const isPostgres = (DB_DRIVER || "postgres") === "postgres";
 
-// Generic wrapper around pgClient so the rest of the code
-// doesn't have to import pg directly.
+// Generic wrapper so the rest of the code only imports from dbAdapter.
 async function query(sql, params = []) {
   const res = await pgQuery(sql, params);
   return {
@@ -32,7 +31,7 @@ async function findUserByEmailWithOrg(email) {
       o.status AS "orgStatus"
     FROM users u
     JOIN organisations o ON o.id = u.organisation_id
-    WHERE u.email = $1
+    WHERE lower(u.email) = lower($1)
     LIMIT 1
   `;
   const { rows } = await query(sql, [email]);
@@ -53,7 +52,6 @@ async function findUserByEmail(email) {
 
 /**
  * List team for the current organisation.
- * Matches the old logic:
  *  - same org
  *  - role = WORKER OR id = current admin
  */
@@ -77,7 +75,6 @@ async function getOrgUsersForAdmin(orgId, adminId) {
 
 /**
  * Create a WORKER user in the given organisation.
- * Returns a normalised user object.
  */
 async function createWorkerUser({ orgId, email, fullName, passwordHash }) {
   const sql = `
@@ -105,15 +102,12 @@ async function createWorkerUser({ orgId, email, fullName, passwordHash }) {
   return rows[0];
 }
 
-
 /**
- * Find a user by id + organisation (used before toggling status).
+ * Find a user by id + organisation.
  */
 async function findUserByIdInOrg(userId, orgId) {
   const sql = `
-    SELECT
-      id,
-      role
+    SELECT id, role
     FROM users
     WHERE id = $1
       AND organisation_id = $2
@@ -126,10 +120,11 @@ async function findUserByIdInOrg(userId, orgId) {
  * Update a user's isActive flag by id.
  */
 async function updateUserActiveFlag(userId, isActive) {
-  const sql = `UPDATE users
-  SET is_active = $1,
-      updated_at = now()
-  WHERE id = $2
+  const sql = `
+    UPDATE users
+    SET is_active = $1,
+        updated_at = now()
+    WHERE id = $2
   `;
   await query(sql, [isActive, userId]);
 }
@@ -162,12 +157,10 @@ async function setUserPassword(userId, passwordHash, { mustChangePassword = fals
         reset_token_expires_at = NULL,
         updated_at = now()
     WHERE id = $4
-
     `,
     [passwordHash, !!mustChangePassword, nowIso, userId]
   );
 }
-
 
 async function updateUserProfile(userId, { email, fullName }) {
   // Optional uniqueness check if email is changing
@@ -204,21 +197,37 @@ async function updateUserProfile(userId, { email, fullName }) {
     `UPDATE users SET ${fields.join(", ")}, updated_at = now() WHERE id = $${idx}`,
     params
   );
-
 }
 
+/**
+ * Transaction helper.
+ * q() returns { rows, rowCount } to match dbAdapter.query().
+ */
+async function withTx(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const q = async (text, params = []) => {
+      const res = await client.query(text, params);
+      return { rows: res.rows, rowCount: res.rowCount };
+    };
+
+    const out = await fn(q);
+    await client.query("COMMIT");
+    return out;
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
 
 module.exports = {
-  // flag
   isPostgres,
-
-  // generic
   query,
-
-  // auth helper
   findUserByEmailWithOrg,
-
-  // user helpers
   findUserByEmail,
   getOrgUsersForAdmin,
   createWorkerUser,
@@ -227,4 +236,5 @@ module.exports = {
   getUserAuthById,
   setUserPassword,
   updateUserProfile,
+  withTx,
 };

@@ -4,12 +4,32 @@ const { getClientIp } = require("./clientIp");
 
 // Shared handler: always include requestId (matches your notesRoutes pattern)
 function limiterHandler(req, res, _next, options) {
-  const payload =
-    typeof options.message === "string"
-      ? { error: options.message }
-      : options.message || { error: "Too many requests" };
+  const reset = req.rateLimit?.resetTime; // Date
+  const retryAfterSeconds = reset
+    ? Math.max(1, Math.ceil((reset.getTime() - Date.now()) / 1000))
+    : null;
 
-  return res.status(options.statusCode).json({ ...payload, requestId: req.id });
+  const baseMsg =
+    typeof options.message === "string"
+      ? options.message
+      : options.message?.error || "Too many requests.";
+
+  const waitHuman =
+    retryAfterSeconds == null
+      ? null
+      : retryAfterSeconds < 60
+        ? `${retryAfterSeconds}s`
+        : `${Math.ceil(retryAfterSeconds / 60)}m`;
+
+  if (retryAfterSeconds != null) {
+    res.setHeader("Retry-After", String(retryAfterSeconds)); // nice for frontend too
+  }
+
+  return res.status(options.statusCode || 429).json({
+    error: waitHuman ? `${baseMsg} Try again in ${waitHuman}.` : baseMsg,
+    retryAfterSeconds,
+    requestId: req.id,
+  });
 }
 
 // ✅ Prefer Fly/CF client IP for rate limit keys

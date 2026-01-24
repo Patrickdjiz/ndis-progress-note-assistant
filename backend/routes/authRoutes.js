@@ -1,16 +1,13 @@
 // routes/authRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const { generateToken, requireAuth } = require("../authMiddleware");
-const {
-  findUserByEmailWithOrg,
-} = require("../dbAdapter");
-const {
-  loginSchema,
-} = require("../validation");
 const crypto = require("crypto");
-const { auditEvent } = require("../audit");
 
+const { generateToken, requireAuth } = require("../authMiddleware");
+const { findUserByEmailWithOrg } = require("../dbAdapter");
+const { loginSchema } = require("../validation");
+const { auditEvent } = require("../audit");
+const { rateLimit, makeStore, limiterHandler, ipKeyGenerator } = require("../rateLimit");
 
 const sendErr = (res, req, status, msg) =>
   res.status(status).json({ error: msg, requestId: req.id });
@@ -21,9 +18,44 @@ function sha256Hex(s) {
   return crypto.createHash("sha256").update(String(s || "")).digest("hex");
 }
 
+// ----- rate limiters -----
+const ipKey = (req, res) => ipKeyGenerator(req, res);
+
+const emailKey = (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!email) return ipKey(req, res);
+  return `e:${sha256Hex(email)}`;
+};
+
+const loginIpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 80,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:auth:login:ip:"),
+  keyGenerator: ipKey,
+  skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
+  message: { error: "Too many login attempts from this network. Please slow down." },
+});
+
+const loginEmailLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 25,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: makeStore("rl:auth:login:email:"),
+  keyGenerator: emailKey,
+  skip: (req) => req.method === "OPTIONS",
+  handler: limiterHandler,
+  message: { error: "Too many login attempts for this account. Please wait and try again." },
+});
+
 // POST /api/login
-router.post("/login", async (req, res) => {
+router.post("/login", loginIpLimiter, loginEmailLimiter, async (req, res) => {
   try {
+    res.setHeader("Cache-Control", "no-store");
+
     const parsed = loginSchema.safeParse(req.body || {});
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
@@ -34,10 +66,9 @@ router.post("/login", async (req, res) => {
     const normalisedEmail = email.trim().toLowerCase();
     const emailHash = sha256Hex(normalisedEmail);
 
-    // Fetch user
     const row = await findUserByEmailWithOrg(normalisedEmail);
 
-    // Not found -> audit (hashed) + generic error
+    // Not found
     if (!row) {
       await auditEvent(req, "LOGIN_FAILED", {
         actorRole: "ANON",
@@ -48,28 +79,26 @@ router.post("/login", async (req, res) => {
       return sendErr(res, req, 401, "Invalid email or password");
     }
 
-    // Inactive -> audit + block
+    // Inactive user
     if (!row.isActive) {
       await auditEvent(req, "LOGIN_BLOCKED", {
         organisationId: row.organisationId ?? null,
-        actorUserId: row.id,
-        actorRole: row.role,
+        actorRole: "ANON",
         targetType: "user",
         targetId: String(row.id),
-        meta: { reason: "user_inactive" },
+        meta: { emailHash, reason: "user_inactive" },
       });
       return sendErr(res, req, 403, "This user account is inactive.");
     }
 
-    // Suspended org -> audit + block (OWNER allowed)
+    // Suspended org (OWNER bypass if you keep that rule)
     if (row.role !== "OWNER" && row.orgStatus !== "ACTIVE") {
       await auditEvent(req, "LOGIN_BLOCKED", {
         organisationId: row.organisationId ?? null,
-        actorUserId: row.id,
-        actorRole: row.role,
+        actorRole: "ANON",
         targetType: "organisation",
         targetId: String(row.organisationId),
-        meta: { reason: "org_suspended" },
+        meta: { emailHash, reason: "org_suspended" },
       });
       return sendErr(res, req, 403, "This provider account is suspended.");
     }
@@ -79,16 +108,15 @@ router.post("/login", async (req, res) => {
     if (!ok) {
       await auditEvent(req, "LOGIN_FAILED", {
         organisationId: row.organisationId ?? null,
-        actorUserId: row.id,
-        actorRole: row.role,
-        targetType: "auth",
+        actorRole: "ANON",
+        targetType: "user",
         targetId: String(row.id),
         meta: { reason: "invalid_credentials" },
       });
       return sendErr(res, req, 401, "Invalid email or password");
     }
 
-    // Success audit
+    // Success (now we *do* know actor)
     await auditEvent(req, "LOGIN_SUCCESS", {
       organisationId: row.organisationId ?? null,
       actorUserId: row.id,
@@ -117,9 +145,9 @@ router.post("/login", async (req, res) => {
   }
 });
 
-
 // GET /api/auth/me
 router.get("/auth/me", requireAuth, (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   return res.json({
     user: {
       id: req.user.id,
@@ -127,10 +155,9 @@ router.get("/auth/me", requireAuth, (req, res) => {
       role: req.user.role,
       email: req.user.email,
       organisationId: req.user.organisationId,
-      mustChangePassword: !!req.user.mustChangePassword, // ✅ add this
+      mustChangePassword: !!req.user.mustChangePassword,
     },
   });
 });
-
 
 module.exports = router;
