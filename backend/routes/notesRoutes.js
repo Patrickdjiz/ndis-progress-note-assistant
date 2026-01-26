@@ -915,7 +915,7 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
   try {
     const role = String(req.user?.role || "").toUpperCase();
 
-    if (!["WORKER", "ADMIN", "OWNER"].includes(role)) {
+    if (!["WORKER", "ADMIN"].includes(role)) {
       return sendErr(res, req, 403, "Forbidden");
     }
 
@@ -949,7 +949,7 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
      let workerUserId = req.user.id;
     let workerName = (req.user.fullName || "").trim() || "Support Worker";
 
-    const canSelectWorker = role === "ADMIN" || role === "OWNER";
+    const canSelectWorker = role === "ADMIN";
 
     if (canSelectWorker) {
       const selectedWorkerId = parsed.data.workerUserId;

@@ -64,10 +64,7 @@ function GenerateNotePage({ token, user }) {
 
  const effectiveRole = useMemo(() => normRole(user?.role) || roleFromToken(token), [user, token]);
 
-const canSelectWorker = useMemo(
-  () => effectiveRole === "ADMIN" || effectiveRole === "OWNER",
-  [effectiveRole]
-);
+const canSelectWorker = effectiveRole === "ADMIN"; 
 
 const [workers, setWorkers] = useState([]);
 const [selectedWorkerId, setSelectedWorkerId] = useState("");
@@ -98,7 +95,12 @@ useEffect(() => {
     const activeOk = active === undefined ? true : active === true; // if missing, treat as active
     return roleOk && activeOk;
   })
-  .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
+  .map((u) => ({
+  id: u.id,
+  fullName: u.fullName || u.full_name || "",
+  email: u.email || "",
+}));
+
 
 
       setWorkers(onlyWorkers);

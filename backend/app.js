@@ -129,18 +129,6 @@ const authLimiter = rateLimit({
   message: { error: "Too many login attempts. Please try again later." },
 });
 
-const aiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: makeStore("rl:ai:ip:"),
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
-  skip: (req) => req.method === "OPTIONS",
-  handler: limiterHandler, // ✅ add this
-  message: { error: "Too many note generations. Please slow down." },
-});
-
 const passwordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -168,7 +156,6 @@ const accountPwLimiter = rateLimit({
 
 
 app.use("/api/login", authLimiter);
-app.use("/api/generate-note", aiLimiter);
 app.use("/api/auth/forgot-password", passwordLimiter);
 app.use("/api/auth/reset-password", passwordLimiter);
 app.use("/api/account/change-password", accountPwLimiter);

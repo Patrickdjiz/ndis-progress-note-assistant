@@ -25,7 +25,7 @@ const router = express.Router();
 
 // All user routes require auth + ADMIN
 router.use(requireAuth);
-router.use(requireRole(["ADMIN", "OWNER"]));
+router.use(requireRole(["ADMIN"]));
 
 
 router.use((req, res, next) => {
