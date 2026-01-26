@@ -1143,7 +1143,7 @@ try {
       temperature: 0.2,
       max_tokens: 700,
     }),
-    55_000, // keep under Fly’s idle timeout envelope
+    240_000, // 240 seconds 
     "LLM generation"
   );
 
