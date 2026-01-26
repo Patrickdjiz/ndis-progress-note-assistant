@@ -237,6 +237,8 @@ function GenerateNotePage({ token, user }) {
       return;
     }
 
+    setLoading(true);
+
     try {
       const data = await apiFetch("/api/generate-note", {
         method: "POST",
