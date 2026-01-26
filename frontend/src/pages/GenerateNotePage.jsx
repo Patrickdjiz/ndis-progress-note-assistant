@@ -1,5 +1,4 @@
 // src/pages/GenerateNotePage.jsx
-import { useState, useEffect } from "react";
 import { apiFetch } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
 import { useMemo, useState, useEffect } from "react";

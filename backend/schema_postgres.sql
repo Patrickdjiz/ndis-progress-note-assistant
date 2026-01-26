@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS progress_note_versions (
   edited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   edited_by_user_id INTEGER REFERENCES users(id),
   edited_by_name TEXT,
-  UNIQUE (note_id, version_no)
+  CONSTRAINT uq_note_versions_note_version UNIQUE (note_id, version_no)
 );
 
 -- Audit events (compliance logging)
@@ -188,9 +188,6 @@ CREATE INDEX IF NOT EXISTS idx_notes_org_date
   ON progress_notes (organisation_id, date DESC);
 
 -- Versions: fast history retrieval
-CREATE INDEX IF NOT EXISTS idx_progress_note_versions_note_id
-  ON progress_note_versions (note_id, version_no DESC);
-
 CREATE INDEX IF NOT EXISTS idx_note_versions_note_time
   ON progress_note_versions (note_id, edited_at DESC);
 

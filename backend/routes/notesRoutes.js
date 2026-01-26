@@ -464,13 +464,6 @@ function normaliseNoteRow(row) {
 router.use(requireAuth);
 
 router.use((req, res, next) => {
-  if (req.user?.mustChangePassword) {
-    return sendErr(res, req, 403, "You must change your password before continuing.");
-  }
-  next();
-});
-
-router.use((req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   next();
 });
@@ -1240,14 +1233,20 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
 
       const newId = ins.rows[0].id;
 
-      await q(
-        `
-        INSERT INTO progress_note_versions
-          (note_id, version_no, text, edited_at, edited_by_user_id, edited_by_name)
-        VALUES ($1, 1, $2, $3, $4, $5)
-        `,
-        [newId, storedBody, createdAt, req.user.id, (req.user.fullName || workerName)]
-      );
+      const editedByName =
+      req.user.role === "ADMIN"
+        ? (req.user.fullName || "Admin")
+        : ((req.user.fullName || workerName) || "Support Worker");
+
+    await q(
+      `
+      INSERT INTO progress_note_versions
+        (note_id, version_no, text, edited_at, edited_by_user_id, edited_by_name)
+      VALUES ($1, 1, $2, $3, $4, $5)
+      `,
+      [newId, storedBody, createdAt, req.user.id, editedByName]
+    );
+
 
       return { newId };
     });
@@ -1519,6 +1518,8 @@ router.post("/notes/:id/archive", notesWriteIpLimiter, notesWriteUserLimiter, as
         req.user.organisationId,
       ]
     );
+
+    if (!rows[0]) return sendErr(res, req, 404, "Note not found");
 
     await audit(req, archivedFlag ? "NOTE_ARCHIVED" : "NOTE_UNARCHIVED", {
       targetType: "progress_note",
