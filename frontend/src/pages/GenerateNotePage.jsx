@@ -1,10 +1,39 @@
 // src/pages/GenerateNotePage.jsx
+// src/pages/GenerateNotePage.jsx
 import { apiFetch } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
 import { useMemo, useState, useEffect } from "react";
 
+function normRole(v) {
+  return String(v || "").trim().toUpperCase();
+}
+
+// UI-only decode (no verification) to align UI with backend session role
+function roleFromToken(token) {
+  if (!token) return "";
+  try {
+    const payload = token.split(".")[1];
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = decodeURIComponent(
+      atob(b64)
+        .split("")
+        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+        .join("")
+    );
+    const obj = JSON.parse(json);
+    return normRole(obj.role);
+  } catch {
+    return "";
+  }
+}
 
 function GenerateNotePage({ token, user }) {
+  const effectiveRole = useMemo(() => {
+    return normRole(user?.role) || roleFromToken(token);
+  }, [user, token]);
+
+  const isAdmin = effectiveRole === "ADMIN";
+  
   const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
     .toISOString()
     .slice(0, 10);
@@ -38,7 +67,6 @@ function GenerateNotePage({ token, user }) {
   const isMobile = useIsMobile(760);
 
 
-  const isAdmin = user?.role === "ADMIN";
   const [workers, setWorkers] = useState([]);
   const [selectedWorkerId, setSelectedWorkerId] = useState("");
 
@@ -225,9 +253,13 @@ function GenerateNotePage({ token, user }) {
   }
 
   if (!consentAck) {
-    setErrorMsg(
-      "Please confirm you are authorised and participant consent has been obtained before generating."
-    );
+    setErrorMsg("Please confirm you are authorised and participant consent has been obtained before generating.");
+    return;
+  }
+
+  // ✅ If admin, require worker selection BEFORE setting loading
+  if (isAdmin && !selectedWorkerId) {
+    setErrorMsg("Admins must select a worker before generating.");
     return;
   }
 
@@ -256,10 +288,7 @@ function GenerateNotePage({ token, user }) {
         incidentsOrRisks,
         followUpActions,
         incidentOccurred,
-
-        // better than hardcoding true
-        consentAcknowledged: consentAck,
-
+        consentAcknowledged: true,
         ...(isAdmin ? { workerUserId: Number(selectedWorkerId) } : {}),
       }),
     });
