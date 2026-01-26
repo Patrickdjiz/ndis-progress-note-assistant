@@ -29,6 +29,10 @@ function roleFromToken(token) {
 
 function GenerateNotePage({ token, user }) {
 
+  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 10);
+
   const [participantName, setParticipantName] = useState("");
   const [date, setDate] = useState(todayIso);
   const [startTime, setStartTime] = useState("");
@@ -39,7 +43,7 @@ function GenerateNotePage({ token, user }) {
   const [goalsWorkedOn, setGoalsWorkedOn] = useState("");
   const [incidentsOrRisks, setIncidentsOrRisks] = useState("");
   const [followUpActions, setFollowUpActions] = useState("");
-  const [workerName, setWorkerName] = useState(user?.fullName || "");
+
 
   const [incidentOccurred, setIncidentOccurred] = useState(false);
   const [noteHasIncident, setNoteHasIncident] = useState(false);
@@ -58,43 +62,28 @@ function GenerateNotePage({ token, user }) {
   const isMobile = useIsMobile(760);
 
 
-  const [workers, setWorkers] = useState([]);
-  const [selectedWorkerId, setSelectedWorkerId] = useState("");
-  
-  const [workersLoading, setWorkersLoading] = useState(false);
-  const [workersError, setWorkersError] = useState("");
-  const [adminCanSelectWorker, setAdminCanSelectWorker] = useState(false);
+ const effectiveRole = useMemo(() => normRole(user?.role) || roleFromToken(token), [user, token]);
 
-  const effectiveRole = useMemo(() => {
-    return normRole(user?.role) || roleFromToken(token);
-  }, [user, token]);
+const canSelectWorker = useMemo(
+  () => effectiveRole === "ADMIN" || effectiveRole === "OWNER",
+  [effectiveRole]
+);
 
-  const isAdmin = useMemo(
-    () => adminCanSelectWorker || effectiveRole === "ADMIN",
-    [adminCanSelectWorker, effectiveRole]
-  );
-  
-  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 10);
-  
-  useEffect(() => {
-    if (user?.fullName) {
-      setWorkerName(user.fullName);
-    }
-  }, [user]);
+const [workers, setWorkers] = useState([]);
+const [selectedWorkerId, setSelectedWorkerId] = useState("");
+const [workersLoading, setWorkersLoading] = useState(false);
+const [workersError, setWorkersError] = useState("");
 
-  useEffect(() => {
+useEffect(() => {
   let cancelled = false;
 
   (async () => {
-    if (!token) return;
+    if (!token || !canSelectWorker) return;
 
     setWorkersError("");
     setWorkersLoading(true);
 
     try {
-      // IMPORTANT: include auth header (matches how you do it elsewhere)
       const data = await apiFetch("/api/users", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -102,31 +91,21 @@ function GenerateNotePage({ token, user }) {
       if (cancelled) return;
 
       const list = Array.isArray(data.users) ? data.users : [];
-
       const onlyWorkers = list
-        .filter((u) => String(u?.role || "").toUpperCase() === "WORKER" && (u.isActive === true))
-        .map((u) => ({
-          id: u.id,
-          fullName: u.fullName,
-          email: u.email,
-        }));
+  .filter((u) => {
+    const roleOk = String(u?.role || "").toUpperCase() === "WORKER";
+    const active = u?.isActive ?? u?.is_active; // accept either
+    const activeOk = active === undefined ? true : active === true; // if missing, treat as active
+    return roleOk && activeOk;
+  })
+  .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
+
 
       setWorkers(onlyWorkers);
-      setAdminCanSelectWorker(true);
-
-      if (!selectedWorkerId && onlyWorkers[0]?.id) {
-        setSelectedWorkerId(String(onlyWorkers[0].id));
-      }
+      setSelectedWorkerId((prev) => prev || (onlyWorkers[0]?.id ? String(onlyWorkers[0].id) : ""));
     } catch (e) {
       if (cancelled) return;
-
-      // If not admin, this will typically be 401/403. That’s fine.
-      setAdminCanSelectWorker(false);
-
-      // If you *are* an admin but this fails, show it so you notice immediately.
-      if (String(user?.role || "").toUpperCase() === "ADMIN") {
-        setWorkersError(e?.message || "Failed to load workers list.");
-      }
+      setWorkersError(e?.message || "Failed to load workers list.");
     } finally {
       if (!cancelled) setWorkersLoading(false);
     }
@@ -135,7 +114,8 @@ function GenerateNotePage({ token, user }) {
   return () => {
     cancelled = true;
   };
-}, [token]); // keep deps minimal
+}, [token, canSelectWorker]);
+
 
   // --- shared styles to keep things consistent with login ---
   const cardStyle = {
@@ -225,14 +205,15 @@ function GenerateNotePage({ token, user }) {
   };
 
   const selectedWorker = useMemo(() => {
-    if (!isAdmin) return null;
+    if (!canSelectWorker) return null;
     return workers.find((w) => String(w.id) === String(selectedWorkerId)) || null;
-  }, [isAdmin, workers, selectedWorkerId]);
+  }, [canSelectWorker, workers, selectedWorkerId]);
 
   // ✅ change your workerName display logic:
-  const displayWorkerName = isAdmin
-    ? (selectedWorker?.fullName || "")
-    : workerName;
+  const displayWorkerName = canSelectWorker
+  ? (selectedWorker?.fullName || "")
+  : (user?.fullName || "");
+
 
   function stripNoteHeader(txt) {
   const s = String(txt || "");
@@ -255,7 +236,7 @@ function GenerateNotePage({ token, user }) {
   // --- handlers (unchanged except for formatting) ---
   const handleGenerate = async () => {
   // Admin must pick worker BEFORE we set loading
-  if (isAdmin && !selectedWorkerId) {
+  if (canSelectWorker && !selectedWorkerId) {
     setErrorMsg("Admins must select a worker before generating.");
     return;
   }
@@ -293,7 +274,7 @@ function GenerateNotePage({ token, user }) {
   }
 
   // ✅ If admin, require worker selection BEFORE setting loading
-  if (isAdmin && !selectedWorkerId) {
+  if (canSelectWorker && !selectedWorkerId) {
     setErrorMsg("Admins must select a worker before generating.");
     return;
   }
@@ -310,7 +291,7 @@ function GenerateNotePage({ token, user }) {
   try {
     const data = await apiFetch("/api/generate-note", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         participantName,
         date,
@@ -324,7 +305,7 @@ function GenerateNotePage({ token, user }) {
         followUpActions,
         incidentOccurred,
         consentAcknowledged: true,
-        ...(isAdmin ? { workerUserId: Number(selectedWorkerId) } : {}),
+        ...(canSelectWorker ? { workerUserId: Number(selectedWorkerId) } : {}),
       }),
     });
 
@@ -371,6 +352,7 @@ function GenerateNotePage({ token, user }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           finalNoteText,
@@ -408,10 +390,6 @@ function GenerateNotePage({ token, user }) {
     setIncidentsOrRisks("");
     setFollowUpActions("");
 
-    if (user?.fullName) {
-      setWorkerName(user.fullName);
-    }
-
     setIncidentOccurred(false);
     setNoteHasIncident(false);
 
@@ -423,7 +401,9 @@ function GenerateNotePage({ token, user }) {
     setFinalSaveMsg("");
     setConsentAck(false);
 
-    if (isAdmin) { setSelectedWorkerId(""); }
+    if (canSelectWorker) {
+      setSelectedWorkerId((prev) => prev || (workers[0]?.id ? String(workers[0].id) : ""));
+    }
   };
 
   return (
@@ -529,7 +509,7 @@ function GenerateNotePage({ token, user }) {
             <div>
               <label style={labelStyle}>Support worker name*</label>
 
-              {isAdmin ? (
+              {canSelectWorker ? (
   <>
     <select
       value={selectedWorkerId}

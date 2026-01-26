@@ -161,14 +161,21 @@ async function requireAuth(req, res, next) {
 }
 
 function requireRole(...allowed) {
+  // allow requireRole("ADMIN","OWNER") and requireRole(["ADMIN","OWNER"])
+  const allowedRoles = allowed
+    .flat()
+    .map((r) => String(r || "").trim().toUpperCase())
+    .filter(Boolean);
+
   return (req, res, next) => {
-    if (!req.user || !allowed.includes(req.user.role)) {
-      return res
-        .status(403)
-        .json({ error: "Forbidden", requestId: req.id });
+    const role = String(req.user?.role || "").trim().toUpperCase();
+
+    if (!req.user || !allowedRoles.includes(role)) {
+      return res.status(403).json({ error: "Forbidden", requestId: req.id });
     }
     next();
   };
 }
+
 
 module.exports = { generateToken, requireAuth, requireRole };

@@ -1353,42 +1353,48 @@ useEffect(() => {
                   {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleToggleArchive}
-                  disabled={archiving || !selectedNote}
-                  style={pillBtn({
-                    border: "1px solid #e5e7eb",
-                    background: selectedNote?.archivedFlag ? "#111827" : "#ffffff",
-                    color: selectedNote?.archivedFlag ? "#ffffff" : PRIMARY,
-                    fontSize: "0.8rem",
-                    fontWeight: 500,
-                    cursor: archiving ? "wait" : "pointer",
-                  })}
-                >
-                  {archiving ? "Updating…" : selectedNote?.archivedFlag ? "Unarchive" : "Archive"}
-                </button>
+                {isAdmin && (
+  <button
+    type="button"
+    onClick={handleToggleArchive}
+    disabled={archiving || !selectedNote}
+    style={pillBtn({
+      border: "1px solid #e5e7eb",
+      background: selectedNote?.archivedFlag ? "#111827" : "#ffffff",
+      color: selectedNote?.archivedFlag ? "#ffffff" : PRIMARY,
+      fontSize: "0.8rem",
+      fontWeight: 500,
+      cursor: archiving ? "wait" : "pointer",
+    })}
+  >
+    {archiving ? "Updating…" : selectedNote?.archivedFlag ? "Unarchive" : "Archive"}
+  </button>
+)}
 
-                <label
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.35rem",
-                    fontSize: "0.8rem",
-                    color: "#374151",
-                    cursor: "pointer",
-                    ...(isMobile ? { width: "100%" } : {}),
-                    padding: isMobile ? "0.25rem 0" : 0,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!selectedNote.reviewedFlag}
-                    onChange={handleToggleReviewed}
-                    style={isMobile ? { transform: "scale(1.05)" } : undefined}
-                  />
-                  Mark note as reviewed by provider
-                </label>
+
+                {isAdmin && (
+  <label
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "0.35rem",
+      fontSize: "0.8rem",
+      color: "#374151",
+      cursor: "pointer",
+      ...(isMobile ? { width: "100%" } : {}),
+      padding: isMobile ? "0.25rem 0" : 0,
+    }}
+  >
+    <input
+      type="checkbox"
+      checked={!!selectedNote.reviewedFlag}
+      onChange={handleToggleReviewed}
+      style={isMobile ? { transform: "scale(1.05)" } : undefined}
+    />
+    Mark note as reviewed by provider
+  </label>
+)}
+
 
                 {finalSaveMsg && <span style={{ fontSize: "0.8rem", color: "#047857" }}>{finalSaveMsg}</span>}
               </div>

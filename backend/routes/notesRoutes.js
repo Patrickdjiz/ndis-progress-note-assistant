@@ -908,19 +908,17 @@ router.post("/notes/:id/finalise", notesWriteIpLimiter, notesWriteUserLimiter, a
 
 // POST /api/generate-note  (org-scoped)
 router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notesGenUserSustainedLimiter, async (req, res) => {
-  req.setTimeout(260_000);
-  res.setTimeout(260_000);
+  // ⚠️ align these two with withTimeout below (see section 4)
+  req.setTimeout(310_000);
+  res.setTimeout(310_000);
 
   try {
-    if (req.user.role === "OWNER") {
-      return sendErr(res, req, 403, "Owners cannot generate notes");
+    const role = String(req.user?.role || "").toUpperCase();
+
+    if (!["WORKER", "ADMIN", "OWNER"].includes(role)) {
+      return sendErr(res, req, 403, "Forbidden");
     }
 
-    if (!["WORKER", "ADMIN"].includes(req.user.role)) {
-      return sendErr(res, req, 403, "Only workers or admins can generate notes");
-    }
-
-    // ✅ Validate body with Zod
     const parsed = generateNoteSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
@@ -948,15 +946,16 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
 
     // Always take worker name from the logged-in user (prevents spoofing)
     // --- worker attribution (provider-ready) ---
-    let workerUserId = req.user.id;
+     let workerUserId = req.user.id;
     let workerName = (req.user.fullName || "").trim() || "Support Worker";
 
-    // ADMIN can generate ONLY on behalf of an actual worker in the same org
-    if (req.user.role === "ADMIN") {
+    const canSelectWorker = role === "ADMIN" || role === "OWNER";
+
+    if (canSelectWorker) {
       const selectedWorkerId = parsed.data.workerUserId;
 
       if (!selectedWorkerId) {
-        return sendErr(res, req, 400, "Admins must select a worker before generating.");
+        return sendErr(res, req, 400, "Admins/Owners must select a worker before generating.");
       }
 
       const { rows: wRows } = await query(
@@ -984,7 +983,6 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
         return sendErr(res, req, 400, "Workers cannot set workerUserId.");
       }
     }
-
 
     // 2. Date sanity
     const shiftDate = parseYyyyMmDd(date);
@@ -1143,7 +1141,7 @@ try {
       temperature: 0.2,
       max_tokens: 700,
     }),
-    240_000, // 240 seconds 
+    300_000, // 300 seconds 
     "LLM generation"
   );
 

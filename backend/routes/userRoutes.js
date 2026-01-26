@@ -23,9 +23,10 @@ const sendErr = (res, req, status, msg) =>
 
 const router = express.Router();
 
-// All user routes require auth + ADMIN/OWNER
+// All user routes require auth + ADMIN
 router.use(requireAuth);
-router.use(requireRole("ADMIN", "OWNER"));
+router.use(requireRole(["ADMIN", "OWNER"]));
+
 
 router.use((req, res, next) => {
   if (req.user?.mustChangePassword) {
