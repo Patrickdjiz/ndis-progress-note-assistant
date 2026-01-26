@@ -61,7 +61,7 @@ const generateNoteSchema = z.object({
   consentAcknowledged: z.literal(true),
   workerUserId: z
     .preprocess((v) => (v === undefined || v === null || v === "" ? undefined : Number(v)),
-      z.number().int().positive()
+      z.coerce.number().int().positive()
     )
     .optional(),
 });

@@ -813,7 +813,9 @@ router.post("/notes/:id/finalise", notesWriteIpLimiter, notesWriteUserLimiter, a
     }
 
     const storedFinalBody = stripNoteHeader(parsedBody.data.finalNoteText).trim();
-    const finalisedByName = req.user.fullName || "";
+    const finalisedByName =
+      (req.user.fullName || "").trim() ||
+      (req.user.role === "ADMIN" ? "Admin" : "Support Worker");
     const nowIso = new Date().toISOString();
 
     const txOut = await withTx(async (q) => {

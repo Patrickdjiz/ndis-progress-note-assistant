@@ -191,62 +191,61 @@ function GenerateNotePage({ token, user }) {
 
   // --- handlers (unchanged except for formatting) ---
   const handleGenerate = async () => {
-    const fields = {
-      participantName,
-      date,
-      startTime,
-      endTime,
-      location,
-      activitiesAndSupports,
-      participantPresentation,
-      goalsWorkedOn,
-      incidentsOrRisks,
-      followUpActions,
-    };
+  // Admin must pick worker BEFORE we set loading
+  if (isAdmin && !selectedWorkerId) {
+    setErrorMsg("Admins must select a worker before generating.");
+    return;
+  }
 
-    const missing = Object.entries(fields)
-      .filter(([, v]) => !v || !v.toString().trim())
-      .map(([k]) => k);
+  const fields = {
+    participantName,
+    date,
+    startTime,
+    endTime,
+    location,
+    activitiesAndSupports,
+    participantPresentation,
+    goalsWorkedOn,
+    incidentsOrRisks,
+    followUpActions,
+  };
 
-    if (missing.length > 0) {
-      setErrorMsg("Please complete all fields before generating a note.");
-      return;
-    }
+  const missing = Object.entries(fields)
+    .filter(([, v]) => !v || !v.toString().trim())
+    .map(([k]) => k);
 
-    if (startTime && endTime && endTime <= startTime) {
-      setErrorMsg("End time must be after start time.");
-      return;
-    }
+  if (missing.length > 0) {
+    setErrorMsg("Please complete all fields before generating a note.");
+    return;
+  }
 
-    if (!consentAck) {
-      setErrorMsg("Please confirm you are authorised and participant consent has been obtained before generating.");
-      return;
-    }
+  if (startTime && endTime && endTime <= startTime) {
+    setErrorMsg("End time must be after start time.");
+    return;
+  }
 
-    setLoading(true);
-    setErrorMsg("");
-    setGeneratedNote("");
-    setFinalNoteText("");
-    setFinalSaveMsg("");
-    setCopied(false);
-    setNoteHasIncident(false);
-    setLatestNoteId(null);
+  if (!consentAck) {
+    setErrorMsg(
+      "Please confirm you are authorised and participant consent has been obtained before generating."
+    );
+    return;
+  }
 
-    if (isAdmin && !selectedWorkerId) {
-      setErrorMsg("Admins must select a worker before generating.");
-      return;
-    }
+  setLoading(true);
+  setErrorMsg("");
+  setGeneratedNote("");
+  setFinalNoteText("");
+  setFinalSaveMsg("");
+  setCopied(false);
+  setNoteHasIncident(false);
+  setLatestNoteId(null);
 
-    setLoading(true);
-
-    try {
-      const data = await apiFetch("/api/generate-note", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          participantName,
+  try {
+    const data = await apiFetch("/api/generate-note", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        participantName,
         date,
         startTime,
         endTime,
@@ -257,35 +256,37 @@ function GenerateNotePage({ token, user }) {
         incidentsOrRisks,
         followUpActions,
         incidentOccurred,
-        consentAcknowledged: true,
 
-        // ✅ ONLY send for admin
+        // better than hardcoding true
+        consentAcknowledged: consentAck,
+
         ...(isAdmin ? { workerUserId: Number(selectedWorkerId) } : {}),
-        }),
-      });
+      }),
+    });
 
-      setGeneratedNote(data.note || "");
-      setFinalNoteText(stripNoteHeader(data.note || ""));
-      setLatestNoteId(data.id || null);
+    setGeneratedNote(data.note || "");
+    setFinalNoteText(stripNoteHeader(data.note || ""));
+    setLatestNoteId(data.id || null);
 
-      const incText = (incidentsOrRisks || "").trim();
-      const looksLikeNoIncident =
-        /^no incidents?|^no incident|^no concerns?/i.test(incText);
+    const incText = (incidentsOrRisks || "").trim();
+    const looksLikeNoIncident =
+      /^no incidents?|^no incident|^no concerns?/i.test(incText);
 
-      setNoteHasIncident(
-        incidentOccurred === true && incText.length > 0 && !looksLikeNoIncident
-      );
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err?.message || "Something went wrong");
-      setLatestNoteId(null);
-      setFinalNoteText("");
-      setGeneratedNote("");
-      setNoteHasIncident(false);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setNoteHasIncident(
+      incidentOccurred === true && incText.length > 0 && !looksLikeNoIncident
+    );
+  } catch (err) {
+    console.error(err);
+    setErrorMsg(err?.message || "Something went wrong");
+    setLatestNoteId(null);
+    setFinalNoteText("");
+    setGeneratedNote("");
+    setNoteHasIncident(false);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleSaveFinalNote = async () => {
     try {
