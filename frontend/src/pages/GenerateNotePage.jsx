@@ -28,15 +28,6 @@ function roleFromToken(token) {
 }
 
 function GenerateNotePage({ token, user }) {
-  const effectiveRole = useMemo(() => {
-    return normRole(user?.role) || roleFromToken(token);
-  }, [user, token]);
-
-  const isAdmin = effectiveRole === "ADMIN";
-  
-  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 10);
 
   const [participantName, setParticipantName] = useState("");
   const [date, setDate] = useState(todayIso);
@@ -69,7 +60,24 @@ function GenerateNotePage({ token, user }) {
 
   const [workers, setWorkers] = useState([]);
   const [selectedWorkerId, setSelectedWorkerId] = useState("");
+  
+  const [workersLoading, setWorkersLoading] = useState(false);
+  const [workersError, setWorkersError] = useState("");
+  const [adminCanSelectWorker, setAdminCanSelectWorker] = useState(false);
 
+  const effectiveRole = useMemo(() => {
+    return normRole(user?.role) || roleFromToken(token);
+  }, [user, token]);
+
+  const isAdmin = useMemo(
+    () => adminCanSelectWorker || effectiveRole === "ADMIN",
+    [adminCanSelectWorker, effectiveRole]
+  );
+  
+  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 10);
+  
   useEffect(() => {
     if (user?.fullName) {
       setWorkerName(user.fullName);
@@ -77,30 +85,57 @@ function GenerateNotePage({ token, user }) {
   }, [user]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+  let cancelled = false;
 
-    (async () => {
-      try {
-        // assumes you already have GET /api/users (you used it elsewhere)
-        const data = await apiFetch("/api/users");
-        const list = Array.isArray(data.users) ? data.users : [];
+  (async () => {
+    if (!token) return;
 
-        const onlyWorkers = list
-          .filter((u) => u.role === "WORKER" && u.isActive)
-          .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
+    setWorkersError("");
+    setWorkersLoading(true);
 
-        setWorkers(onlyWorkers);
+    try {
+      // IMPORTANT: include auth header (matches how you do it elsewhere)
+      const data = await apiFetch("/api/users", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-        // default select first worker (optional)
-        if (!selectedWorkerId && onlyWorkers[0]?.id) {
-          setSelectedWorkerId(String(onlyWorkers[0].id));
-        }
-      } catch (e) {
-        console.error("Failed to load workers:", e);
+      if (cancelled) return;
+
+      const list = Array.isArray(data.users) ? data.users : [];
+
+      const onlyWorkers = list
+        .filter((u) => String(u?.role || "").toUpperCase() === "WORKER" && (u.isActive === true))
+        .map((u) => ({
+          id: u.id,
+          fullName: u.fullName,
+          email: u.email,
+        }));
+
+      setWorkers(onlyWorkers);
+      setAdminCanSelectWorker(true);
+
+      if (!selectedWorkerId && onlyWorkers[0]?.id) {
+        setSelectedWorkerId(String(onlyWorkers[0].id));
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
+    } catch (e) {
+      if (cancelled) return;
+
+      // If not admin, this will typically be 401/403. That’s fine.
+      setAdminCanSelectWorker(false);
+
+      // If you *are* an admin but this fails, show it so you notice immediately.
+      if (String(user?.role || "").toUpperCase() === "ADMIN") {
+        setWorkersError(e?.message || "Failed to load workers list.");
+      }
+    } finally {
+      if (!cancelled) setWorkersLoading(false);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [token]); // keep deps minimal
 
   // --- shared styles to keep things consistent with login ---
   const cardStyle = {
@@ -495,28 +530,44 @@ function GenerateNotePage({ token, user }) {
               <label style={labelStyle}>Support worker name*</label>
 
               {isAdmin ? (
-                <select
-                  value={selectedWorkerId}
-                  onChange={(e) => setSelectedWorkerId(e.target.value)}
-                  style={inputBaseStyle}
-                >
-                  <option value="">Select a worker…</option>
-                  {workers.map((w) => (
-                    <option key={w.id} value={String(w.id)}>
-                      {w.fullName} ({w.email})
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  required
-                  value={displayWorkerName}
-                  readOnly
-                  style={inputBaseStyle}
-                  placeholder="e.g. Fatima Khan"
-                />
-              )}
+  <>
+    <select
+      value={selectedWorkerId}
+      onChange={(e) => setSelectedWorkerId(e.target.value)}
+      style={inputBaseStyle}
+      disabled={workersLoading}
+    >
+      <option value="">
+        {workersLoading ? "Loading workers..." : "Select a worker…"}
+      </option>
+      {workers.map((w) => (
+        <option key={w.id} value={String(w.id)}>
+          {w.fullName} ({w.email})
+        </option>
+      ))}
+    </select>
+
+    {workersError && (
+      <div style={{ marginTop: 8, color: "red", fontSize: "0.85rem" }}>
+        {workersError}
+      </div>
+    )}
+
+    {!workersLoading && workers.length === 0 && (
+      <div style={{ marginTop: 8, color: "#6b7280", fontSize: "0.85rem" }}>
+        No active WORKER users found. Create/activate a worker account first.
+      </div>
+    )}
+  </>
+) : (
+  <input
+    type="text"
+    required
+    value={displayWorkerName}
+    readOnly
+    style={inputBaseStyle}
+  />
+)}
             </div>
           </div>
 

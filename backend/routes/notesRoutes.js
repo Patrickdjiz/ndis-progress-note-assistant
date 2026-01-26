@@ -24,6 +24,23 @@ function escapeRegExp(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function withTimeout(promise, ms, label = "operation") {
+  let t;
+  const timeout = new Promise((_, reject) => {
+    t = setTimeout(() => {
+      const err = new Error(`${label} timed out after ${ms}ms`);
+      err.code = "TIMEOUT";
+      reject(err);
+    }, ms);
+  });
+
+  return Promise.race([
+    promise.finally(() => clearTimeout(t)),
+    timeout,
+  ]);
+}
+
+
 function replaceAllCaseInsensitive(haystack, needle, replacement) {
   if (!needle) return haystack;
   const re = new RegExp(escapeRegExp(needle), "gi");
@@ -1115,14 +1132,31 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
     `.trim();
 
 
-    const { text: modelOut } = await chatLLMWithRetry({
+    let modelOut;
+try {
+  const out = await withTimeout(
+    chatLLMWithRetry({
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
       temperature: 0.2,
       max_tokens: 700,
-    });
+    }),
+    55_000, // keep under Fly’s idle timeout envelope
+    "LLM generation"
+  );
+
+  modelOut = out.text;
+} catch (err) {
+  console.error(`[${req.id}] LLM error:`, err);
+
+  if (err.code === "TIMEOUT") {
+    return sendErr(res, req, 504, "AI generation timed out. Please try again.");
+  }
+  throw err;
+}
+
 
     let modelText = tidyModelText(modelOut);
 
