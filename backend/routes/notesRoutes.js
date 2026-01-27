@@ -15,6 +15,44 @@ const { z } = require("zod");
 const sendErr = (res, req, status, msg) =>
   res.status(status).json({ error: msg, requestId: req.id });
 
+const crypto = require("crypto");
+const sha256Hex = (s) =>
+  crypto.createHash("sha256").update(String(s || "").trim().toLowerCase()).digest("hex");
+
+// Only store hashes for PII fields in audit meta
+function auditMetaForNoteChanges(before, after, changedKeys) {
+  const meta = { changedKeys };
+
+  if (changedKeys.includes("participantName")) {
+    meta.participantName = {
+      fromHash: before.participantName ? sha256Hex(before.participantName) : null,
+      toHash: after.participantName ? sha256Hex(after.participantName) : null,
+    };
+  }
+
+  if (changedKeys.includes("location")) {
+    meta.location = {
+      fromHash: before.location ? sha256Hex(before.location) : null,
+      toHash: after.location ? sha256Hex(after.location) : null,
+    };
+  }
+
+  // Non-PII fields can be stored normally
+  for (const k of ["date", "startTime", "endTime", "incidentFlag"]) {
+    if (changedKeys.includes(k)) {
+      meta[k] = { from: before[k], to: after[k] };
+    }
+  }
+
+  return meta;
+}
+
+function safeAuditReason(reason) {
+  if (!reason) return null;
+  return clip(redactPII(reason), 200);
+}
+
+
 const router = express.Router();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -583,6 +621,17 @@ router.get("/notes", notesIpLimiter, notesUserLimiter, async (req, res) => {
 
     const notes = pageRows.map(normaliseNoteRow);
 
+    await audit(req, "NOTES_LISTED", {
+      targetType: "progress_note",
+      targetId: null,
+      meta: {
+        hasIncident,
+        archived,
+        includeDeleted,
+        returned: notes.length,
+      },
+    });
+
     let nextCursor = null;
     if (hasMore) {
       const last = pageRows[pageRows.length - 1];
@@ -688,6 +737,19 @@ router.post("/notes/search", notesIpLimiter, notesUserLimiter, async (req, res) 
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
     const notes = pageRows.map(normaliseNoteRow);
 
+    await audit(req, "NOTES_SEARCHED", {
+      targetType: "progress_note",
+      targetId: null,
+      meta: {
+        hasIncident,
+        archived,
+        includeDeleted,
+        participantProvided: !!(participant && participant.trim()),
+        returned: notes.length,
+      },
+    });
+
+
     let nextCursor = null;
     if (hasMore) {
       const last = pageRows[pageRows.length - 1];
@@ -736,6 +798,11 @@ router.get("/notes/:id", notesReadIpLimiter, notesReadUserLimiter, async (req, r
 
     const { rows } = await query(sql, params);
     if (!rows[0]) return sendErr(res, req, 404, "Note not found");
+
+    await audit(req, "NOTE_VIEWED", {
+      targetType: "progress_note",
+      targetId: String(id),
+    });
 
     return res.json({ note: normaliseNoteRow(rows[0]) });
   } catch (err) {
@@ -1611,7 +1678,7 @@ router.post("/notes/:id/delete", notesWriteIpLimiter, notesWriteUserLimiter, asy
     await audit(req, "NOTE_DELETED", {
       targetType: "progress_note",
       targetId: String(id),
-      meta: { reason: reason || undefined },
+      meta: { reasonRedacted: safeAuditReason(reason) },
     });
 
     return res.json({
@@ -1840,11 +1907,14 @@ router.post("/notes/:id/metadata", notesWriteIpLimiter, notesWriteUserLimiter, a
     if (!updated) return sendErr(res, req, 404, "Note not found");
 
     const changes = diffChanges(before, patch, keys);
+    const changedKeys = Object.keys(changes);
+
     await audit(req, "NOTE_METADATA_UPDATED", {
       targetType: "progress_note",
       targetId: String(id),
-      meta: { changes },
+      meta: auditMetaForNoteChanges(before, after, changedKeys),
     });
+
 
     return res.json({ ok: true, note: normaliseNoteRow(updated) });
   } catch (err) {
@@ -1947,11 +2017,19 @@ router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (re
       targetType: "progress_note",
       targetId: null,
       meta: {
-        filters: { participant: participant || null, dateFrom, dateTo, includeArchived, includeDeleted: canIncludeDeleted },
+        filters: {
+          participantProvided: !!(participant && participant.trim()),
+          participantHash: participant && participant.trim() ? sha256Hex(participant.trim()) : null,
+          dateFrom,
+          dateTo,
+          includeArchived,
+          includeDeleted: canIncludeDeleted,
+        },
         count: rows.length,
         format,
       },
     });
+
 
     if (format === "json") {
       return res.json({ ok: true, count: rows.length, notes: rows.map((r) => ({ ...r, noteBody: stripNoteHeader(r.noteBody) })) });
