@@ -1,5 +1,7 @@
 // backend/rateLimit.js
-const { rateLimit } = require("express-rate-limit");
+const erl = require("express-rate-limit");
+const rateLimit = erl.rateLimit || erl;
+
 const { getClientIp } = require("./clientIp");
 
 // Shared handler: always include requestId (matches your notesRoutes pattern)
