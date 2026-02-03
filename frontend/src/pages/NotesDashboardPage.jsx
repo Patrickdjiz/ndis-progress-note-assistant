@@ -177,6 +177,15 @@ function NotesDashboardPage({ token, user }) {
   // ✅ UI-only: responsive helper
   const isMobile = useIsMobile(760);
 
+    const authHeaders = useMemo(() => {
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [token]);
+
+  const jsonHeaders = useMemo(() => {
+    return { "Content-Type": "application/json", ...authHeaders };
+  }, [authHeaders]);
+
+
   const actingName = user?.fullName || "Unknown user";
   const isAdmin = user?.role === "ADMIN";
 
@@ -244,7 +253,7 @@ function NotesDashboardPage({ token, user }) {
 
       const data = await apiFetch("/api/notes/search", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders,
         body: JSON.stringify(payload),
       });
 
@@ -287,7 +296,7 @@ function NotesDashboardPage({ token, user }) {
 
       // ✅ if viewing deleted notes, request includeDeleted (backend may use this)
       const url = includeDeleted ? `/api/notes/${id}?includeDeleted=true` : `/api/notes/${id}`;
-      const data = await apiFetch(url);
+      const data = await apiFetch(url, { headers: authHeaders });
 
       setSelectedNote(data.note);
       setFinalNoteEditText(
@@ -312,7 +321,7 @@ function NotesDashboardPage({ token, user }) {
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/finalise`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders,
         body: JSON.stringify({ finalNoteText: finalNoteEditText }),
       });
 
@@ -342,7 +351,7 @@ function NotesDashboardPage({ token, user }) {
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/review`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders,
         body: JSON.stringify({ reviewedFlag: !selectedNote.reviewedFlag }),
       });
 
@@ -370,7 +379,7 @@ function NotesDashboardPage({ token, user }) {
       if (!selectedNote) return setErrorMsg("No note selected.");
 
       setDownloadingPdf(true);
-      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`);
+      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, { headers: authHeaders });
       const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}.pdf`;
       downloadBlob(blob, filename);
     } catch (e) {
@@ -391,7 +400,7 @@ function NotesDashboardPage({ token, user }) {
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/archive`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders,
         body: JSON.stringify({ archivedFlag: next }),
       });
 
@@ -427,7 +436,7 @@ function NotesDashboardPage({ token, user }) {
       setActing(true);
       const data = await apiFetch(`/api/notes/${selectedNote.id}/delete`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders,
         body: JSON.stringify({ reason }),
       });
 
@@ -460,7 +469,7 @@ function NotesDashboardPage({ token, user }) {
       setActing(true);
       const data = await apiFetch(`/api/notes/${selectedNote.id}/restore`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders,
       });
 
       setSelectedNote(prev => prev ? ({
@@ -495,7 +504,7 @@ function NotesDashboardPage({ token, user }) {
 
     const resp = await apiFetch(`/api/notes/${selectedNote.id}/legal-hold`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders,
       body: JSON.stringify({ legalHold: next }),
     });
 
@@ -567,7 +576,7 @@ function NotesDashboardPage({ token, user }) {
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/metadata`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders,
         body: JSON.stringify(payload),
       });
 
@@ -614,7 +623,7 @@ const runExport = async () => {
     if (payload.format === "csv") {
       const blob = await apiFetchBlob("/api/notes/export", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders,
         body: JSON.stringify(payload),
       });
 
@@ -627,7 +636,7 @@ const runExport = async () => {
 
     const data = await apiFetch("/api/notes/export", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders,
       body: JSON.stringify(payload),
     });
 
@@ -653,7 +662,7 @@ const runExport = async () => {
     try {
       setSettingsMsg("");
       setSettingsLoading(true);
-      const data = await apiFetch("/api/org/settings");
+      const data = await apiFetch("/api/org/settings", { headers: authHeaders });
       const s = data.settings || data;
       setOrgSettings({
         retentionDays: Number(s.retentionDays ?? 30),
@@ -690,7 +699,7 @@ const runExport = async () => {
 
     await apiFetch("/api/org/settings", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders,
       body: JSON.stringify(payload),
     });
 
@@ -726,7 +735,7 @@ const loadAuditForSelected = async ({ append = false } = {}) => {
 
     const data = await apiFetch("/api/audit/search", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders,
       body: JSON.stringify(body),
     });
 

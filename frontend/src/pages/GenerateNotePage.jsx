@@ -306,7 +306,7 @@ useEffect(() => {
         incidentsOrRisks,
         followUpActions,
         incidentOccurred,
-        consentAcknowledged: true,
+        consentAcknowledged: consentAck,
         ...(canSelectWorker ? { workerUserId: Number(selectedWorkerId) } : {}),
       }),
     });

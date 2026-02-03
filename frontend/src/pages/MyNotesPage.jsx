@@ -26,6 +26,15 @@ function MyNotesPage({ token, user }) {
   // ✅ UI-only: responsive helper
   const isMobile = useIsMobile(760);
 
+    const authHeaders = useMemo(() => {
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [token]);
+
+  const jsonHeaders = useMemo(() => {
+    return { "Content-Type": "application/json", ...authHeaders };
+  }, [authHeaders]);
+
+
   const ymdOnly = (v) => {
     const s = String(v || "");
     const m = s.match(/\d{4}-\d{2}-\d{2}/);
@@ -53,9 +62,7 @@ const fetchNotes = async ({ append = false, cursor = undefined } = {}) => {
 
     const data = await apiFetch("/api/notes/search", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: jsonHeaders,
       body: JSON.stringify(payload),
     });
 
@@ -94,7 +101,7 @@ const fetchNotes = async ({ append = false, cursor = undefined } = {}) => {
       setDetailError("");
       setFinalSaveMsg("");
 
-      const data = await apiFetch(`/api/notes/${noteSummary.id}`);
+      const data = await apiFetch(`/api/notes/${noteSummary.id}`, { headers: authHeaders });
 
       const fullNote = data.note;
       setSelectedNote(fullNote);
@@ -121,9 +128,7 @@ const fetchNotes = async ({ append = false, cursor = undefined } = {}) => {
 
       const data = await apiFetch(`/api/notes/${selectedNote.id}/finalise`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: jsonHeaders,
         body: JSON.stringify({ finalNoteText: finalNoteEditText }),
       });
 
@@ -174,7 +179,7 @@ const fetchNotes = async ({ append = false, cursor = undefined } = {}) => {
 
       setDownloadingPdf(true);
 
-      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`);
+      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, { headers: authHeaders });
 
       const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}.pdf`;
       downloadBlob(blob, filename);

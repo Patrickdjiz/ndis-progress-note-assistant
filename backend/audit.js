@@ -1,4 +1,4 @@
-1// backend/audit.js
+// backend/audit.js
 const { query } = require("./dbAdapter");
 const { getClientIp } = require("./clientIp");
 
