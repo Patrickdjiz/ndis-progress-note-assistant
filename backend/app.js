@@ -18,6 +18,7 @@ const accountRoutes = require("./routes/accountRoutes");
 const passwordResetRoutes = require("./routes/passwordResetRoutes");
 const auditRoutes = require("./routes/auditRoutes");
 const orgSettingsRoutes = require("./routes/orgSettingsRoutes");
+const privacyRoutes = require("./routes/privacyRoutes");
 const { getClientIp } = require("./clientIp");
 
 
@@ -198,6 +199,7 @@ app.use("/api", notesRoutes);
 app.use("/api", accountRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/org", orgSettingsRoutes);
+app.use("/api/privacy", privacyRoutes);
 
 
 // 404 handler

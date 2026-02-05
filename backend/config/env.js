@@ -35,4 +35,5 @@ module.exports = {
   AI_MODEL,
   PORT,
   JWT_SECRET,
+  PRIVACY_NOTICE_VERSION,
 };
