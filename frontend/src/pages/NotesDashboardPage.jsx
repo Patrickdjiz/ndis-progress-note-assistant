@@ -166,6 +166,7 @@ function NotesDashboardPage({ token, user }) {
     retentionDays: 30,
     deleteGraceDays: 7,
     autoPurgeEnabled: false,
+    aiEnabled: true,
   });
 
   const [auditEvents, setAuditEvents] = useState([]);
@@ -668,6 +669,7 @@ const runExport = async () => {
         retentionDays: Number(s.retentionDays ?? 30),
         deleteGraceDays: Number(s.deleteGraceDays ?? 7),
         autoPurgeEnabled: !!s.autoPurgeEnabled,
+        aiEnabled: s.aiEnabled === undefined ? true : !!s.aiEnabled,
       });
     } catch (e) {
       setSettingsMsg(e?.message || "Failed to load org settings.");
@@ -695,6 +697,7 @@ const runExport = async () => {
       retentionDays,
       deleteGraceDays,
       autoPurgeEnabled: !!orgSettings.autoPurgeEnabled,
+      aiEnabled: !!orgSettings.aiEnabled,
     };
 
     await apiFetch("/api/org/settings", {
@@ -1708,6 +1711,18 @@ useEffect(() => {
               />
               Enable automatic purge (recommended once configured)
             </label>
+            <label style={{ display: "inline-flex", gap: 8, alignItems: "center", fontSize: "0.9rem", color: "#111827", cursor: "pointer" }}>
+  <input
+    type="checkbox"
+    checked={!!orgSettings.aiEnabled}
+    onChange={(e) => setOrgSettings((p) => ({ ...p, aiEnabled: e.target.checked }))}
+  />
+  Enable AI note generation (recommended)
+</label>
+
+<div style={{ marginTop: 6, fontSize: "0.8rem", color: "#6b7280" }}>
+  If disabled, workers cannot generate notes and will be told to contact the provider admin.
+</div>
           </div>
         )}
       </Modal>

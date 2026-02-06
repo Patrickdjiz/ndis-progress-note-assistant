@@ -13,7 +13,8 @@ const updateSchema = z.object({
 deleteGraceDays: z.coerce.number().int().min(1).max(365).optional(),
 organisationId: z.coerce.number().int().positive().optional(),
   autoPurgeEnabled: z.boolean().optional(),
-}).refine((v) => v.retentionDays !== undefined || v.deleteGraceDays !== undefined || v.autoPurgeEnabled !== undefined, {
+  aiEnabled: z.boolean().optional(),
+}).refine((v) => v.retentionDays !== undefined || v.deleteGraceDays !== undefined || v.autoPurgeEnabled !== undefined || v.aiEnabled !== undefined,  {
   message: "Provide at least one setting to update.",
 });
 
@@ -39,7 +40,8 @@ router.get("/settings", async (req, res) => {
       SELECT id, name,
              retention_days AS "retentionDays",
              delete_grace_days AS "deleteGraceDays",
-             auto_purge_enabled AS "autoPurgeEnabled"
+             auto_purge_enabled AS "autoPurgeEnabled",
+             ai_enabled AS "aiEnabled"
       FROM organisations
       WHERE id = $1
       LIMIT 1
@@ -68,7 +70,7 @@ router.post("/settings", async (req, res) => {
       return res.status(400).json({ error: msg || "Invalid body", requestId: req.id });
     }
 
-    const { organisationId, retentionDays, deleteGraceDays, autoPurgeEnabled } = parsed.data;
+    const { organisationId, retentionDays, deleteGraceDays, autoPurgeEnabled, aiEnabled } = parsed.data;
 
     // Determine target org
     let orgId = req.user.organisationId;
@@ -81,7 +83,8 @@ router.post("/settings", async (req, res) => {
       `
       SELECT retention_days AS "retentionDays",
              delete_grace_days AS "deleteGraceDays",
-             auto_purge_enabled AS "autoPurgeEnabled"
+             auto_purge_enabled AS "autoPurgeEnabled",
+             ai_enabled AS "aiEnabled"
       FROM organisations
       WHERE id = $1
       LIMIT 1
@@ -95,6 +98,7 @@ router.post("/settings", async (req, res) => {
       retentionDays: retentionDays ?? before.retentionDays,
       deleteGraceDays: deleteGraceDays ?? before.deleteGraceDays,
       autoPurgeEnabled: autoPurgeEnabled ?? before.autoPurgeEnabled,
+      aiEnabled: aiEnabled ?? before.aiEnabled,
     };
 
     const { rows } = await query(
@@ -103,13 +107,15 @@ router.post("/settings", async (req, res) => {
       SET retention_days = $1,
           delete_grace_days = $2,
           auto_purge_enabled = $3,
+          ai_enabled = $4,
           updated_at = now()
       WHERE id = $4
       RETURNING retention_days AS "retentionDays",
                 delete_grace_days AS "deleteGraceDays",
-                auto_purge_enabled AS "autoPurgeEnabled"
+                auto_purge_enabled AS "autoPurgeEnabled",
+                ai_enabled AS "aiEnabled"
       `,
-      [after.retentionDays, after.deleteGraceDays, after.autoPurgeEnabled, orgId]
+      [after.retentionDays, after.deleteGraceDays, after.autoPurgeEnabled, after.aiEnabled, orgId]
     );
 
     await audit(req, "ORG_SETTINGS_UPDATED", {
