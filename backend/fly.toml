@@ -18,6 +18,8 @@ primary_region = 'syd'
 
 [env]
   PORT = "3000"
+  PRIVACY_NOTICE_VERSION = "2026-02-05"
+
 
 [[vm]]
   memory = '1gb'
