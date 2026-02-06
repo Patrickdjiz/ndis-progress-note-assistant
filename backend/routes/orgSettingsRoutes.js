@@ -109,7 +109,7 @@ router.post("/settings", async (req, res) => {
           auto_purge_enabled = $3,
           ai_enabled = $4,
           updated_at = now()
-      WHERE id = $4
+      WHERE id = $5
       RETURNING retention_days AS "retentionDays",
                 delete_grace_days AS "deleteGraceDays",
                 auto_purge_enabled AS "autoPurgeEnabled",

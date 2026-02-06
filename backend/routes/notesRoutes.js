@@ -986,6 +986,23 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
       return sendErr(res, req, 403, "Forbidden");
     }
 
+        // Block AI generation if the provider org disabled it (non-bypassable)
+    const { rows: orgRows } = await query(
+      `SELECT ai_enabled AS "aiEnabled" FROM organisations WHERE id = $1 LIMIT 1`,
+      [req.user.organisationId]
+    );
+
+    if (!orgRows[0]?.aiEnabled) {
+      await audit(req, "AI_GENERATION_BLOCKED_ORG_DISABLED", {
+        organisationId: req.user.organisationId,
+        targetType: "organisation",
+        targetId: String(req.user.organisationId),
+        meta: { reason: "ai_disabled_by_org_setting" },
+      });
+
+      return sendErr(res, req, 403, "AI generation is disabled by your provider admin.");
+    }
+
     const parsed = generateNoteSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
@@ -1009,23 +1026,6 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
 
     if (consentAcknowledged !== true) {
       return sendErr(res, req, 400, "Consent must be acknowledged before generating.");
-    }
-
-    // Block AI generation if the provider org disabled it (non-bypassable)
-    const { rows: orgRows } = await query(
-      `SELECT ai_enabled AS "aiEnabled" FROM organisations WHERE id = $1 LIMIT 1`,
-      [req.user.organisationId]
-    );
-
-    if (!orgRows[0]?.aiEnabled) {
-      await audit(req, "AI_GENERATION_BLOCKED_ORG_DISABLED", {
-        organisationId: req.user.organisationId,
-        targetType: "organisation",
-        targetId: String(req.user.organisationId),
-        meta: { reason: "ai_disabled_by_org_setting" },
-      });
-
-      return sendErr(res, req, 403, "AI generation is disabled by your provider admin.");
     }
 
 
