@@ -20,6 +20,9 @@ const AI_MODEL = process.env.AI_MODEL || "llama3";
 // Server
 const PORT = Number(process.env.PORT) || 5000;
 
+// Privacy notice
+const PRIVACY_NOTICE_VERSION = process.env.PRIVACY_NOTICE_VERSION || "2026-02-05";
+
 // Auth
 const JWT_SECRET = process.env.JWT_SECRET || "";
 if (!JWT_SECRET && NODE_ENV === "production") {
