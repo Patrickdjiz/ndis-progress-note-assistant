@@ -6,9 +6,9 @@ export const API_BASE_URL =
   (import.meta.env.PROD ? "https://api.ndisnotes.com" : "http://localhost:5000");
 
 let handlingUnauthorized = false;
+let handlingPrivacyRequired = false;
 
 // Endpoints that should NOT automatically attach Bearer tokens
-// (prevents stale token interfering with login/reset flows)
 function shouldSkipAuth(path) {
   return (
     path === "/api/login" ||
@@ -37,9 +37,7 @@ function clearAuthEverywhere() {
   } catch {}
 }
 
-
 function forceRelogin(message) {
-  // prevent multi-redirect storms if multiple requests 401 at once
   if (handlingUnauthorized) return;
   handlingUnauthorized = true;
 
@@ -49,35 +47,64 @@ function forceRelogin(message) {
 
   clearAuthEverywhere();
 
-  // Hard redirect resets all React state no matter where token is stored
   if (window.location.pathname !== "/") {
     window.location.assign("/");
   } else {
-    // already on login page; allow future 401 handling again shortly
     setTimeout(() => {
       handlingUnauthorized = false;
     }, 300);
   }
 }
 
+function forcePrivacyNotice(message, policyVersion) {
+  // prevent redirect storms if multiple requests 428 at once
+  if (handlingPrivacyRequired) return;
+  handlingPrivacyRequired = true;
+
+  window.dispatchEvent(
+    new CustomEvent("ndis:privacy_required", {
+      detail: {
+        message: message || "Privacy notice acceptance required before continuing.",
+        policyVersion: policyVersion || null,
+      },
+    })
+  );
+
+  // allow future 428 handling again shortly
+  setTimeout(() => {
+    handlingPrivacyRequired = false;
+  }, 500);
+}
+
+function maybeDispatchPrivacyRequired(path, res, hasAuth, data) {
+  // Only treat as privacy gate if:
+  // - it's a 428
+  // - request was authenticated
+  // - not a skip-auth endpoint
+  if (res.status === 428 && hasAuth && !shouldSkipAuth(path)) {
+    const message =
+      (data && (data.error || data.message)) ||
+      "Privacy notice acceptance required before continuing.";
+
+    const policyVersion =
+      (data && (data.policyVersion || data.currentVersion)) || null;
+
+    forcePrivacyNotice(message, policyVersion);
+  }
+}
+
 function maybeDispatchUnauthorized(path, res, hasAuth, data) {
-  // Only treat as "session expired" if:
-  // - it's a 401
-  // - the request was supposed to be authenticated
-  // - and it's NOT a skip-auth endpoint like /api/login or /api/auth/*
   if (res.status === 401 && hasAuth && !shouldSkipAuth(path)) {
     const message =
       (data && (data.error || data.message)) ||
       "Session expired. Please log in again.";
 
-    // keep your event (handy if you want to show toast etc)
     window.dispatchEvent(
       new CustomEvent("ndis:unauthorized", {
         detail: { message },
       })
     );
 
-    // also enforce logout + redirect globally
     forceRelogin(message);
   }
 }
@@ -85,15 +112,13 @@ function maybeDispatchUnauthorized(path, res, hasAuth, data) {
 function withAuth(path, options = {}) {
   const headers = new Headers(options.headers || {});
 
-  // If caller already provided Authorization, keep it.
   const alreadyHasAuth =
     headers.has("Authorization") || headers.has("authorization");
 
-  // If this is a skip-auth endpoint, never add token.
   if (shouldSkipAuth(path)) {
     return {
       options: { ...options, headers },
-      hasAuth: alreadyHasAuth, // only true if caller explicitly set it
+      hasAuth: alreadyHasAuth,
     };
   }
 
@@ -115,6 +140,8 @@ export async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_BASE_URL}${path}`, opts);
   const data = await parseJsonSafe(res);
 
+  // ✅ handle 428 before 401
+  maybeDispatchPrivacyRequired(path, res, !!hasAuth, data);
   maybeDispatchUnauthorized(path, res, !!hasAuth, data);
 
   if (!res.ok) {
@@ -135,6 +162,9 @@ export async function apiFetchBlob(path, options = {}) {
   const res = await fetch(`${API_BASE_URL}${path}`, opts);
 
   const data = await parseJsonSafe(res);
+
+  // ✅ handle 428 before 401
+  maybeDispatchPrivacyRequired(path, res, !!hasAuth, data);
   maybeDispatchUnauthorized(path, res, !!hasAuth, data);
 
   if (!res.ok) {

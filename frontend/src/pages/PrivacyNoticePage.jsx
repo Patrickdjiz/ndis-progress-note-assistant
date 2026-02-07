@@ -9,7 +9,8 @@ const MUTED = "#6b7280";
 export default function PrivacyNoticePage({ token, currentVersion, onAccepted }) {
   const navigate = useNavigate();
 
-  const version = useMemo(() => currentVersion || "v1", [currentVersion]);
+  const [serverVersion, setServerVersion] = useState(currentVersion || null);
+const version = serverVersion || currentVersion || "v1";
 
   const [checked, setChecked] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -34,8 +35,9 @@ export default function PrivacyNoticePage({ token, currentVersion, onAccepted })
         const data = await apiFetch("/api/privacy/consent", {
           headers: authHeaders,
         });
-
         if (cancelled) return;
+
+        setServerVersion(data?.currentVersion || null);
 
         const ok = !!data?.accepted;
         setAccepted(ok);

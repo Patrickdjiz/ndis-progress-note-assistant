@@ -159,14 +159,24 @@ async function requireAuth(req, res, next) {
     }
 
     // DB truth wins
+    const orgId =
+      dbUser.organisationId === null || dbUser.organisationId === undefined
+        ? null
+        : Number(dbUser.organisationId);
+
+    if (orgId !== null && !Number.isInteger(orgId)) {
+      return res.status(401).json({ error: "Invalid organisation id", requestId: req.id });
+    }
+
     req.user = {
       id: Number(dbUser.id),
-      organisationId: Number(dbUser.organisationId),
+      organisationId: orgId,
       role: dbUser.role,
       fullName: dbUser.fullName,
       email: dbUser.email,
       mustChangePassword: !!dbUser.mustChangePassword,
     };
+    
 
 
     // backend/authMiddleware.js (inside requireAuth, after req.user = {...})

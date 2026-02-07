@@ -15,6 +15,8 @@ import PrivacyNoticePage from "./pages/PrivacyNoticePage.jsx";
 import { sessionStore } from "./lib/sessionStore";
 import { getJwtExpMs } from "./lib/jwt";
 import { apiFetch } from "./lib/api";
+import AuditLogPage from "./pages/AuditLogPage.jsx";
+
 
 const PRIMARY = "#111827";
 const PRIMARY_TEXT = "#f9fafb";
@@ -64,6 +66,29 @@ function App() {
     window.addEventListener("ndis:unauthorized", handler);
     return () => window.removeEventListener("ndis:unauthorized", handler);
   }, []);
+
+  useEffect(() => {
+  const handler = (e) => {
+    const policyVersion = e?.detail?.policyVersion || null;
+    const message = e?.detail?.message || null;
+
+    // flip the local privacy gate immediately
+    setPrivacy((p) => ({
+      ...p,
+      loading: false,
+      accepted: false,
+      currentVersion: policyVersion || p.currentVersion,
+      error: message || p.error,
+    }));
+
+    // force a refresh check (and cancels stale privacy GET)
+    setPrivacyNonce((n) => n + 1);
+  };
+
+  window.addEventListener("ndis:privacy_required", handler);
+  return () => window.removeEventListener("ndis:privacy_required", handler);
+}, []);
+
 
   useEffect(() => {
     if (!auth?.token) return;
@@ -475,6 +500,12 @@ if (mustAcceptPrivacy) {
               <NavLink to="/account" style={linkStyle}>
                 Account
               </NavLink>
+
+              {(user.role === "ADMIN" || user.role === "OWNER") && (
+                <NavLink to="/audit" style={linkStyle}>
+                  Audit
+                </NavLink>
+              )}
             </nav>
 
             <button
@@ -541,6 +572,7 @@ if (mustAcceptPrivacy) {
             path="/account"
             element={<AccountPage token={token} user={user} onAuthUserPatch={patchAuthUser} />}
           />
+          <Route path="/audit" element={<AuditLogPage user={user} />} />
         </Routes>
 
         <FooterLinks />

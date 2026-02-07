@@ -27,10 +27,27 @@ async function getAcceptedAtForVersion(userId, version) {
   return rows[0]?.accepted_at || null;
 }
 
+function getOrgIdOr400(req, res) {
+  const orgId = Number(req.user?.organisationId);
+
+  // Treat null/undefined/0 as invalid (Number(null) === 0)
+  if (!Number.isInteger(orgId) || orgId <= 0) {
+    res.status(400).json({
+      error: "No organisation context for privacy acceptance",
+      requestId: req.id,
+    });
+    return null;
+  }
+
+  return orgId;
+}
+
+
 // --------------------
 // New-style endpoints
 // --------------------
 
+// GET /api/privacy/latest
 // GET /api/privacy/latest
 router.get("/latest", async (req, res) => {
   try {
@@ -41,6 +58,17 @@ router.get("/latest", async (req, res) => {
         ok: true,
         required: false,
         policyVersion: null,
+        accepted: true,
+        acceptedAt: null,
+      });
+    }
+
+    // ✅ OWNER bypass
+    if (req.user.role === "OWNER") {
+      return res.json({
+        ok: true,
+        required: true,
+        policyVersion: version,
         accepted: true,
         acceptedAt: null,
       });
@@ -61,6 +89,7 @@ router.get("/latest", async (req, res) => {
   }
 });
 
+
 // POST /api/privacy/accept
 router.post("/accept", async (req, res) => {
   try {
@@ -68,6 +97,21 @@ router.post("/accept", async (req, res) => {
     if (!version) {
       return res.status(500).json({ error: "Privacy notice is not configured", requestId: req.id });
     }
+
+    // ✅ OWNER bypass (no-op)
+    if (req.user.role === "OWNER") {
+      return res.json({
+        ok: true,
+        accepted: true,
+        policyVersion: version,
+        acceptedAt: null,
+        alreadyAccepted: true,
+      });
+    }
+
+    // ✅ Must have org context
+    const orgId = getOrgIdOr400(req, res);
+    if (!orgId) return;
 
     const ip = getClientIp(req);
     const ua = (req.get("user-agent") || "").slice(0, 512) || null;
@@ -80,7 +124,7 @@ router.post("/accept", async (req, res) => {
       DO NOTHING
       RETURNING accepted_at
       `,
-      [req.user.organisationId, req.user.id, version, ip, ua]
+      [orgId, req.user.id, version, ip, ua]
     );
 
     const alreadyAccepted = !ins.rows[0];
@@ -103,11 +147,13 @@ router.post("/accept", async (req, res) => {
   }
 });
 
+
 // --------------------
 // Back-compat endpoints
 // (your frontend may already use these)
 // --------------------
 
+// GET /api/privacy/consent
 // GET /api/privacy/consent
 router.get("/consent", async (req, res) => {
   try {
@@ -121,6 +167,17 @@ router.get("/consent", async (req, res) => {
         acceptedVersion: null,
         acceptedAt: null,
         organisationId: Number(req.user.organisationId),
+      });
+    }
+
+    // ✅ OWNER bypass (treat as accepted, no org context)
+    if (req.user.role === "OWNER") {
+      return res.json({
+        accepted: true,
+        currentVersion: version,
+        acceptedVersion: version,
+        acceptedAt: null,
+        organisationId: null,
       });
     }
 
@@ -139,6 +196,7 @@ router.get("/consent", async (req, res) => {
   }
 });
 
+
 // POST /api/privacy/consent  (expects { version } like your current UI)
 router.post("/consent", async (req, res) => {
   try {
@@ -146,6 +204,21 @@ router.post("/consent", async (req, res) => {
     if (!required) {
       return res.status(500).json({ error: "Privacy notice is not configured", requestId: req.id });
     }
+
+    // ✅ OWNER bypass (no-op)
+    if (req.user.role === "OWNER") {
+      return res.json({
+        accepted: true,
+        currentVersion: required,
+        acceptedVersion: required,
+        acceptedAt: null,
+        alreadyAccepted: true,
+      });
+    }
+
+    // ✅ Must have org context
+    const orgId = getOrgIdOr400(req, res);
+    if (!orgId) return;
 
     const version = String(req.body?.version || "").trim();
     if (!version) {
@@ -170,7 +243,7 @@ router.post("/consent", async (req, res) => {
       DO NOTHING
       RETURNING accepted_at
       `,
-      [req.user.organisationId, req.user.id, version, ip, ua]
+      [orgId, req.user.id, version, ip, ua]
     );
 
     const alreadyAccepted = !ins.rows[0];
@@ -198,5 +271,6 @@ router.post("/consent", async (req, res) => {
     return res.status(500).json({ error: "Failed to record acceptance", requestId: req.id });
   }
 });
+
 
 module.exports = router;
