@@ -180,6 +180,11 @@ async function requireAuth(req, res, next) {
       "/api/auth/me",
       "/api/health",
       "/api/health/db",
+
+      // ✅ allow privacy consent while must_change_password is true
+      "/api/privacy/consent",
+      "/api/privacy/latest",
+      "/api/privacy/accept",
     ]);
 
     if (req.user.mustChangePassword && !allowWhenMustChange.has(safePath)) {

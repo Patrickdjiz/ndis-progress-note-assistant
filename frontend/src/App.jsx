@@ -52,10 +52,6 @@ function App() {
     error: null,
   });
 
-  const allowedWhenPrivacyPending = useMemo(
-    () => new Set(["/privacy", "/privacy/notice", "/account"]),
-    []
-  );
 
   useEffect(() => {
     const handler = (e) => {
@@ -288,18 +284,25 @@ function App() {
 
   const { user, token } = auth;
 
-  // 1) Force password change first
-  if (user?.mustChangePassword && location.pathname !== "/account") {
-    return <Navigate to="/account" replace />;
-  }
+  // ---- Gate conditions ----
+const mustAcceptPrivacy =
+  user?.role !== "OWNER" && !privacy.loading && !privacy.accepted;
 
-  // 2) Then force privacy notice acceptance (ADMIN/WORKER only)
-  const mustAcceptPrivacy =
-    user?.role !== "OWNER" && !privacy.loading && !privacy.accepted;
+const mustChangePassword = !!user?.mustChangePassword;
 
-  if (mustAcceptPrivacy && !allowedWhenPrivacyPending.has(location.pathname)) {
+// 1) Privacy first (ADMIN/WORKER only)
+if (mustAcceptPrivacy) {
+  const okPaths = new Set(["/privacy", "/privacy/notice"]);
+  if (!okPaths.has(location.pathname)) {
     return <Navigate to="/privacy/notice" replace />;
   }
+}
+
+// 2) Then force password change
+if (mustChangePassword && location.pathname !== "/account") {
+  return <Navigate to="/account" replace />;
+}
+
 
   const linkStyle = ({ isActive }) => ({
     padding: "0.4rem 0.9rem",

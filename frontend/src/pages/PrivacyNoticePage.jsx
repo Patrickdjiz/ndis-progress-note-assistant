@@ -1,13 +1,12 @@
 // frontend/src/pages/PrivacyNoticePage.jsx
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink} from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
 const PRIMARY = "#111827";
 const MUTED = "#6b7280";
 
 export default function PrivacyNoticePage({ token, currentVersion, onAccepted }) {
-  const navigate = useNavigate();
 
   const version = useMemo(() => currentVersion || "v1", [currentVersion]);
 
@@ -77,8 +76,7 @@ export default function PrivacyNoticePage({ token, currentVersion, onAccepted })
         error: null,
       });
 
-      // ✅ go into the app
-      navigate("/account", { replace: true });
+
     } catch (e) {
       setErr(e?.message || "Failed to record acceptance.");
     } finally {
