@@ -16,8 +16,9 @@ function requiredPrivacyVersion() {
 async function hasAcceptedPrivacy(userId, version) {
   const key = `${userId}:${version}`;
   const now = Date.now();
+
   const hit = privacyAcceptanceCache.get(key);
-  if (hit && hit.exp > now) return true;
+  if (hit && hit.exp > now) return hit.ok; // will only ever be true with change below
 
   const { rows } = await query(
     `
@@ -30,9 +31,17 @@ async function hasAcceptedPrivacy(userId, version) {
   );
 
   const ok = !!rows[0];
-  if (ok) privacyAcceptanceCache.set(key, { ok: true, exp: now + PRIVACY_CACHE_TTL_MS });
+
+  // ✅ IMPORTANT: cache only TRUE
+  if (ok) {
+    privacyAcceptanceCache.set(key, { ok: true, exp: now + PRIVACY_CACHE_TTL_MS });
+  } else {
+    privacyAcceptanceCache.delete(key); // prevent stale "false" locks
+  }
+
   return ok;
 }
+
 
 function generateToken(user) {
   return jwt.sign(

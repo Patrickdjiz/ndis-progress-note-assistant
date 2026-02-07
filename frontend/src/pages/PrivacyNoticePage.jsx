@@ -30,6 +30,8 @@ export default function PrivacyNoticePage({ currentVersion, onAccepted }) {
         acceptedAt: res?.acceptedAt || null,
         error: null,
       });
+
+      navigate("/", { replace: true });
     } catch (e) {
       setErr(e?.message || "Failed to record acceptance.");
     } finally {
