@@ -196,33 +196,33 @@ async function requireAuth(req, res, next) {
     }
 
         // ----- Privacy notice hard gate (428) -----
-    const policyVersion = requiredPrivacyVersion();
+// ✅ Do not gate OWNER (owner may not have a valid organisation_id for acceptances)
+const policyVersion = requiredPrivacyVersion();
 
-    if (policyVersion) {
-      const accepted = await hasAcceptedPrivacy(req.user.id, policyVersion);
-      req.user.mustAcceptPrivacy = !accepted;
+if (policyVersion && req.user.role !== "OWNER") {
+  const accepted = await hasAcceptedPrivacy(req.user.id, policyVersion);
+  req.user.mustAcceptPrivacy = !accepted;
 
-      const allowWhenMustAcceptPrivacy = new Set([
-        "/api/privacy/latest",
-        "/api/privacy/accept",
-        "/api/privacy/consent", // backward compatible
-        "/api/auth/me",
-        "/api/health",
-        "/api/health/db",
-        "/api/privacy/consent",
-      ]);
+  const allowWhenMustAcceptPrivacy = new Set([
+    "/api/privacy/latest",
+    "/api/privacy/accept",
+    "/api/privacy/consent",
+    "/api/auth/me",
+    "/api/health",
+    "/api/health/db",
+  ]);
 
-      if (req.user.mustAcceptPrivacy && !allowWhenMustAcceptPrivacy.has(safePath)) {
-        return res.status(428).json({
-          error: "Privacy notice acceptance required before continuing.",
-          code: "PRIVACY_NOTICE_REQUIRED",
-          policyVersion,
-          requestId: req.id,
-        });
-      }
-    } else {
-      req.user.mustAcceptPrivacy = false;
-    }
+  if (req.user.mustAcceptPrivacy && !allowWhenMustAcceptPrivacy.has(safePath)) {
+    return res.status(428).json({
+      error: "Privacy notice acceptance required before continuing.",
+      code: "PRIVACY_NOTICE_REQUIRED",
+      policyVersion,
+      requestId: req.id,
+    });
+  }
+} else {
+  req.user.mustAcceptPrivacy = false;
+}
 
 
     next();
