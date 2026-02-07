@@ -20,6 +20,7 @@ const PRIMARY = "#111827";
 const PRIMARY_TEXT = "#f9fafb";
 const MUTED_TEXT = "#4b5563";
 const IDLE_MS = 30 * 60 * 1000; // 30 minutes
+const [privacyNonce, setPrivacyNonce] = useState(0);
 
 function App() {
   const location = useLocation();
@@ -136,7 +137,10 @@ function App() {
     (async () => {
       try {
         setPrivacy((p) => ({ ...p, loading: true, error: null }));
-        const data = await apiFetch("/api/privacy/consent");
+        const data = await apiFetch("/api/privacy/consent", {
+          headers: { Authorization: `Bearer ${auth.token}` },
+        });
+
         if (cancelled) return;
 
         setPrivacy({
@@ -179,7 +183,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [auth?.token]);
+  }, [auth?.token, privacyNonce]);
 
   const handleLoginSuccess = (data) => {
     setLogoutMsg("");
@@ -243,8 +247,8 @@ function App() {
           minHeight: "100vh",
           background: "#f3f4f6",
           display: "flex",
-          alignItems: isLegal ? "stretch" : "center",
-          justifyContent: isLegal ? "flex-start" : "center",
+          alignItems: isLegal ? "flex-start" : "center",
+          justifyContent: "center",
           padding: "1rem",
         }}
       >
@@ -474,14 +478,19 @@ function App() {
         <Routes>
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route
-            path="/privacy/notice"
-            element={
-              <PrivacyNoticePage
-                currentVersion={privacy.currentVersion}
-                onAccepted={(accepted) => setPrivacy((p) => ({ ...p, ...accepted }))}
-              />
-            }
-          />
+  path="/privacy/notice"
+  element={
+    <PrivacyNoticePage
+      token={token}
+      currentVersion={privacy.currentVersion}
+      onAccepted={(accepted) => {
+        setPrivacy((p) => ({ ...p, ...accepted, loading: false, error: null }));
+        setPrivacyNonce((n) => n + 1); // ✅ cancels any stale GET and refreshes
+      }}
+    />
+  }
+/>
+
 
           {user.role === "OWNER" ? (
             <>

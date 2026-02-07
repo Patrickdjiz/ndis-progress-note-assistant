@@ -1,16 +1,57 @@
 // frontend/src/pages/PrivacyNoticePage.jsx
-import { useMemo, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
 const PRIMARY = "#111827";
 const MUTED = "#6b7280";
 
-export default function PrivacyNoticePage({ currentVersion, onAccepted }) {
+export default function PrivacyNoticePage({ token, currentVersion, onAccepted }) {
+  const navigate = useNavigate();
+
   const version = useMemo(() => currentVersion || "v1", [currentVersion]);
+
   const [checked, setChecked] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const [loading, setLoading] = useState(true);
+
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
+
+  const authHeaders = useMemo(() => {
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [token]);
+
+  // Load current acceptance state so revisiting the page reflects reality
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setLoading(true);
+        setErr("");
+
+        const data = await apiFetch("/api/privacy/consent", {
+          headers: authHeaders,
+        });
+
+        if (cancelled) return;
+
+        const ok = !!data?.accepted;
+        setAccepted(ok);
+        setChecked(ok); // ✅ if already accepted, checkbox appears checked
+      } catch (e) {
+        if (cancelled) return;
+        setErr(e?.message || "Failed to load privacy notice status.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders]);
 
   const accept = async () => {
     setErr("");
@@ -19,18 +60,24 @@ export default function PrivacyNoticePage({ currentVersion, onAccepted }) {
     try {
       const res = await apiFetch("/api/privacy/consent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ version }),
       });
 
+      const nextAccepted = !!res?.accepted;
+
+      setAccepted(nextAccepted);
+      setChecked(true);
+
       onAccepted?.({
-        accepted: !!res?.accepted,
+        accepted: nextAccepted,
         currentVersion: res?.currentVersion || version,
         acceptedVersion: res?.acceptedVersion || version,
         acceptedAt: res?.acceptedAt || null,
         error: null,
       });
 
+      // ✅ go into the app
       navigate("/", { replace: true });
     } catch (e) {
       setErr(e?.message || "Failed to record acceptance.");
@@ -75,42 +122,57 @@ export default function PrivacyNoticePage({ currentVersion, onAccepted }) {
           <ul>
             <li>Text you provide may be processed for generation.</li>
             <li>We attempt to de-identify/redact inputs before sending them to AI.</li>
-            <li><strong>Do not paste unnecessary identifiers</strong> (e.g., DOB, Medicare, addresses) unless required.</li>
+            <li>
+              <strong>Do not paste unnecessary identifiers</strong> (e.g., DOB, Medicare, addresses) unless required.
+            </li>
           </ul>
 
           <div style={{ marginTop: "1rem", padding: "0.75rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
-            <label style={{ display: "flex", gap: "0.6rem", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={(e) => setChecked(e.target.checked)}
-                style={{ marginTop: "0.25rem" }}
-              />
-              <span>
-                I have read and understood the Privacy & Collection Notice (version {version}) and will use the system
-                in a way that protects participant privacy.
-              </span>
-            </label>
+            {loading ? (
+              <div style={{ color: MUTED }}>Loading…</div>
+            ) : (
+              <>
+                <label style={{ display: "flex", gap: "0.6rem", cursor: accepted ? "default" : "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={accepted}
+                    onChange={(e) => setChecked(e.target.checked)}
+                    style={{ marginTop: "0.25rem" }}
+                  />
+                  <span>
+                    I have read and understood the Privacy & Collection Notice (version {version}) and will use the
+                    system in a way that protects participant privacy.
+                  </span>
+                </label>
 
-            {err && <div style={{ marginTop: "0.5rem", color: "#b91c1c", fontSize: "0.9rem" }}>{err}</div>}
+                {accepted && (
+                  <div style={{ marginTop: "0.5rem", color: "#047857", fontSize: "0.9rem" }}>
+                    Already accepted.
+                  </div>
+                )}
 
-            <button
-              type="button"
-              disabled={!checked || submitting}
-              onClick={accept}
-              style={{
-                marginTop: "0.75rem",
-                padding: "0.45rem 0.9rem",
-                borderRadius: "0.6rem",
-                border: "1px solid #111827",
-                background: !checked || submitting ? "#e5e7eb" : "#111827",
-                color: !checked || submitting ? "#6b7280" : "#ffffff",
-                cursor: !checked || submitting ? "not-allowed" : "pointer",
-                fontWeight: 600,
-              }}
-            >
-              {submitting ? "Saving…" : "Accept and continue"}
-            </button>
+                {err && <div style={{ marginTop: "0.5rem", color: "#b91c1c", fontSize: "0.9rem" }}>{err}</div>}
+
+                <button
+                  type="button"
+                  disabled={accepted || !checked || submitting}
+                  onClick={accept}
+                  style={{
+                    marginTop: "0.75rem",
+                    padding: "0.45rem 0.9rem",
+                    borderRadius: "0.6rem",
+                    border: "1px solid #111827",
+                    background: accepted || !checked || submitting ? "#e5e7eb" : "#111827",
+                    color: accepted || !checked || submitting ? "#6b7280" : "#ffffff",
+                    cursor: accepted || !checked || submitting ? "not-allowed" : "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  {accepted ? "Accepted" : submitting ? "Saving…" : "Accept and continue"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
