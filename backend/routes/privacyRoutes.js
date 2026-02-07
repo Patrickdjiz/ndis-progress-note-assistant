@@ -2,89 +2,200 @@
 const express = require("express");
 const { requireAuth } = require("../authMiddleware");
 const { query } = require("../dbAdapter");
-const { auditEvent } = require("../audit");
-const { PRIVACY_NOTICE_VERSION } = require("../config/env");
+const { audit } = require("../audit"); // ✅ match notesRoutes usage
 const { getClientIp } = require("../clientIp");
 
 const router = express.Router();
+router.use(requireAuth);
 
-router.get("/consent", requireAuth, async (req, res, next) => {
+function requiredPolicyVersion() {
+  const v = process.env.PRIVACY_NOTICE_VERSION;
+  return v && String(v).trim() ? String(v).trim() : null;
+}
+
+async function getAcceptedAtForVersion(userId, version) {
+  const { rows } = await query(
+    `
+    SELECT accepted_at
+    FROM privacy_acceptances
+    WHERE user_id = $1
+      AND policy_version = $2
+    LIMIT 1
+    `,
+    [userId, version]
+  );
+  return rows[0]?.accepted_at || null;
+}
+
+// --------------------
+// New-style endpoints
+// --------------------
+
+// GET /api/privacy/latest
+router.get("/latest", async (req, res) => {
   try {
-    const userId = Number(req.user.id);
-    const orgId = Number(req.user.organisationId);
+    const version = requiredPolicyVersion();
 
-    const { rows } = await query(
-      `
-      SELECT policy_version AS "policyVersion", accepted_at AS "acceptedAt"
-      FROM privacy_acceptances
-      WHERE user_id = $1
-      ORDER BY accepted_at DESC
-      LIMIT 1
-      `,
-      [userId]
-    );
+    if (!version) {
+      return res.json({
+        ok: true,
+        required: false,
+        policyVersion: null,
+        accepted: true,
+        acceptedAt: null,
+      });
+    }
 
-    const latest = rows[0] || null;
+    const acceptedAt = await getAcceptedAtForVersion(req.user.id, version);
 
     return res.json({
-      accepted: (latest?.policyVersion || null) === PRIVACY_NOTICE_VERSION,
-      currentVersion: PRIVACY_NOTICE_VERSION,
-      acceptedVersion: latest?.policyVersion || null,
-      acceptedAt: latest?.acceptedAt || null,
-      organisationId: orgId,
+      ok: true,
+      required: true,
+      policyVersion: version,
+      accepted: !!acceptedAt,
+      acceptedAt,
     });
   } catch (err) {
-    next(err);
+    console.error(`[${req.id}] Error reading privacy latest:`, err);
+    return res.status(500).json({ error: "Failed to load privacy status", requestId: req.id });
   }
 });
 
-router.post("/consent", requireAuth, async (req, res, next) => {
+// POST /api/privacy/accept
+router.post("/accept", async (req, res) => {
   try {
-    const userId = Number(req.user.id);
-    const orgId = Number(req.user.organisationId);
-    const role = req.user.role;
+    const version = requiredPolicyVersion();
+    if (!version) {
+      return res.status(500).json({ error: "Privacy notice is not configured", requestId: req.id });
+    }
+
+    const ip = getClientIp(req);
+    const ua = (req.get("user-agent") || "").slice(0, 512) || null;
+
+    const ins = await query(
+      `
+      INSERT INTO privacy_acceptances (organisation_id, user_id, policy_version, ip, user_agent)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (user_id, policy_version)
+      DO NOTHING
+      RETURNING accepted_at
+      `,
+      [req.user.organisationId, req.user.id, version, ip, ua]
+    );
+
+    const alreadyAccepted = !ins.rows[0];
+    const acceptedAt = alreadyAccepted
+      ? await getAcceptedAtForVersion(req.user.id, version)
+      : ins.rows[0].accepted_at;
+
+    if (!alreadyAccepted) {
+      await audit(req, "PRIVACY_NOTICE_ACCEPTED", {
+        targetType: "privacy_notice",
+        targetId: version,
+        meta: { policyVersion: version },
+      });
+    }
+
+    return res.json({ ok: true, policyVersion: version, acceptedAt, alreadyAccepted });
+  } catch (err) {
+    console.error(`[${req.id}] Error accepting privacy notice:`, err);
+    return res.status(500).json({ error: "Failed to record acceptance", requestId: req.id });
+  }
+});
+
+// --------------------
+// Back-compat endpoints
+// (your frontend may already use these)
+// --------------------
+
+// GET /api/privacy/consent
+router.get("/consent", async (req, res) => {
+  try {
+    const version = requiredPolicyVersion();
+
+    // If not configured, treat as not required (don’t block app)
+    if (!version) {
+      return res.json({
+        accepted: true,
+        currentVersion: null,
+        acceptedVersion: null,
+        acceptedAt: null,
+        organisationId: Number(req.user.organisationId),
+      });
+    }
+
+    const acceptedAt = await getAcceptedAtForVersion(req.user.id, version);
+
+    return res.json({
+      accepted: !!acceptedAt,
+      currentVersion: version,
+      acceptedVersion: acceptedAt ? version : null,
+      acceptedAt: acceptedAt || null,
+      organisationId: Number(req.user.organisationId),
+    });
+  } catch (err) {
+    console.error(`[${req.id}] Error reading privacy consent:`, err);
+    return res.status(500).json({ error: "Failed to load privacy status", requestId: req.id });
+  }
+});
+
+// POST /api/privacy/consent  (expects { version } like your current UI)
+router.post("/consent", async (req, res) => {
+  try {
+    const required = requiredPolicyVersion();
+    if (!required) {
+      return res.status(500).json({ error: "Privacy notice is not configured", requestId: req.id });
+    }
 
     const version = String(req.body?.version || "").trim();
     if (!version) {
       return res.status(400).json({ error: "Missing version", requestId: req.id });
     }
-    if (version !== PRIVACY_NOTICE_VERSION) {
+    if (version !== required) {
       return res.status(400).json({
         error: "Version mismatch",
-        currentVersion: PRIVACY_NOTICE_VERSION,
+        currentVersion: required,
         requestId: req.id,
       });
     }
 
     const ip = getClientIp(req);
-    const userAgent = req.get("user-agent") || null;
+    const ua = (req.get("user-agent") || "").slice(0, 512) || null;
 
-    await query(
+    const ins = await query(
       `
-      INSERT INTO privacy_acceptances (organisation_id, user_id, policy_version, accepted_at, ip, user_agent)
-      VALUES ($1, $2, $3, NOW(), $4, $5)
-      ON CONFLICT (user_id, policy_version) DO NOTHING
+      INSERT INTO privacy_acceptances (organisation_id, user_id, policy_version, ip, user_agent)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (user_id, policy_version)
+      DO NOTHING
+      RETURNING accepted_at
       `,
-      [orgId, userId, version, ip, userAgent]
+      [req.user.organisationId, req.user.id, version, ip, ua]
     );
 
-    await auditEvent(req, "PRIVACY_NOTICE_ACCEPTED", {
-      organisationId: orgId,
-      actorUserId: userId,
-      actorRole: role,
-      targetType: "USER",
-      targetId: String(userId),
-      meta: { version },
-    });
+    const alreadyAccepted = !ins.rows[0];
+    const acceptedAt = alreadyAccepted
+      ? await getAcceptedAtForVersion(req.user.id, version)
+      : ins.rows[0].accepted_at;
+
+    if (!alreadyAccepted) {
+      await audit(req, "PRIVACY_NOTICE_ACCEPTED", {
+        targetType: "privacy_notice",
+        targetId: version,
+        meta: { policyVersion: version },
+      });
+    }
 
     return res.json({
       accepted: true,
-      currentVersion: PRIVACY_NOTICE_VERSION,
+      currentVersion: required,
       acceptedVersion: version,
-      acceptedAt: new Date().toISOString(),
+      acceptedAt,
+      alreadyAccepted,
     });
   } catch (err) {
-    next(err);
+    console.error(`[${req.id}] Error saving privacy consent:`, err);
+    return res.status(500).json({ error: "Failed to record acceptance", requestId: req.id });
   }
 });
 

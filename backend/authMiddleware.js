@@ -1,8 +1,38 @@
 // backend/authMiddleware.js
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { JWT_SECRET } = require("./config/env");
+const { JWT_SECRET, PRIVACY_NOTICE_VERSION } = require("./config/env");
 const { query } = require("./dbAdapter");
+
+
+const PRIVACY_CACHE_TTL_MS = 5 * 60 * 1000;
+const privacyAcceptanceCache = new Map(); // `${userId}:${version}` -> { ok:true, exp }
+
+function requiredPrivacyVersion() {
+  const v = PRIVACY_NOTICE_VERSION;
+  return v && String(v).trim() ? String(v).trim() : null;
+}
+
+async function hasAcceptedPrivacy(userId, version) {
+  const key = `${userId}:${version}`;
+  const now = Date.now();
+  const hit = privacyAcceptanceCache.get(key);
+  if (hit && hit.exp > now) return true;
+
+  const { rows } = await query(
+    `
+    SELECT 1
+    FROM privacy_acceptances
+    WHERE user_id = $1 AND policy_version = $2
+    LIMIT 1
+    `,
+    [userId, version]
+  );
+
+  const ok = !!rows[0];
+  if (ok) privacyAcceptanceCache.set(key, { ok: true, exp: now + PRIVACY_CACHE_TTL_MS });
+  return ok;
+}
 
 function generateToken(user) {
   return jwt.sign(
@@ -150,6 +180,36 @@ async function requireAuth(req, res, next) {
         requestId: req.id,
       });
     }
+
+        // ----- Privacy notice hard gate (428) -----
+    const policyVersion = requiredPrivacyVersion();
+
+    if (policyVersion) {
+      const accepted = await hasAcceptedPrivacy(req.user.id, policyVersion);
+      req.user.mustAcceptPrivacy = !accepted;
+
+      const allowWhenMustAcceptPrivacy = new Set([
+        "/api/privacy/latest",
+        "/api/privacy/accept",
+        "/api/privacy/consent", // backward compatible
+        "/api/auth/me",
+        "/api/health",
+        "/api/health/db",
+        "/api/privacy/consent",
+      ]);
+
+      if (req.user.mustAcceptPrivacy && !allowWhenMustAcceptPrivacy.has(safePath)) {
+        return res.status(428).json({
+          error: "Privacy notice acceptance required before continuing.",
+          code: "PRIVACY_NOTICE_REQUIRED",
+          policyVersion,
+          requestId: req.id,
+        });
+      }
+    } else {
+      req.user.mustAcceptPrivacy = false;
+    }
+
 
     next();
   } catch (err) {
