@@ -1,14 +1,14 @@
+
 // routes/authRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 
 const { generateToken, requireAuth } = require("../authMiddleware");
-const { findUserByEmailWithOrg } = require("../dbAdapter");
+const { findUserByEmailWithOrg, query } = require("../dbAdapter"); // ✅ only once
 const { loginSchema } = require("../validation");
 const { auditEvent } = require("../audit");
 const { rateLimit, makeStore, limiterHandler, ipKeyGenerator } = require("../rateLimit");
-const { findUserByEmailWithOrg, query } = require("../dbAdapter");
 const { PRIVACY_NOTICE_VERSION } = require("../config/env");
 
 
