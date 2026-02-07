@@ -305,11 +305,6 @@ if (user?.role !== "OWNER" && privacy.loading) {
   );
 }
 
-const mustAcceptPrivacy =
-  user?.role !== "OWNER" && !privacy.accepted;
-
-const mustChangePassword = !!user?.mustChangePassword;
-
 const mustAcceptPrivacy = user?.role !== "OWNER" && !privacy.accepted;
 const mustChangePassword = !!user?.mustChangePassword;
 
