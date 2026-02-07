@@ -285,12 +285,32 @@ function App() {
   const { user, token } = auth;
 
   // ---- Gate conditions ----
+// If we’re logged in and still checking privacy acceptance,
+// don’t redirect anywhere yet (prevents account-page 428 chaos).
+if (user?.role !== "OWNER" && privacy.loading) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f3f4f6",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1rem",
+        color: MUTED_TEXT,
+      }}
+    >
+      Loading…
+    </div>
+  );
+}
+
 const mustAcceptPrivacy =
-  user?.role !== "OWNER" && !privacy.loading && !privacy.accepted;
+  user?.role !== "OWNER" && !privacy.accepted;
 
 const mustChangePassword = !!user?.mustChangePassword;
 
-// 1) Privacy first (ADMIN/WORKER only)
+// 1) Privacy first
 if (mustAcceptPrivacy) {
   const okPaths = new Set(["/privacy", "/privacy/notice"]);
   if (!okPaths.has(location.pathname)) {
@@ -298,10 +318,11 @@ if (mustAcceptPrivacy) {
   }
 }
 
-// 2) Then force password change
+// 2) Then password change
 if (mustChangePassword && location.pathname !== "/account") {
   return <Navigate to="/account" replace />;
 }
+
 
 
   const linkStyle = ({ isActive }) => ({
