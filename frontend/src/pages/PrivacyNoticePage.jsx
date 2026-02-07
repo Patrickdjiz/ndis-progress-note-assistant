@@ -78,7 +78,7 @@ export default function PrivacyNoticePage({ token, currentVersion, onAccepted })
       });
 
       // ✅ go into the app
-      navigate("/", { replace: true });
+      navigate("/account", { replace: true });
     } catch (e) {
       setErr(e?.message || "Failed to record acceptance.");
     } finally {

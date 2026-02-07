@@ -20,7 +20,6 @@ const PRIMARY = "#111827";
 const PRIMARY_TEXT = "#f9fafb";
 const MUTED_TEXT = "#4b5563";
 const IDLE_MS = 30 * 60 * 1000; // 30 minutes
-const [privacyNonce, setPrivacyNonce] = useState(0);
 
 function App() {
   const location = useLocation();
@@ -41,6 +40,7 @@ function App() {
   });
 
   const [logoutMsg, setLogoutMsg] = useState("");
+  const [privacyNonce, setPrivacyNonce] = useState(0);
 
   // Privacy / collection notice acceptance (versioned)
   const [privacy, setPrivacy] = useState({
@@ -247,7 +247,7 @@ function App() {
           minHeight: "100vh",
           background: "#f3f4f6",
           display: "flex",
-          alignItems: isLegal ? "flex-start" : "center",
+          alignItems: "center",
           justifyContent: "center",
           padding: "1rem",
         }}
