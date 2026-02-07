@@ -310,18 +310,20 @@ const mustAcceptPrivacy =
 
 const mustChangePassword = !!user?.mustChangePassword;
 
-// 1) Privacy first
+const mustAcceptPrivacy = user?.role !== "OWNER" && !privacy.accepted;
+const mustChangePassword = !!user?.mustChangePassword;
+
+// 1) Privacy gate FIRST, and if it's required, do NOT run password redirect yet.
 if (mustAcceptPrivacy) {
   const okPaths = new Set(["/privacy", "/privacy/notice"]);
   if (!okPaths.has(location.pathname)) {
     return <Navigate to="/privacy/notice" replace />;
   }
-}
-
-// 2) Then password change
-if (mustChangePassword && location.pathname !== "/account") {
+} else if (mustChangePassword && location.pathname !== "/account") {
+  // 2) Only after privacy is accepted
   return <Navigate to="/account" replace />;
 }
+
 
 
 
