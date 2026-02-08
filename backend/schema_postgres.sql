@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS users (
 
   must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
   password_changed_at TIMESTAMPTZ,
+  session_revoked_at TIMESTAMPTZ,
 
   reset_token_hash TEXT,
   reset_token_expires_at TIMESTAMPTZ,

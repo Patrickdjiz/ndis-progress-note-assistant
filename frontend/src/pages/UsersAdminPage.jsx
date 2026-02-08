@@ -22,6 +22,27 @@ function UsersAdminPage({ token, user }) {
   const [createMsg, setCreateMsg] = useState("");
   const [creating, setCreating] = useState(false); // separate loading for create
 
+  const [resetMsg, setResetMsg] = useState("");
+
+
+  const handleSendReset = async (id) => {
+  try {
+    setErrorMsg("");
+    setResetMsg("");
+
+    const data = await apiFetch(`/api/users/${id}/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    setResetMsg(data?.message || "Reset link sent.");
+  } catch (err) {
+    setErrorMsg(err?.message || "Failed to send reset link");
+  }
+};
+
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
@@ -283,6 +304,12 @@ function UsersAdminPage({ token, user }) {
           {createMsg}
         </p>
       )}
+      {resetMsg && (
+        <p style={{ marginTop: "0.45rem", fontSize: "0.85rem", color: "#047857", wordBreak: "break-word" }}>
+          {resetMsg}
+        </p>
+      )}
+
 
       {/* Users table */}
       <div
@@ -369,25 +396,45 @@ function UsersAdminPage({ token, user }) {
                     <td style={tdStyle}>{statusBadge(u.isActive, isCurrentUser)}</td>
                     <td style={tdStyle}>
                       {!isCurrentUser && (
-                        <button
-                          type="button"
-                          onClick={() => handleToggleActive(u.id, !!u.isActive)}
-                          style={{
-                            padding: "0.3rem 0.8rem",
-                            fontSize: "0.8rem",
-                            cursor: "pointer",
-                            borderRadius: "999px",
-                            border: "1px solid #e5e7eb",
-                            background: "#f9fafb",
-                            color: PRIMARY,
-                            fontWeight: 500,
-                            minHeight: isMobile ? 40 : undefined,
-                          }}
-                        >
-                          {u.isActive ? "Deactivate" : "Activate"}
-                        </button>
+                        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleActive(u.id, !!u.isActive)}
+                            style={{
+                              padding: "0.3rem 0.8rem",
+                              fontSize: "0.8rem",
+                              cursor: "pointer",
+                              borderRadius: "999px",
+                              border: "1px solid #e5e7eb",
+                              background: "#f9fafb",
+                              color: PRIMARY,
+                              fontWeight: 500,
+                              minHeight: isMobile ? 40 : undefined,
+                            }}
+                          >
+                            {u.isActive ? "Deactivate" : "Activate"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSendReset(u.id)}
+                            style={{
+                              padding: "0.3rem 0.8rem",
+                              fontSize: "0.8rem",
+                              cursor: "pointer",
+                              borderRadius: "999px",
+                              border: "1px solid #e5e7eb",
+                              background: "#ffffff",
+                              color: PRIMARY,
+                              fontWeight: 600,
+                              minHeight: isMobile ? 40 : undefined,
+                            }}
+                          >
+                            Send reset link
+                          </button>
+                        </div>
                       )}
-                    </td>
+                  </td>
                   </tr>
                 );
               })}
