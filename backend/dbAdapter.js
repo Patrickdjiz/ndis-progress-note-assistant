@@ -123,11 +123,13 @@ async function updateUserActiveFlag(userId, isActive) {
   const sql = `
     UPDATE users
     SET is_active = $1,
+        session_revoked_at = now(),
         updated_at = now()
     WHERE id = $2
   `;
   await query(sql, [isActive, userId]);
 }
+
 
 async function getUserAuthById(userId) {
   const { rows } = await query(

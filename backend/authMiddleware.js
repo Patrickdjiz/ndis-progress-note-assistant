@@ -71,6 +71,7 @@ async function getSessionUserFromDb(userId) {
       u.is_active AS "isActive",
       u.must_change_password AS "mustChangePassword",
       u.password_changed_at AS "passwordChangedAt",
+      u.session_revoked_at AS "sessionRevokedAt",
       o.status AS "orgStatus"
     FROM users u
     LEFT JOIN organisations o ON o.id = u.organisation_id
@@ -149,6 +150,19 @@ async function requireAuth(req, res, next) {
       ? new Date(dbUser.passwordChangedAt).getTime()
       : 0;
 
+    const revokedMs = dbUser.sessionRevokedAt
+      ? new Date(dbUser.sessionRevokedAt).getTime()
+      : 0;
+
+    if (revokedMs && tokenIatMs && tokenIatMs < revokedMs - 1000) {
+      return res.status(401).json({
+        error: "Session expired. Please log in again.",
+        code: "SESSION_REVOKED",
+        requestId: req.id,
+      });
+}
+
+
     // small slack to avoid edge timing issues
     if (pwdChangedMs && tokenIatMs && tokenIatMs < pwdChangedMs - 1000) {
       return res.status(401).json({
@@ -176,8 +190,6 @@ async function requireAuth(req, res, next) {
       email: dbUser.email,
       mustChangePassword: !!dbUser.mustChangePassword,
     };
-    
-
 
     // backend/authMiddleware.js (inside requireAuth, after req.user = {...})
 

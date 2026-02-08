@@ -418,6 +418,7 @@ function UsersAdminPage({ token, user }) {
                           <button
                             type="button"
                             onClick={() => handleSendReset(u.id)}
+                            disabled={!u.isActive}
                             style={{
                               padding: "0.3rem 0.8rem",
                               fontSize: "0.8rem",
@@ -427,7 +428,7 @@ function UsersAdminPage({ token, user }) {
                               background: "#ffffff",
                               color: PRIMARY,
                               fontWeight: 600,
-                              minHeight: isMobile ? 40 : undefined,
+                              minHeight: isMobile ? 40 : undefined,                             
                             }}
                           >
                             Send reset link

@@ -222,6 +222,26 @@ router.patch("/organisations/:id/status", async (req, res) => {
       return sendErr(res, req, 404, "Organisation not found");
     }
 
+    // Revoke all sessions for users in that organisation so old JWTs never "come back"
+await query(
+  `
+  UPDATE users
+  SET session_revoked_at = now(),
+      updated_at = now()
+  WHERE organisation_id = $1
+    AND role <> 'OWNER'
+  `,
+  [id]
+);
+
+// Optional: audit the revocation explicitly
+await audit(req, "USER_SESSIONS_REVOKED", {
+  targetType: "organisation",
+  targetId: String(id),
+  meta: { reason: "ORG_STATUS_CHANGED", status },
+});
+
+
     await audit(req, status === "SUSPENDED" ? "PROVIDER_SUSPENDED" : "PROVIDER_ACTIVATED", {
       targetType: "organisation",
       targetId: String(id),
@@ -271,10 +291,14 @@ router.patch("/users/:id/status", async (req, res) => {
       return sendErr(res, req, 400, "You cannot change status of OWNER accounts");
     }
 
-    await query(`UPDATE users SET is_active = $1, updated_at = now() WHERE id = $2`, [
-      isActive,
-      id,
-    ]);
+    await query(
+      `UPDATE users
+      SET is_active = $1,
+          session_revoked_at = now(),
+          updated_at = now()
+      WHERE id = $2`,
+      [isActive, id]
+    );
 
 
     await audit(req, isActive ? "USER_REACTIVATED" : "USER_DEACTIVATED", {

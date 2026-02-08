@@ -229,6 +229,11 @@ router.post("/:id/reset-password", async (req, res) => {
       [tokenHash, expiresAt, u.id]
     );
 
+    await query(
+      `UPDATE users SET session_revoked_at = now(), updated_at = now() WHERE id = $1`,
+      [u.id]
+    );
+
     const resetLink = `${FRONTEND_ORIGIN.replace(/\/+$/, "")}/reset-password?token=${rawToken}`;
 
     // Audit: admin initiated reset token
