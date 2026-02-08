@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS organisations (
   delete_grace_days INTEGER NOT NULL DEFAULT 30,       -- soft-delete grace period
   auto_purge_enabled BOOLEAN NOT NULL DEFAULT FALSE,
 
+  ai_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   CHECK (status IN ('ACTIVE', 'SUSPENDED')),
@@ -48,6 +50,21 @@ CREATE TABLE IF NOT EXISTS users (
 
   CHECK (role IN ('OWNER', 'ADMIN', 'WORKER'))
 );
+
+-- Privacy notice acceptances (per-user, per-version)
+CREATE TABLE IF NOT EXISTS privacy_acceptances (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  policy_version TEXT NOT NULL,
+  accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ip INET,
+  user_agent TEXT,
+  UNIQUE (user_id, policy_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_privacy_acceptances_user
+  ON privacy_acceptances (user_id);
+
 
 -- Progress notes
 -- NOTE: id is integer in your current prod table (per \d+). Keep SERIAL here to match.

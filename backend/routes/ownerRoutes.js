@@ -9,7 +9,7 @@ const {
 } = require("../validation");
 const { query } = require("../dbAdapter");
 const { pool } = require("../pgClient");
-const { audit } = require("../audit");
+const { auditEvent } = require("../audit");
 
 const router = express.Router();
 
@@ -174,11 +174,15 @@ router.post("/providers", async (req, res) => {
 
       await client.query("COMMIT");
 
-      await audit(req, "PROVIDER_CREATED", {
-      targetType: "organisation",
-      targetId: String(organisation.id),
-      meta: { organisationName: organisation.name, adminUserId: admin.id },
-    });
+      await auditEvent(req, "PROVIDER_CREATED", {
+  organisationId: organisation.id,     // ✅ created organisation
+  actorUserId: req.user.id,
+  actorRole: req.user.role,
+  targetType: "organisation",
+  targetId: String(organisation.id),
+  meta: { organisationName: organisation.name, adminUserId: admin.id },
+});
+
 
 
       return res.status(201).json({ organisation, admin });
@@ -223,6 +227,7 @@ router.patch("/organisations/:id/status", async (req, res) => {
     }
 
     // Revoke all sessions for users in that organisation so old JWTs never "come back"
+// Revoke all sessions for users in that organisation so old JWTs never "come back"
 await query(
   `
   UPDATE users
@@ -234,18 +239,25 @@ await query(
   [id]
 );
 
-// Optional: audit the revocation explicitly
-await audit(req, "USER_SESSIONS_REVOKED", {
+// Audit the revocation explicitly UNDER the TARGET ORG
+await auditEvent(req, "USER_SESSIONS_REVOKED", {
+  organisationId: id,                 // ✅ target organisation
+  actorUserId: req.user.id,
+  actorRole: req.user.role,
   targetType: "organisation",
   targetId: String(id),
   meta: { reason: "ORG_STATUS_CHANGED", status },
 });
 
+// Audit the status change UNDER the TARGET ORG
+await auditEvent(req, status === "SUSPENDED" ? "PROVIDER_SUSPENDED" : "PROVIDER_ACTIVATED", {
+  organisationId: id,                 // ✅ target organisation
+  actorUserId: req.user.id,
+  actorRole: req.user.role,
+  targetType: "organisation",
+  targetId: String(id),
+});
 
-    await audit(req, status === "SUSPENDED" ? "PROVIDER_SUSPENDED" : "PROVIDER_ACTIVATED", {
-      targetType: "organisation",
-      targetId: String(id),
-    });
 
     return res.json({ ok: true, id, status });
   } catch (err) {
@@ -278,9 +290,10 @@ router.patch("/users/:id/status", async (req, res) => {
     const { isActive } = parsed.data;
 
     const { rows } = await query(
-      `SELECT id, role FROM users WHERE id = $1`,
+      `SELECT id, role, organisation_id AS "organisationId" FROM users WHERE id = $1`,
       [id]
     );
+
     const existing = rows[0];
 
     if (!existing) {
@@ -301,10 +314,15 @@ router.patch("/users/:id/status", async (req, res) => {
     );
 
 
-    await audit(req, isActive ? "USER_REACTIVATED" : "USER_DEACTIVATED", {
+    await auditEvent(req, isActive ? "USER_REACTIVATED" : "USER_DEACTIVATED", {
+      organisationId: existing.organisationId,  // ✅ user's organisation
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
       targetType: "user",
       targetId: String(id),
+      meta: { role: existing.role },
     });
+
 
     return res.json({ ok: true, id, isActive: !!isActive });
   } catch (err) {

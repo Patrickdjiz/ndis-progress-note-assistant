@@ -72,7 +72,8 @@ async function getSessionUserFromDb(userId) {
       u.must_change_password AS "mustChangePassword",
       u.password_changed_at AS "passwordChangedAt",
       u.session_revoked_at AS "sessionRevokedAt",
-      o.status AS "orgStatus"
+      o.status AS "orgStatus",
+      o.ai_enabled AS "aiEnabled"
     FROM users u
     LEFT JOIN organisations o ON o.id = u.organisation_id
     WHERE u.id = $1
@@ -189,6 +190,7 @@ async function requireAuth(req, res, next) {
       fullName: dbUser.fullName,
       email: dbUser.email,
       mustChangePassword: !!dbUser.mustChangePassword,
+      aiEnabled: dbUser.aiEnabled === undefined ? true : !!dbUser.aiEnabled,
     };
 
     // backend/authMiddleware.js (inside requireAuth, after req.user = {...})

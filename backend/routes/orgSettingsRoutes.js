@@ -3,7 +3,7 @@ const express = require("express");
 const { z } = require("zod");
 const { requireAuth } = require("../authMiddleware");
 const { query } = require("../dbAdapter");
-const { audit } = require("../audit");
+const { auditEvent } = require("../audit");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -118,12 +118,14 @@ router.post("/settings", async (req, res) => {
       [after.retentionDays, after.deleteGraceDays, after.autoPurgeEnabled, after.aiEnabled, orgId]
     );
 
-    await audit(req, "ORG_SETTINGS_UPDATED", {
-      targetType: "organisation",
-      targetId: String(orgId),
-      meta: { before, after },
-      organisationId: orgId, // allows OWNER overrides too
-    });
+    await auditEvent(req, "ORG_SETTINGS_UPDATED", {
+  organisationId: orgId,        // ✅ target org
+  actorUserId: req.user.id,
+  actorRole: req.user.role,
+  targetType: "organisation",
+  targetId: String(orgId),
+  meta: { before, after },
+});
 
     res.json({ ok: true, settings: rows[0] });
   } catch (err) {
