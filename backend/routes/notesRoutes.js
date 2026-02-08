@@ -19,6 +19,15 @@ const crypto = require("crypto");
 const sha256Hex = (s) =>
   crypto.createHash("sha256").update(String(s || "").trim().toLowerCase()).digest("hex");
 
+function normaliseTime(t) {
+  if (t === undefined) return undefined;
+  const s = String(t).trim();
+  const m = s.match(/^(\d{2}:\d{2})(:\d{2})?$/);
+  if (!m) return s;
+  return m[1] + (m[2] || ":00");
+}
+
+
 // Only store hashes for PII fields in audit meta
 function auditMetaForNoteChanges(before, after, changedKeys) {
   const meta = { changedKeys };
@@ -998,6 +1007,26 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
     return sendErr(res, req, 403, "AI generation is disabled by your provider admin.");
     }
 
+    const { rows: orgRows } = await query(
+      `SELECT status, ai_enabled FROM organisations WHERE id = $1 LIMIT 1`,
+      [req.user.organisationId]
+    );
+
+    const org = orgRows[0];
+    if (!org) return sendErr(res, req, 403, "Organisation not found");
+    if (req.user.role !== "OWNER" && org.status !== "ACTIVE") {
+      return sendErr(res, req, 403, "This provider account is suspended.");
+    }
+    if (org.ai_enabled === false) {
+      await audit(req, "AI_GENERATION_BLOCKED_ORG_DISABLED", {
+        targetType: "organisation",
+        targetId: String(req.user.organisationId),
+        meta: { reason: "ai_disabled_by_org_setting" },
+      });
+      return sendErr(res, req, 403, "AI generation is disabled by your provider admin.");
+    }
+
+
     const parsed = generateNoteSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
@@ -1666,9 +1695,11 @@ router.post("/notes/:id/delete", notesWriteIpLimiter, notesWriteUserLimiter, asy
     const parsedBody = deleteBodySchema.safeParse(req.body || {});
     if (!parsedBody.success) return sendErr(res, req, 400, "Invalid body");
 
-    const reason = parsedBody.data.reason || null;
     const deletedBy = (req.user.fullName || "").trim() || "Admin";
     const nowIso = new Date().toISOString();
+
+    const reasonRaw = parsedBody.data.reason || null;
+    const reasonRedacted = safeAuditReason(reasonRaw); // redact + clip
 
     const { rows } = await query(
       `
@@ -1681,9 +1712,11 @@ router.post("/notes/:id/delete", notesWriteIpLimiter, notesWriteUserLimiter, asy
       WHERE id = $5
         AND organisation_id = $6
         AND deleted_at IS NULL
+        AND purged_at IS NULL
+        AND legal_hold = FALSE
       RETURNING deleted_at, deleted_by, deleted_reason
       `,
-      [nowIso, deletedBy, req.user.id, reason, id, req.user.organisationId]
+      [nowIso, deletedBy, req.user.id, reasonRedacted, id, req.user.organisationId]
     );
 
     if (!rows[0]) return sendErr(res, req, 404, "Note not found (or already deleted)");
@@ -1691,8 +1724,9 @@ router.post("/notes/:id/delete", notesWriteIpLimiter, notesWriteUserLimiter, asy
     await audit(req, "NOTE_DELETED", {
       targetType: "progress_note",
       targetId: String(id),
-      meta: { reasonRedacted: safeAuditReason(reason) },
+      meta: { reasonRedacted }, // already safe
     });
+
 
     return res.json({
       ok: true,
@@ -1860,6 +1894,10 @@ router.post("/notes/:id/metadata", notesWriteIpLimiter, notesWriteUserLimiter, a
       incidentFlag: existing.incident_flag,
     };
 
+    if (patch.startTime !== undefined) patch.startTime = normaliseTime(patch.startTime);
+    if (patch.endTime !== undefined) patch.endTime = normaliseTime(patch.endTime);
+
+
     // Compose new values (use existing when not provided)
     const after = {
       participantName: patch.participantName ?? before.participantName,
@@ -1938,9 +1976,17 @@ router.post("/notes/:id/metadata", notesWriteIpLimiter, notesWriteUserLimiter, a
 
 function csvEscape(v) {
   if (v === null || v === undefined) return '""';
-  const s = String(v).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  let s = String(v).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // Prevent CSV/Excel formula injection
+  if (/^[=+\-@]/.test(s)) {
+    s = "'" + s;
+  }
+
   return `"${s.replace(/"/g, '""')}"`;
 }
+
 
 function toCsv(rows, columns) {
   const header = columns.map((c) => csvEscape(c)).join(",");

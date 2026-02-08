@@ -153,10 +153,11 @@ router.post("/login", loginIpLimiter, loginEmailLimiter, async (req, res) => {
     const privacyPolicyVersion = requiredPrivacyVersion();
 let mustAcceptPrivacy = false;
 
-if (privacyPolicyVersion) {
+if (privacyPolicyVersion && row.role !== "OWNER") {
   const accepted = await hasAcceptedPrivacy(row.id, privacyPolicyVersion);
   mustAcceptPrivacy = !accepted;
 }
+
 
 
     return res.json({
@@ -182,13 +183,17 @@ if (privacyPolicyVersion) {
 });
 
 // GET /api/auth/me
-router.get("/auth/me", requireAuth, (req, res) => {
+router.get("/auth/me", requireAuth, async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
 
-  const privacyPolicyVersion =
-    (process.env.PRIVACY_NOTICE_VERSION && String(process.env.PRIVACY_NOTICE_VERSION).trim())
-      ? String(process.env.PRIVACY_NOTICE_VERSION).trim()
-      : null;
+  const privacyPolicyVersion = requiredPrivacyVersion();
+
+let mustAcceptPrivacy = false;
+if (privacyPolicyVersion && req.user.role !== "OWNER") {
+  const accepted = await hasAcceptedPrivacy(req.user.id, privacyPolicyVersion);
+  mustAcceptPrivacy = !accepted;
+}
+
 
   return res.json({
     user: {
@@ -199,12 +204,12 @@ router.get("/auth/me", requireAuth, (req, res) => {
       organisationId: req.user.organisationId,
       mustChangePassword: !!req.user.mustChangePassword,
 
-      // ✅ add these
-      mustAcceptPrivacy: !!req.user.mustAcceptPrivacy,
+      mustAcceptPrivacy,
       privacyPolicyVersion,
     },
   });
 });
+
 
 
 module.exports = router;
