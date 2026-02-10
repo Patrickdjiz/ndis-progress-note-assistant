@@ -89,6 +89,17 @@ function App() {
   return () => window.removeEventListener("ndis:privacy_required", handler);
 }, []);
 
+useEffect(() => {
+  const handler = (e) => {
+    // Ensure the frontend state reflects reality
+    patchAuthUser({ mustChangePassword: true });
+  };
+
+  window.addEventListener("ndis:must_change_password", handler);
+  return () => window.removeEventListener("ndis:must_change_password", handler);
+}, []);
+
+
 
   useEffect(() => {
     if (!auth?.token) return;

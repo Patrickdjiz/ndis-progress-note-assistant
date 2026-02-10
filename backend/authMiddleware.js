@@ -195,7 +195,14 @@ async function requireAuth(req, res, next) {
 
     // backend/authMiddleware.js (inside requireAuth, after req.user = {...})
 
-    const safePath = (req.originalUrl || req.path || "").split("?")[0];
+    function normalizePath(p) {
+    return String(p || "")
+      .split("?")[0]
+      .replace(/\/+$/, "") || "/"; // remove trailing slash
+  }
+
+  const safePath = normalizePath(req.originalUrl || req.path);
+
 
     // Allow only these paths when mustChangePassword is true
     const allowWhenMustChange = new Set([

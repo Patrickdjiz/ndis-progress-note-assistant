@@ -7,6 +7,36 @@ export const API_BASE_URL =
 
 let handlingUnauthorized = false;
 let handlingPrivacyRequired = false;
+let handlingMustChangePassword = false;
+
+function forceMustChangePassword(message) {
+  if (handlingMustChangePassword) return;
+  handlingMustChangePassword = true;
+
+  window.dispatchEvent(
+    new CustomEvent("ndis:must_change_password", {
+      detail: {
+        message: message || "You must change your password before continuing.",
+      },
+    })
+  );
+
+  setTimeout(() => {
+    handlingMustChangePassword = false;
+  }, 500);
+}
+
+function maybeDispatchMustChangePassword(path, res, hasAuth, data) {
+  if (res.status === 403 && hasAuth && !shouldSkipAuth(path)) {
+    if ((data && data.code) === "MUST_CHANGE_PASSWORD") {
+      const message =
+        (data && (data.error || data.message)) ||
+        "You must change your password before continuing.";
+      forceMustChangePassword(message);
+    }
+  }
+}
+
 
 // Endpoints that should NOT automatically attach Bearer tokens
 function shouldSkipAuth(path) {
@@ -142,6 +172,7 @@ export async function apiFetch(path, options = {}) {
 
   // ✅ handle 428 before 401
   maybeDispatchPrivacyRequired(path, res, !!hasAuth, data);
+  maybeDispatchMustChangePassword(path, res, !!hasAuth, data);
   maybeDispatchUnauthorized(path, res, !!hasAuth, data);
 
   if (!res.ok) {
@@ -164,7 +195,8 @@ export async function apiFetchBlob(path, options = {}) {
   const data = await parseJsonSafe(res);
 
   // ✅ handle 428 before 401
-  maybeDispatchPrivacyRequired(path, res, !!hasAuth, data);
+    maybeDispatchPrivacyRequired(path, res, !!hasAuth, data);
+  maybeDispatchMustChangePassword(path, res, !!hasAuth, data);
   maybeDispatchUnauthorized(path, res, !!hasAuth, data);
 
   if (!res.ok) {
