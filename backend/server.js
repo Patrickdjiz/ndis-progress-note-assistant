@@ -4,6 +4,7 @@ const { closePool } = require("./pgClient");
 const { PORT } = require("./config/env");
 const { closeRateLimitRedis } = require("./rateLimit");
 const { runRetentionPurgeJob } = require("./retentionPurgeJob");
+const cron = require("node-cron");
 
 const server = app.listen(PORT, () => {
   console.log(`API listening on port ${PORT}`);
@@ -12,22 +13,28 @@ const server = app.listen(PORT, () => {
 
 // ✅ Retention + purge job (daily)
 if (process.env.RETENTION_JOB_ENABLED === "true") {
-  const run = async () => {
-    try {
-      const out = await runRetentionPurgeJob();
-      console.log("Retention job:", out);
-    } catch (e) {
-      console.error("Retention job failed:", e);
-    }
-  };
+  const tz = process.env.APP_TZ || "Australia/Sydney";
+  const expr = process.env.RETENTION_JOB_CRON || "15 2 * * *"; // 2:15am daily
+
+  cron.schedule(
+    expr,
+    async () => {
+      try {
+        const out = await runRetentionPurgeJob();
+        console.log("[retention] done", out);
+      } catch (e) {
+        console.error("[retention] failed", e);
+      }
+    },
+    { timezone: tz }
+  );
 
   // optional: run once on boot
   if (process.env.RETENTION_JOB_RUN_ON_BOOT === "true") {
-    run();
+    runRetentionPurgeJob()
+      .then((out) => console.log("[retention] boot run done", out))
+      .catch((e) => console.error("[retention] boot run failed", e));
   }
-
-  // run every 24 hours
-  setInterval(run, 24 * 60 * 60 * 1000).unref();
 }
 
 let shuttingDown = false;

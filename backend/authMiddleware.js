@@ -226,7 +226,7 @@ async function requireAuth(req, res, next) {
       });
     }
 
-        // ----- Privacy notice hard gate (428) -----
+ // ----- Privacy notice hard gate (428) -----
 // ✅ Do not gate OWNER (owner may not have a valid organisation_id for acceptances)
 const policyVersion = requiredPrivacyVersion();
 
@@ -254,6 +254,7 @@ if (policyVersion && req.user.role !== "OWNER") {
 } else {
   req.user.mustAcceptPrivacy = false;
 }
+
 
 
     next();

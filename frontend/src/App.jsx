@@ -150,6 +150,25 @@ useEffect(() => {
     return () => clearTimeout(timeoutId);
   }, [auth?.token]);
 
+  useEffect(() => {
+  const handler = (e) => {
+    const msg = e?.detail?.message || "You must change your password before continuing.";
+
+    // flip user flag so your existing guard redirects to /account
+    patchAuthUser({ mustChangePassword: true });
+
+    // optional: show a banner somewhere if you want
+    // setLogoutMsg(msg);
+
+    // if you want an immediate redirect regardless of current route:
+    // if (location.pathname !== "/account") navigate("/account", { replace: true });
+  };
+
+  window.addEventListener("ndis:must_change_password", handler);
+  return () => window.removeEventListener("ndis:must_change_password", handler);
+}, []);
+
+
   // Fetch whether user accepted current privacy notice version
   useEffect(() => {
     if (!auth?.token) {

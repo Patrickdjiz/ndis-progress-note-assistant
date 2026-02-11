@@ -1,15 +1,16 @@
 // backend/routes/privacyRoutes.js
 const express = require("express");
-const { requireAuth } = require("../authMiddleware");
 const { query } = require("../dbAdapter");
 const { audit } = require("../audit"); // ✅ match notesRoutes usage
 const { getClientIp } = require("../clientIp");
+const { requireAuth } = require("../authMiddleware");
+const { PRIVACY_NOTICE_VERSION } = require("../config/env");
 
 const router = express.Router();
 router.use(requireAuth);
 
 function requiredPolicyVersion() {
-  const v = process.env.PRIVACY_NOTICE_VERSION;
+  const v = PRIVACY_NOTICE_VERSION ?? process.env.PRIVACY_NOTICE_VERSION;
   return v && String(v).trim() ? String(v).trim() : null;
 }
 
@@ -26,22 +27,6 @@ async function getAcceptedAtForVersion(userId, version) {
   );
   return rows[0]?.accepted_at || null;
 }
-
-function getOrgIdOr400(req, res) {
-  const orgId = Number(req.user?.organisationId);
-
-  // Treat null/undefined/0 as invalid (Number(null) === 0)
-  if (!Number.isInteger(orgId) || orgId <= 0) {
-    res.status(400).json({
-      error: "No organisation context for privacy acceptance",
-      requestId: req.id,
-    });
-    return null;
-  }
-
-  return orgId;
-}
-
 
 // --------------------
 // New-style endpoints
@@ -109,22 +94,18 @@ router.post("/accept", async (req, res) => {
       });
     }
 
-    // ✅ Must have org context
-    const orgId = getOrgIdOr400(req, res);
-    if (!orgId) return;
-
     const ip = getClientIp(req);
     const ua = (req.get("user-agent") || "").slice(0, 512) || null;
 
     const ins = await query(
       `
-      INSERT INTO privacy_acceptances (organisation_id, user_id, policy_version, ip, user_agent)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO privacy_acceptances (user_id, policy_version, ip, user_agent)
+      VALUES ($1, $2, $3, $4)
       ON CONFLICT (user_id, policy_version)
       DO NOTHING
       RETURNING accepted_at
       `,
-      [orgId, req.user.id, version, ip, ua]
+      [req.user.id, version, ip, ua]
     );
 
     const alreadyAccepted = !ins.rows[0];
@@ -216,10 +197,6 @@ router.post("/consent", async (req, res) => {
       });
     }
 
-    // ✅ Must have org context
-    const orgId = getOrgIdOr400(req, res);
-    if (!orgId) return;
-
     const version = String(req.body?.version || "").trim();
     if (!version) {
       return res.status(400).json({ error: "Missing version", requestId: req.id });
@@ -237,13 +214,13 @@ router.post("/consent", async (req, res) => {
 
     const ins = await query(
       `
-      INSERT INTO privacy_acceptances (organisation_id, user_id, policy_version, ip, user_agent)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO privacy_acceptances (user_id, policy_version, ip, user_agent)
+      VALUES ($1, $2, $3, $4)
       ON CONFLICT (user_id, policy_version)
       DO NOTHING
       RETURNING accepted_at
       `,
-      [orgId, req.user.id, version, ip, ua]
+      [req.user.id, version, ip, ua]
     );
 
     const alreadyAccepted = !ins.rows[0];
