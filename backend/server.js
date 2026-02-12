@@ -1,4 +1,3 @@
-// backend/server.js
 const app = require("./app");
 const { closePool } = require("./pgClient");
 const { PORT } = require("./config/env");
@@ -10,13 +9,14 @@ const server = app.listen(PORT, () => {
   console.log(`API listening on port ${PORT}`);
 });
 
+let retentionTask = null;
 
 // ✅ Retention + purge job (daily)
 if (process.env.RETENTION_JOB_ENABLED === "true") {
   const tz = process.env.APP_TZ || "Australia/Sydney";
-  const expr = process.env.RETENTION_JOB_CRON || "15 2 * * *"; // 2:15am daily
+  const expr = process.env.RETENTION_JOB_CRON || "15 2 * * *";
 
-  cron.schedule(
+  retentionTask = cron.schedule(
     expr,
     async () => {
       try {
@@ -29,7 +29,6 @@ if (process.env.RETENTION_JOB_ENABLED === "true") {
     { timezone: tz }
   );
 
-  // optional: run once on boot
   if (process.env.RETENTION_JOB_RUN_ON_BOOT === "true") {
     runRetentionPurgeJob()
       .then((out) => console.log("[retention] boot run done", out))
@@ -44,6 +43,9 @@ async function shutdown(signal) {
   shuttingDown = true;
 
   console.log(`${signal} received — shutting down gracefully...`);
+
+  // ✅ stop cron first
+  try { retentionTask?.stop(); } catch {}
 
   server.close(async () => {
     try {
@@ -64,9 +66,7 @@ async function shutdown(signal) {
   });
 
   setTimeout(async () => {
-    try {
-      await closeRateLimitRedis();
-    } catch {}
+    try { await closeRateLimitRedis(); } catch {}
     console.error("Force shutdown (timeout).");
     process.exit(1);
   }, 10_000).unref();

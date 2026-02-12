@@ -147,7 +147,7 @@ router.get("/consent", async (req, res) => {
         currentVersion: null,
         acceptedVersion: null,
         acceptedAt: null,
-        organisationId: Number(req.user.organisationId),
+        organisationId: req.user.organisationId == null ? null : Number(req.user.organisationId),
       });
     }
 
@@ -169,7 +169,7 @@ router.get("/consent", async (req, res) => {
       currentVersion: version,
       acceptedVersion: acceptedAt ? version : null,
       acceptedAt: acceptedAt || null,
-      organisationId: Number(req.user.organisationId),
+      organisationId: req.user.organisationId == null ? null : Number(req.user.organisationId),
     });
   } catch (err) {
     console.error(`[${req.id}] Error reading privacy consent:`, err);
