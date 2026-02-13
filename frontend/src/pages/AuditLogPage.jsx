@@ -272,8 +272,10 @@ export default function AuditLogPage({ user }) {
                 <tr key={ev.id}>
                   <td style={td}>{ev.occurredAt ? new Date(ev.occurredAt).toLocaleString() : ""}</td>
                   <td style={td}>
-                    {ev.actorRole || "-"} {ev.actorUserId ? `(#${ev.actorUserId})` : ""}
-                  </td>
+                    {ev.actorFullName
+                        ? `${ev.actorFullName} (${ev.actorRole || "-"})`
+                        : `${ev.actorRole || "-"} ${ev.actorUserId ? `(#${ev.actorUserId})` : ""}`}
+                    </td>
                   <td style={td}>{ev.action}</td>
                   <td style={td}>
                     {ev.targetType || "-"} {ev.targetId ? `(${ev.targetId})` : ""}

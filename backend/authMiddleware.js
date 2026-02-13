@@ -241,6 +241,8 @@ if (policyVersion && req.user.role !== "OWNER") {
     "/api/auth/me",
     "/api/health",
     "/api/health/db",
+    "/api/account/change-password",
+    "/api/account/profile",
   ]);
 
   if (req.user.mustAcceptPrivacy && !allowWhenMustAcceptPrivacy.has(safePath)) {
