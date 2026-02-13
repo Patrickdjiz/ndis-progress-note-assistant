@@ -19,7 +19,24 @@ export function fmtDateTimeTz(value) {
   }).format(d);
 }
 
-// If you still want the old behaviour elsewhere, keep fmtDateTime as-is
+export const fmtShiftDate = (yyyyMmDd) => {
+  if (!yyyyMmDd) return "-";
+  const ymd = String(yyyyMmDd).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return String(yyyyMmDd);
+
+  // midday UTC avoids DST / timezone edge issues
+  const dt = new Date(`${ymd}T12:00:00.000Z`);
+
+  return dt.toLocaleDateString("en-AU", {
+    timeZone: TZ,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+export const fmtHm = (t) => (t ? String(t).slice(0, 5) : "-");
+
 export function fmtDateTime(value) {
   if (!value) return "";
   const d = new Date(value);
@@ -33,3 +50,4 @@ export function fmtDateTime(value) {
     minute: "2-digit",
   });
 }
+
