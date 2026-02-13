@@ -86,6 +86,8 @@ const { rows } = await query(
     ae.action,
     ae.target_type AS "targetType",
     ae.target_id AS "targetId",
+    tu.full_name AS "targetFullName",
+    tu.email AS "targetEmail",
     ae.meta,
     ae.ip,
     ae.user_agent AS "userAgent",
@@ -93,12 +95,19 @@ const { rows } = await query(
     ae.path
   FROM audit_events ae
   LEFT JOIN users u ON u.id = ae.actor_user_id
+  LEFT JOIN users tu
+    ON tu.id = CASE
+      WHEN ae.target_type = 'user' AND ae.target_id ~ '^\d+$'
+      THEN ae.target_id::int
+      ELSE NULL
+    END
   WHERE ${where.join(" AND ")}
   ORDER BY ae.id DESC
   LIMIT ${limitParam}
   `,
   params
 );
+
 
       const nextCursor = rows.length ? String(rows[rows.length - 1].id) : null;
       return res.json({ events: rows, nextCursor });

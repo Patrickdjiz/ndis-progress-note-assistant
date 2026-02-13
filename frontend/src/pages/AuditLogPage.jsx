@@ -278,8 +278,13 @@ export default function AuditLogPage({ user }) {
                     </td>
                   <td style={td}>{ev.action}</td>
                   <td style={td}>
-                    {ev.targetType || "-"} {ev.targetId ? `(${ev.targetId})` : ""}
-                  </td>
+                    {ev.targetType || "-"}{" "}
+                    {ev.targetFullName
+                        ? `${ev.targetFullName}${ev.targetId ? ` (#${ev.targetId})` : ""}`
+                        : ev.targetId
+                        ? `(${ev.targetId})`
+                        : ""}
+                    </td>
                   <td style={td}>{ev.ip || "-"}</td>
                   <td style={td}>{ev.path || "-"}</td>
                   <td style={td}>
