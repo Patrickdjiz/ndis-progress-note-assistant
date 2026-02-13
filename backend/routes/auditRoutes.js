@@ -96,11 +96,12 @@ const { rows } = await query(
   FROM audit_events ae
   LEFT JOIN users u ON u.id = ae.actor_user_id
   LEFT JOIN users tu
-    ON tu.id = CASE
-      WHEN ae.target_type = 'user' AND ae.target_id ~ '^\d+$'
-      THEN ae.target_id::int
-      ELSE NULL
-    END
+  ON tu.id = CASE
+    WHEN lower(trim(ae.target_type)) = 'user'
+     AND trim(ae.target_id) ~ '^\d+$'
+    THEN trim(ae.target_id)::int
+    ELSE NULL
+  END
   WHERE ${where.join(" AND ")}
   ORDER BY ae.id DESC
   LIMIT ${limitParam}

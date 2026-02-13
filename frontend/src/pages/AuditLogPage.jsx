@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
+import { fmtDateTimeTz } from "../lib/dateFormat";
 
 const PRIMARY = "#111827";
 const MUTED = "#6b7280";
@@ -270,7 +271,7 @@ export default function AuditLogPage({ user }) {
 
               {events.map((ev) => (
                 <tr key={ev.id}>
-                  <td style={td}>{ev.occurredAt ? new Date(ev.occurredAt).toLocaleString() : ""}</td>
+                  <td style={td}>{fmtDateTimeTz(ev.occurredAt)}</td>
                   <td style={td}>
                     {ev.actorFullName
                         ? `${ev.actorFullName} (${ev.actorRole || "-"})`
