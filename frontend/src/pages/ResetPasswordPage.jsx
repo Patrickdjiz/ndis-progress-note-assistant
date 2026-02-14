@@ -1,6 +1,6 @@
 // src/pages/ResetPasswordPage.jsx
 import { useMemo, useState, useEffect } from "react";
-import { useLocation, Link } from "react-router-dom";
+import { useLocation, Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
 
@@ -23,6 +23,7 @@ export default function ResetPasswordPage() {
   // ✅ UI-only: responsive helper (no business logic changes)
   const isMobile = useIsMobile(760);
 
+  const nav = useNavigate();
 
   const submit = async (e) => {
     e.preventDefault();
@@ -44,20 +45,19 @@ export default function ResetPasswordPage() {
 
     setLoading(true);
     try {
-      await apiFetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, newPassword }),
-      });
+  await apiFetch("/api/auth/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, newPassword }),
+  });
 
-      setMsg("Password updated. You can now log in.");
-      setNewPassword("");
-      setConfirm("");
-    } catch (e2) {
-      setErr(e2?.message || "Failed to reset password.");
-    } finally {
-      setLoading(false);
-    }
+  sessionStorage.setItem("flash_login_msg", "Password set. You can now log in.");
+  nav("/");
+} catch (e2) {
+  setErr(e2?.message || "Failed to reset password.");
+} finally {
+  setLoading(false);
+}
   };
 
   const cardStyle = {

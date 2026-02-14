@@ -71,7 +71,9 @@ CREATE INDEX IF NOT EXISTS idx_privacy_acceptances_user
 CREATE TABLE IF NOT EXISTS progress_notes (
   id SERIAL PRIMARY KEY,
 
-  organisation_id INTEGER NOT NULL REFERENCES organisations(id),
+  organisation_id INTEGER REFERENCES organisations(id),
+-- plus the CHECK constraint as above
+
   worker_user_id INTEGER NOT NULL REFERENCES users(id),
 
   participant_name TEXT NOT NULL,

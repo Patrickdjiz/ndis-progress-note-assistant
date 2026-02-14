@@ -30,13 +30,14 @@ async function findUserByEmailWithOrg(email) {
       u.must_change_password AS "mustChangePassword",
       o.status AS "orgStatus"
     FROM users u
-    JOIN organisations o ON o.id = u.organisation_id
+    LEFT JOIN organisations o ON o.id = u.organisation_id
     WHERE lower(u.email) = lower($1)
     LIMIT 1
   `;
   const { rows } = await query(sql, [email]);
   return rows[0] || null;
 }
+
 
 /**
  * Simple helper: find user by email (no org join).

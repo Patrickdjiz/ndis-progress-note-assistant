@@ -78,7 +78,6 @@ const createProviderSchema = z.object({
   organisationName: nonEmptyString("organisationName", 200),
   adminEmail: emailSchema,
   adminFullName: nonEmptyString("adminFullName", 200),
-  adminPassword: passwordSchema,
 });
 
 // PATCH status flags

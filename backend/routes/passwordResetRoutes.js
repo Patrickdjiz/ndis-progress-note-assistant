@@ -315,8 +315,10 @@ router.post("/reset-password", resetIpLimiter, resetTokenLimiter, async (req, re
       SET password_hash = $1,
           must_change_password = FALSE,
           password_changed_at = $2,
+          session_revoked_at = now(),
           reset_token_hash = NULL,
-          reset_token_expires_at = NULL
+          reset_token_expires_at = NULL,
+          updated_at = now()
       FROM organisations o
       WHERE u.id = $3
         AND o.id = u.organisation_id
@@ -325,6 +327,7 @@ router.post("/reset-password", resetIpLimiter, resetTokenLimiter, async (req, re
       `,
       [newHash, nowIso, rows[0].id]
     );
+
 
     const changed = result?.rowCount ?? result?.changes ?? 0;
     if (!changed) {
