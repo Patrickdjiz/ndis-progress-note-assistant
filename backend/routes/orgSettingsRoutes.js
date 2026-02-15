@@ -12,8 +12,8 @@ const updateSchema = z.object({
   retentionDays: z.coerce.number().int().min(30).max(36500).optional(),
 deleteGraceDays: z.coerce.number().int().min(1).max(365).optional(),
 organisationId: z.coerce.number().int().positive().optional(),
-  autoPurgeEnabled: z.boolean().optional(),
-  aiEnabled: z.boolean().optional(),
+  autoPurgeEnabled: z.coerce.boolean().optional(),
+aiEnabled: z.coerce.boolean().optional(),
 }).refine((v) => v.retentionDays !== undefined || v.deleteGraceDays !== undefined || v.autoPurgeEnabled !== undefined || v.aiEnabled !== undefined,  {
   message: "Provide at least one setting to update.",
 });
@@ -24,16 +24,25 @@ router.get("/settings", async (req, res) => {
       return res.status(403).json({ error: "Not allowed", requestId: req.id });
     }
 
+    if (req.user.role === "ADMIN") {
+      const orgIdNum = Number(req.user.organisationId);
+      if (!Number.isInteger(orgIdNum) || orgIdNum <= 0) {
+        return res.status(400).json({ error: "Admin account is missing organisationId", requestId: req.id });
+      }
+    }
+
+
     // ADMIN -> own org, OWNER -> can query ?organisationId=
-    let orgId = req.user.organisationId;
+    let orgId = Number(req.user.organisationId);
 
     if (req.user.role === "OWNER") {
-    const q = req.query.organisationId ? Number(req.query.organisationId) : null;
-    if (!q || !Number.isInteger(q) || q <= 0) {
-        return res.status(400).json({ error: "organisationId is required for OWNER", requestId: req.id });
+      if (!organisationId) return res.status(400).json({ error: "organisationId is required for OWNER", requestId: req.id });
+      orgId = Number(organisationId);
+      if (!Number.isInteger(orgId) || orgId <= 0) {
+        return res.status(400).json({ error: "Invalid organisationId", requestId: req.id });
+      }
     }
-    orgId = q;
-    }
+
 
     const { rows } = await query(
       `
@@ -58,25 +67,35 @@ router.get("/settings", async (req, res) => {
   }
 });
 
-router.post("/settings", async (req, res) => {
+router.get("/settings", async (req, res) => {
   try {
     if (!["ADMIN", "OWNER"].includes(req.user.role)) {
       return res.status(403).json({ error: "Not allowed", requestId: req.id });
     }
 
-    const parsed = updateSchema.safeParse(req.body || {});
-    if (!parsed.success) {
-      const msg = parsed.error.issues.map((i) => i.message).join("; ");
-      return res.status(400).json({ error: msg || "Invalid body", requestId: req.id });
+    const organisationId = req.query.organisationId; // ✅ ADD THIS
+
+    if (req.user.role === "ADMIN") {
+      if (organisationId !== undefined) {
+        return res.status(400).json({ error: "Admins cannot query other organisations", requestId: req.id });
+      }
+
+      const orgIdNum = Number(req.user.organisationId);
+      if (!Number.isInteger(orgIdNum) || orgIdNum <= 0) {
+        return res.status(400).json({ error: "Admin account is missing organisationId", requestId: req.id });
+      }
     }
 
-    const { organisationId, retentionDays, deleteGraceDays, autoPurgeEnabled, aiEnabled } = parsed.data;
+    let orgId = Number(req.user.organisationId);
 
-    // Determine target org
-    let orgId = req.user.organisationId;
     if (req.user.role === "OWNER") {
-      if (!organisationId) return res.status(400).json({ error: "organisationId is required for OWNER", requestId: req.id });
-      orgId = organisationId;
+      if (!organisationId) {
+        return res.status(400).json({ error: "organisationId is required for OWNER", requestId: req.id });
+      }
+      orgId = Number(organisationId);
+      if (!Number.isInteger(orgId) || orgId <= 0) {
+        return res.status(400).json({ error: "Invalid organisationId", requestId: req.id });
+      }
     }
 
     const { rows: beforeRows } = await query(

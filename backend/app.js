@@ -116,31 +116,6 @@ app.options(/.*/, cors(corsOptions));
 // JSON body parsing
 app.use(express.json({ limit: "1mb" }));
 
-// Rate limits
-// Rate limits (Redis-backed in prod if REDIS_URL is set)
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: makeStore("rl:auth:ip:"),
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
-  skip: (req) => req.method === "OPTIONS",
-  handler: limiterHandler, // ✅ add this
-  message: { error: "Too many login attempts. Please try again later." },
-});
-
-const passwordLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: makeStore("rl:pwreset:ip:"),
-  keyGenerator: (req, res) => ipKeyGenerator(req, res),
-  skip: (req) => req.method === "OPTIONS",
-  handler: limiterHandler, // ✅ add this
-  message: { error: "Too many password reset requests. Please try again later." },
-});
 
 const accountPwLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -156,9 +131,6 @@ const accountPwLimiter = rateLimit({
 
 
 
-app.use("/api/login", authLimiter);
-app.use("/api/auth/forgot-password", passwordLimiter);
-app.use("/api/auth/reset-password", passwordLimiter);
 app.use("/api/account/change-password", accountPwLimiter);
 
 

@@ -1014,9 +1014,10 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
 
     const org = orgRows[0];
     if (!org) return sendErr(res, req, 403, "Organisation not found");
-    if (req.user.role !== "OWNER" && org.status !== "ACTIVE") {
-      return sendErr(res, req, 403, "This provider account is suspended.");
+    if (org.status !== "ACTIVE") {
+      return sendErr(res, req, 401, "This provider account is suspended.");
     }
+
     if (org.ai_enabled === false) {
       await audit(req, "AI_GENERATION_BLOCKED_ORG_DISABLED", {
         targetType: "organisation",
@@ -1064,7 +1065,7 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
       const selectedWorkerId = parsed.data.workerUserId;
 
       if (!selectedWorkerId) {
-        return sendErr(res, req, 400, "Admins/Owners must select a worker before generating.");
+        return sendErr(res, req, 400, "Admins must select a worker before generating.");
       }
 
       const { rows: wRows } = await query(
@@ -1293,12 +1294,6 @@ try {
     const MAX_BODY_CHARS = 9000;
     if (modelText.length > MAX_BODY_CHARS) {
       modelText = modelText.slice(0, MAX_BODY_CHARS).trim();
-    }
-
-
-
-    if (modelText.startsWith("ERROR:")) {
-      return sendErr(res, req, 400, modelText);
     }
 
     const filteredBody = applyComplianceFilter(modelText, rawCombinedRedacted, workerName);
@@ -1955,19 +1950,33 @@ router.post("/notes/:id/metadata", notesWriteIpLimiter, notesWriteUserLimiter, a
     );
 
     const updated = rows[0];
-    if (!updated) return sendErr(res, req, 404, "Note not found");
+if (!updated) return sendErr(res, req, 404, "Note not found");
 
-    const changes = diffChanges(before, patch, keys);
-    const changedKeys = Object.keys(changes);
+// Build "after" from what Postgres actually returned (most accurate)
+const afterDb = {
+  participantName: updated.participant_name,
+  date: updated.date,
+  startTime: updated.start_time,
+  endTime: updated.end_time,
+  location: updated.location,
+  incidentFlag: updated.incident_flag,
+};
 
-    await audit(req, "NOTE_METADATA_UPDATED", {
-      targetType: "progress_note",
-      targetId: String(id),
-      meta: auditMetaForNoteChanges(before, after, changedKeys),
-    });
+const changedKeys = keys.filter((k) => before[k] !== afterDb[k]);
 
+// Optional (recommended): don’t audit / touch updated_at if it was a no-op
+if (changedKeys.length === 0) {
+  return sendErr(res, req, 400, "No changes provided");
+}
 
-    return res.json({ ok: true, note: normaliseNoteRow(updated) });
+await audit(req, "NOTE_METADATA_UPDATED", {
+  targetType: "progress_note",
+  targetId: String(id),
+  meta: auditMetaForNoteChanges(before, afterDb, changedKeys),
+});
+
+return res.json({ ok: true, note: normaliseNoteRow(updated) });
+
   } catch (err) {
     console.error(`[${req.id}] Error updating note metadata:`, err);
     return sendErr(res, req, 500, "Failed to update note metadata");

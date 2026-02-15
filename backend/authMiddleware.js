@@ -190,7 +190,7 @@ async function requireAuth(req, res, next) {
       fullName: dbUser.fullName,
       email: dbUser.email,
       mustChangePassword: !!dbUser.mustChangePassword,
-      aiEnabled: dbUser.aiEnabled === undefined ? true : !!dbUser.aiEnabled,
+      aiEnabled: dbUser.aiEnabled == null ? true : !!dbUser.aiEnabled,
     };
 
     // backend/authMiddleware.js (inside requireAuth, after req.user = {...})
