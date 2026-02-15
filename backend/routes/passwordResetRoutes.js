@@ -114,17 +114,18 @@ router.post("/forgot-password", forgotIpLimiter, forgotEmailLimiter, async (req,
     };
 
     const { rows } = await query(
-      `
-      SELECT u.id, u.email, u.organisation_id
-      FROM users u
-      JOIN organisations o ON o.id = u.organisation_id
-      WHERE lower(u.email) = lower($1)
-        AND u.is_active = TRUE
-        AND o.status = 'ACTIVE'
-      LIMIT 1
-      `,
-      [email]
-    );
+  `
+  SELECT u.id, u.email, u.organisation_id, u.role
+  FROM users u
+  LEFT JOIN organisations o ON o.id = u.organisation_id
+  WHERE lower(u.email) = lower($1)
+    AND u.is_active = TRUE
+    AND (u.role = 'OWNER' OR o.status = 'ACTIVE')
+  LIMIT 1
+  `,
+  [email]
+);
+
 
     if (!rows[0]) {
       return res.json(okResponse);
@@ -288,19 +289,20 @@ router.post("/reset-password", resetIpLimiter, resetTokenLimiter, async (req, re
     const tokenHash = sha256Hex(token);
 
     const { rows } = await query(
-      `
-      SELECT u.id, u.organisation_id
-      FROM users u
-      JOIN organisations o ON o.id = u.organisation_id
-      WHERE u.reset_token_hash = $1
-        AND u.reset_token_expires_at IS NOT NULL
-        AND u.reset_token_expires_at > NOW()
-        AND u.is_active = TRUE
-        AND o.status = 'ACTIVE'
-      LIMIT 1
-      `,
-      [tokenHash]
-    );
+  `
+  SELECT u.id, u.organisation_id, u.role
+  FROM users u
+  LEFT JOIN organisations o ON o.id = u.organisation_id
+  WHERE u.reset_token_hash = $1
+    AND u.reset_token_expires_at IS NOT NULL
+    AND u.reset_token_expires_at > NOW()
+    AND u.is_active = TRUE
+    AND (u.role = 'OWNER' OR o.status = 'ACTIVE')
+  LIMIT 1
+  `,
+  [tokenHash]
+);
+
 
     if (!rows[0]) {
       return sendErr(res, req, 400, "Reset token is invalid or expired");
@@ -310,23 +312,29 @@ router.post("/reset-password", resetIpLimiter, resetTokenLimiter, async (req, re
     const nowIso = new Date().toISOString();
 
     const result = await query(
-      `
-      UPDATE users u
-      SET password_hash = $1,
-          must_change_password = FALSE,
-          password_changed_at = $2,
-          session_revoked_at = now(),
-          reset_token_hash = NULL,
-          reset_token_expires_at = NULL,
-          updated_at = now()
-      FROM organisations o
-      WHERE u.id = $3
-        AND o.id = u.organisation_id
-        AND u.is_active = TRUE
-        AND o.status = 'ACTIVE'
-      `,
-      [newHash, nowIso, rows[0].id]
-    );
+  `
+  UPDATE users u
+  SET password_hash = $1,
+      must_change_password = FALSE,
+      password_changed_at = $2,
+      session_revoked_at = now(),
+      reset_token_hash = NULL,
+      reset_token_expires_at = NULL,
+      updated_at = now()
+  WHERE u.id = $3
+    AND u.is_active = TRUE
+    AND (
+      u.role = 'OWNER'
+      OR EXISTS (
+        SELECT 1
+        FROM organisations o
+        WHERE o.id = u.organisation_id
+          AND o.status = 'ACTIVE'
+      )
+    )
+  `,
+  [newHash, nowIso, rows[0].id]
+);
 
 
     const changed = result?.rowCount ?? result?.changes ?? 0;

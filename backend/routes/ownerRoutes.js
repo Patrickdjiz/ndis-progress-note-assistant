@@ -263,8 +263,11 @@ const admin = adminRes.rows[0];
 const resetLink = `${FRONTEND_ORIGIN.replace(/\/+$/, "")}/reset-password?token=${rawToken}`;
 const mail = makeInviteEmail({ adminFullName: trimmedFullName, resetLink });
 
+let inviteEmailSent = false;
+
 try {
   await sendMail({ to: normalisedEmail, ...mail });
+  inviteEmailSent = true;
 
   await auditEvent(req, "ADMIN_INVITED", {
     organisationId: organisation.id,
@@ -274,25 +277,22 @@ try {
     targetId: String(admin.id),
   });
 } catch (e) {
-  console.error("Admin invite email failed:", e?.message || e);
+    console.error("Admin invite email failed:", e?.message || e);
 
-  await auditEvent(req, "ADMIN_INVITE_EMAIL_FAILED", {
-    organisationId: organisation.id,
-    actorUserId: req.user.id,
-    actorRole: req.user.role,
-    targetType: "user",
-    targetId: String(admin.id),
-    meta: { error: String(e?.message || e).slice(0, 200) },
-  });
+    await auditEvent(req, "ADMIN_INVITE_EMAIL_FAILED", {
+      organisationId: organisation.id,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      targetType: "user",
+      targetId: String(admin.id),
+      meta: { error: String(e?.message || e).slice(0, 200) },
+    });
 
-  // You can choose whether to return 500 or still return 201 with a warning.
-  // Returning 201 prevents “org exists” issues on retry.
-}
+    // You can choose whether to return 500 or still return 201 with a warning.
+    // Returning 201 prevents “org exists” issues on retry.
+  }
 
-
-
-
-      return res.status(201).json({ organisation, admin });
+      return res.status(201).json({ organisation, admin, inviteEmailSent });
     } catch (err) {
       await client.query("ROLLBACK");
       console.error("Error creating provider:", err);

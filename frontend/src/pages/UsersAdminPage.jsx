@@ -3,45 +3,21 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
 
-
 function UsersAdminPage({ token, user }) {
   const PRIMARY = "#111827";
-
-  // ✅ UI-only: detect mobile so we can stack layouts + improve tap targets
   const isMobile = useIsMobile(760);
 
-
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(false); // for fetching users
+  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // new user form
+  // new worker invite form
   const [newEmail, setNewEmail] = useState("");
   const [newFullName, setNewFullName] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [createMsg, setCreateMsg] = useState("");
-  const [creating, setCreating] = useState(false); // separate loading for create
+  const [creating, setCreating] = useState(false);
 
   const [resetMsg, setResetMsg] = useState("");
-
-
-  const handleSendReset = async (id) => {
-  try {
-    setErrorMsg("");
-    setResetMsg("");
-
-    const data = await apiFetch(`/api/users/${id}/reset-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-
-    setResetMsg(data?.message || "Reset link sent.");
-  } catch (err) {
-    setErrorMsg(err?.message || "Failed to send reset link");
-  }
-};
-
 
   const fetchUsers = async () => {
     try {
@@ -49,7 +25,6 @@ function UsersAdminPage({ token, user }) {
       setErrorMsg("");
 
       const data = await apiFetch("/api/users");
-
       setUsers(Array.isArray(data.users) ? data.users : []);
     } catch (err) {
       console.error("Error loading users:", err);
@@ -64,14 +39,35 @@ function UsersAdminPage({ token, user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleSendReset = async (id) => {
+    try {
+      setErrorMsg("");
+      setResetMsg("");
+
+      const data = await apiFetch(`/api/users/${id}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      setResetMsg(data?.message || "Reset link sent.");
+    } catch (err) {
+      setErrorMsg(err?.message || "Failed to send reset link");
+    }
+  };
+
   const handleCreateUser = async (e) => {
     e.preventDefault();
     try {
       setErrorMsg("");
       setCreateMsg("");
+      setResetMsg("");
 
-      if (!newEmail.trim() || !newFullName.trim() || !newPassword.trim()) {
-        setErrorMsg("Email, full name and password are required.");
+      const email = newEmail.trim();
+      const fullName = newFullName.trim();
+
+      if (!email || !fullName) {
+        setErrorMsg("Email and full name are required.");
         return;
       }
 
@@ -79,30 +75,27 @@ function UsersAdminPage({ token, user }) {
 
       const data = await apiFetch("/api/users", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: newEmail.trim(),
-          fullName: newFullName.trim(),
-          password: newPassword.trim(),
-          // role is deliberately NOT sent / ignored by backend
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, fullName }),
       });
+
+      const workerEmail = data?.user?.email || email;
+      const inviteEmailSent = !!data?.inviteEmailSent;
+
+      setCreateMsg(
+        inviteEmailSent
+          ? `Invite sent to ${workerEmail}.`
+          : `Worker ${workerEmail} created, but invite email failed. Use “Send reset link” to retry.`
+      );
 
       // Clear the form
       setNewEmail("");
       setNewFullName("");
-      setNewPassword("");
 
-      const workerEmail = data?.user?.email || newEmail.trim();
-      setCreateMsg(workerEmail ? `Worker ${workerEmail} created.` : "Worker created.");
-
-      // reload from backend
       await fetchUsers();
     } catch (err) {
-      console.error("Error creating user:", err);
-      setErrorMsg(err?.message || "Failed to create user");
+      console.error("Error inviting worker:", err);
+      setErrorMsg(err?.message || "Failed to invite worker");
     } finally {
       setCreating(false);
     }
@@ -114,13 +107,13 @@ function UsersAdminPage({ token, user }) {
 
       const data = await apiFetch(`/api/users/${id}/status`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !isActive }),
       });
 
-      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, isActive: data.isActive } : u)));
+      setUsers((prev) =>
+        prev.map((u) => (u.id === id ? { ...u, isActive: data.isActive } : u))
+      );
     } catch (err) {
       console.error("Error updating user status:", err);
       setErrorMsg(err?.message || "Failed to update user status");
@@ -149,7 +142,6 @@ function UsersAdminPage({ token, user }) {
     );
   };
 
-  // ✅ UI-only: slightly larger tap targets on mobile (no visual redesign)
   const inputStyle = {
     width: "100%",
     padding: "0.5rem 0.55rem",
@@ -162,15 +154,8 @@ function UsersAdminPage({ token, user }) {
 
   return (
     <section style={{ width: "100%", boxSizing: "border-box" }}>
-      {/* Header */}
       <div style={{ marginBottom: "0.75rem" }}>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: "1.25rem",
-            color: PRIMARY,
-          }}
-        >
+        <h2 style={{ margin: 0, fontSize: "1.25rem", color: PRIMARY }}>
           Team management
         </h2>
         <p
@@ -181,8 +166,7 @@ function UsersAdminPage({ token, user }) {
             lineHeight: 1.45,
           }}
         >
-          As an {user.role}, you can invite workers to your organisation, and deactivate accounts that are no longer in
-          use.
+          As an {user.role}, you can invite workers to your organisation, and deactivate accounts that are no longer in use.
         </p>
       </div>
 
@@ -192,7 +176,7 @@ function UsersAdminPage({ token, user }) {
         </p>
       )}
 
-      {/* Create user form */}
+      {/* Invite worker form */}
       <form
         onSubmit={handleCreateUser}
         style={{
@@ -202,21 +186,14 @@ function UsersAdminPage({ token, user }) {
           borderRadius: "0.75rem",
           background: "#ffffff",
           display: "grid",
-          // ✅ Mobile: stack fields + full-width button
-          gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1.4fr 1.1fr auto",
+          gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1.4fr auto",
           gap: "0.7rem",
           alignItems: "flex-end",
           boxSizing: "border-box",
         }}
       >
         <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: "0.85rem",
-              marginBottom: "0.15rem",
-            }}
-          >
+          <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}>
             Full name
           </label>
           <input
@@ -230,13 +207,7 @@ function UsersAdminPage({ token, user }) {
         </div>
 
         <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: "0.85rem",
-              marginBottom: "0.15rem",
-            }}
-          >
+          <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}>
             Email
           </label>
           <input
@@ -247,26 +218,6 @@ function UsersAdminPage({ token, user }) {
             placeholder="e.g. worker@provider.com"
             autoComplete="email"
             inputMode="email"
-          />
-        </div>
-
-        <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: "0.85rem",
-              marginBottom: "0.15rem",
-            }}
-          >
-            Temp password
-          </label>
-          <input
-            type="text"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            style={inputStyle}
-            placeholder="e.g. send this to the worker"
-            autoComplete="new-password"
           />
         </div>
 
@@ -282,34 +233,26 @@ function UsersAdminPage({ token, user }) {
             color: "#f9fafb",
             fontSize: "0.9rem",
             fontWeight: 500,
-            // ✅ Mobile: button becomes easy to tap
             minHeight: isMobile ? 44 : undefined,
             width: isMobile ? "100%" : undefined,
           }}
           disabled={creating}
         >
-          {creating ? "Creating…" : "Create user"}
+          {creating ? "Inviting…" : "Invite worker"}
         </button>
       </form>
 
       {createMsg && (
-        <p
-          style={{
-            marginTop: "0.45rem",
-            fontSize: "0.85rem",
-            color: "#047857",
-            wordBreak: "break-word",
-          }}
-        >
+        <p style={{ marginTop: "0.45rem", fontSize: "0.85rem", color: "#047857", wordBreak: "break-word" }}>
           {createMsg}
         </p>
       )}
+
       {resetMsg && (
         <p style={{ marginTop: "0.45rem", fontSize: "0.85rem", color: "#047857", wordBreak: "break-word" }}>
           {resetMsg}
         </p>
       )}
-
 
       {/* Users table */}
       <div
@@ -334,7 +277,6 @@ function UsersAdminPage({ token, user }) {
           Users in your organisation
         </div>
 
-        {/* ✅ Mobile: allow horizontal swipe if needed (keeps the same table UI) */}
         <div
           style={{
             maxHeight: "380px",
@@ -348,7 +290,6 @@ function UsersAdminPage({ token, user }) {
               width: "100%",
               borderCollapse: "collapse",
               fontSize: "0.9rem",
-              // keep columns readable on small screens, enable swipe
               minWidth: isMobile ? 720 : undefined,
             }}
           >
@@ -364,15 +305,8 @@ function UsersAdminPage({ token, user }) {
             <tbody>
               {users.length === 0 && !loading && (
                 <tr>
-                  <td
-                    colSpan={5}
-                    style={{
-                      padding: "0.8rem",
-                      textAlign: "center",
-                      color: "#6b7280",
-                    }}
-                  >
-                    No users yet. Add your first worker above.
+                  <td colSpan={5} style={{ padding: "0.8rem", textAlign: "center", color: "#6b7280" }}>
+                    No users yet. Invite your first worker above.
                   </td>
                 </tr>
               )}
@@ -428,28 +362,21 @@ function UsersAdminPage({ token, user }) {
                               background: "#ffffff",
                               color: PRIMARY,
                               fontWeight: 600,
-                              minHeight: isMobile ? 40 : undefined,                             
+                              minHeight: isMobile ? 40 : undefined,
                             }}
                           >
                             Send reset link
                           </button>
                         </div>
                       )}
-                  </td>
+                    </td>
                   </tr>
                 );
               })}
 
               {loading && (
                 <tr>
-                  <td
-                    colSpan={5}
-                    style={{
-                      padding: "0.8rem",
-                      textAlign: "center",
-                      color: "#6b7280",
-                    }}
-                  >
+                  <td colSpan={5} style={{ padding: "0.8rem", textAlign: "center", color: "#6b7280" }}>
                     Loading users…
                   </td>
                 </tr>

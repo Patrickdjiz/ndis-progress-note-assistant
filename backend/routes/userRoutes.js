@@ -68,16 +68,16 @@ router.get("/", async (req, res) => {
  * Create a new WORKER in the current organisation.
  * Provider admins CANNOT create other admins from here.
  */
+// routes/userRoutes.js (replace POST /api/users)
 router.post("/", async (req, res) => {
   try {
-    // ✅ Validate body with Zod schema
     const parsed = createWorkerSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => i.message).join("; ");
       return sendErr(res, req, 400, msg || "Invalid user data");
     }
 
-    const { email, fullName, password } = parsed.data;
+    const { email, fullName } = parsed.data;
     const normalisedEmail = email.trim().toLowerCase();
 
     // Check uniqueness across DB
@@ -86,28 +86,148 @@ router.post("/", async (req, res) => {
       return sendErr(res, req, 400, "A user with this email already exists");
     }
 
-    const hash = await bcrypt.hash(password, 10);
+    // 7 day invite
+    const INVITE_MINUTES = 7 * 24 * 60;
 
-    const user = await createWorkerUser({
-      orgId: req.user.organisationId,
-      email: normalisedEmail,
-      fullName: fullName.trim(),
-      passwordHash: hash,
-    });
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = sha256Hex(rawToken);
+    const expiresAt = addMinutes(new Date(), INVITE_MINUTES).toISOString();
 
-    await audit(req, "USER_CREATED", {
+    // random password nobody knows (worker will set real password via reset link)
+    const randomSecret = crypto.randomBytes(32).toString("hex");
+    const passwordHash = await bcrypt.hash(randomSecret, 10);
+
+    // Create worker with must_change_password + reset token
+    const { rows } = await query(
+      `
+      INSERT INTO users (
+        organisation_id,
+        email,
+        password_hash,
+        role,
+        full_name,
+        is_active,
+        must_change_password,
+        reset_token_hash,
+        reset_token_expires_at,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, 'WORKER', $4, TRUE, TRUE, $5, $6, now(), now())
+      RETURNING
+        id,
+        email,
+        full_name AS "fullName",
+        role,
+        is_active AS "isActive",
+        must_change_password AS "mustChangePassword",
+        created_at AS "createdAt"
+      `,
+      [
+        req.user.organisationId,
+        normalisedEmail,
+        passwordHash,
+        fullName.trim(),
+        tokenHash,
+        expiresAt,
+      ]
+    );
+
+    const user = rows[0];
+
+    await audit(req, "WORKER_INVITED", {
       targetType: "user",
       targetId: String(user.id),
       meta: { role: "WORKER", emailHash: sha256Hex(normalisedEmail) },
     });
 
+    const resetLink = `${FRONTEND_ORIGIN.replace(/\/+$/, "")}/reset-password?token=${rawToken}`;
 
-    return res.status(201).json({ user });
+    // Email template (simple + consistent with your admin invite)
+    const brandName = "NDIS Notes";
+    const supportEmail = process.env.MAIL_REPLY_TO || "support@ndisnotes.com";
+    const from = process.env.MAIL_FROM || `${brandName} <no-reply@ndisnotes.com>`;
+    const replyTo = supportEmail;
+
+    const subject = "Set up your NDIS Notes account";
+    const preview = "You’ve been invited to NDIS Notes. Set your password to get started.";
+
+    const text =
+      `${brandName}\n\n` +
+      `Hi ${user.fullName || "there"},\n\n` +
+      `You’ve been invited to NDIS Notes by your organisation administrator.\n` +
+      `Set your password using this link (valid for 7 days):\n${resetLink}\n\n` +
+      `If you didn’t expect this invite, ignore this email or contact support.\n` +
+      `Support: ${supportEmail}\n`;
+
+    const html = `<!doctype html>
+<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${subject}</title></head>
+<body style="margin:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preview}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellspacing="0" cellpadding="0"
+        style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+        <tr><td style="padding:18px 20px;background:#111827;color:#ffffff;">
+          <div style="font-size:16px;font-weight:700;">${brandName}</div>
+          <div style="font-size:12px;opacity:.9;margin-top:4px;">Account invite</div>
+        </td></tr>
+        <tr><td style="padding:22px 20px;">
+          <h1 style="font-size:18px;margin:0 0 10px 0;">Set up your account</h1>
+          <p style="margin:0 0 14px 0;line-height:1.5;color:#374151;">
+            Click below to set your password. This link is valid for <strong>7 days</strong> and can be used <strong>once</strong>.
+          </p>
+          <div style="margin:18px 0;">
+            <a href="${resetLink}"
+              style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:999px;font-weight:700;font-size:14px;">
+              Set password
+            </a>
+          </div>
+          <p style="margin:0 0 10px 0;line-height:1.5;color:#6b7280;font-size:12px;">
+            If the button doesn’t work, copy and paste this link:
+          </p>
+          <p style="margin:0 0 16px 0;word-break:break-all;font-size:12px;">
+            <a href="${resetLink}" style="color:#1d4ed8;">${resetLink}</a>
+          </p>
+          <p style="margin:0;line-height:1.5;color:#6b7280;font-size:12px;">
+            If you didn’t expect this invite, you can ignore this email.
+          </p>
+        </td></tr>
+        <tr><td style="padding:14px 20px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;">
+          Need help? Reply to this email or contact <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+    let inviteEmailSent = false;
+
+    try {
+      await sendMail({ to: user.email, from, replyTo, subject, text, html });
+      inviteEmailSent = true;
+
+      await audit(req, "WORKER_INVITE_EMAIL_SENT", {
+        targetType: "user",
+        targetId: String(user.id),
+      });
+    } catch (e) {
+      await audit(req, "WORKER_INVITE_EMAIL_FAILED", {
+        targetType: "user",
+        targetId: String(user.id),
+        meta: { error: String(e?.message || e).slice(0, 200) },
+      });
+      // still return 201 so admin doesn’t retry and hit “user already exists”
+    }
+
+    return res.status(201).json({ user, inviteEmailSent });
   } catch (err) {
-    console.error("Error creating user:", err.message);
-    return sendErr(res, req, 500, "Failed to create user");
+    console.error("Error inviting worker:", err.message);
+    return sendErr(res, req, 500, "Failed to invite user");
   }
 });
+
 
 /**
  * PATCH /api/users/:id/status

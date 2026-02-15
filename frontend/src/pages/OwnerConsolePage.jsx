@@ -30,7 +30,6 @@ function OwnerConsolePage({ token, user }) {
   const [organisationName, setOrganisationName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminFullName, setAdminFullName] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
   const [createMsg, setCreateMsg] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -105,11 +104,10 @@ function OwnerConsolePage({ token, user }) {
       if (
         !organisationName.trim() ||
         !adminEmail.trim() ||
-        !adminFullName.trim() ||
-        !adminPassword.trim()
+        !adminFullName.trim()
       ) {
         setErrorMsg(
-          "Organisation name, admin email, admin full name and password are all required."
+          "Organisation name, admin email and admin full name are all required."
         );
         return;
       }
@@ -125,7 +123,6 @@ function OwnerConsolePage({ token, user }) {
           organisationName: organisationName.trim(),
           adminEmail: adminEmail.trim(),
           adminFullName: adminFullName.trim(),
-          adminPassword: adminPassword.trim(),
         }),
       });
 
@@ -135,7 +132,6 @@ function OwnerConsolePage({ token, user }) {
       setOrganisationName("");
       setAdminEmail("");
       setAdminFullName("");
-      setAdminPassword("");
 
       // Refresh overview list
       await fetchOverview();
@@ -294,20 +290,6 @@ function OwnerConsolePage({ token, user }) {
               placeholder="e.g. Sarah Khan"
               style={inputStyle}
               autoComplete="name"
-            />
-          </div>
-
-          <div>
-            <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.15rem" }}>
-              Admin password
-            </label>
-            <input
-              type="password"
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
-              placeholder="Temporary password for admin"
-              style={inputStyle}
-              autoComplete="new-password"
             />
           </div>
 

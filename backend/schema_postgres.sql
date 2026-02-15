@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS organisations (
 -- Users (admins + workers + owner)
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
-  organisation_id INTEGER NOT NULL REFERENCES organisations(id),
+
+  -- ✅ OWNER can be org-less; ADMIN/WORKER must belong to an org
+  organisation_id INTEGER REFERENCES organisations(id),
 
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
@@ -48,7 +50,11 @@ CREATE TABLE IF NOT EXISTS users (
   reset_token_hash TEXT,
   reset_token_expires_at TIMESTAMPTZ,
 
-  CHECK (role IN ('OWNER', 'ADMIN', 'WORKER'))
+  CHECK (role IN ('OWNER', 'ADMIN', 'WORKER')),
+
+  -- ✅ enforce org required unless OWNER
+  CONSTRAINT chk_users_org_required
+    CHECK (role = 'OWNER' OR organisation_id IS NOT NULL)
 );
 
 -- Privacy notice acceptances (per-user, per-version)
@@ -71,7 +77,7 @@ CREATE INDEX IF NOT EXISTS idx_privacy_acceptances_user
 CREATE TABLE IF NOT EXISTS progress_notes (
   id SERIAL PRIMARY KEY,
 
-  organisation_id INTEGER REFERENCES organisations(id),
+  organisation_id INTEGER NOT NULL REFERENCES organisations(id), 
 -- plus the CHECK constraint as above
 
   worker_user_id INTEGER NOT NULL REFERENCES users(id),

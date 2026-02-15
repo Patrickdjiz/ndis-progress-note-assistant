@@ -70,8 +70,8 @@ const generateNoteSchema = z.object({
 const createWorkerSchema = z.object({
   email: emailSchema,
   fullName: nonEmptyString("fullName", 200),
-  password: passwordSchema,
 });
+
 
 // POST /api/owner/providers
 const createProviderSchema = z.object({
