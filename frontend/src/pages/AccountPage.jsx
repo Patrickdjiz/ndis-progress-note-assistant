@@ -1,5 +1,5 @@
 // src/pages/AccountPage.jsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
 import { sessionStore } from "../lib/sessionStore";
@@ -7,7 +7,7 @@ import { useEffect } from "react";
 
 const PRIMARY = "#111827";
 
-export default function AccountPage({ token, user, onAuthUserPatch }) {
+export default function AccountPage({ user, onAuthUserPatch }) {
   // Profile
   const [fullName, setFullName] = useState(user.fullName || "");
   const [email, setEmail] = useState(user.email || "");

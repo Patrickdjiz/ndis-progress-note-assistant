@@ -9,8 +9,9 @@ const MUTED = "#6b7280";
 export default function PrivacyNoticePage({ token, currentVersion, onAccepted }) {
   const navigate = useNavigate();
 
-  const [serverVersion, setServerVersion] = useState(currentVersion || null);
-const version = serverVersion || currentVersion || "v1";
+const [serverVersion, setServerVersion] = useState(null);
+const required = !!serverVersion;          // server is source of truth
+const version = serverVersion;             // string | null
 
   const [checked, setChecked] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -60,6 +61,11 @@ const version = serverVersion || currentVersion || "v1";
     setSubmitting(true);
 
     try {
+        if (!required || !version) {
+            navigate("/account", { replace: true });
+            return;
+        }
+
       const res = await apiFetch("/api/privacy/consent", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
@@ -102,9 +108,11 @@ const version = serverVersion || currentVersion || "v1";
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
           <div>
             <h1 style={{ margin: 0, fontSize: "1.25rem", color: PRIMARY }}>Privacy & Collection Notice</h1>
+             {required && (
             <div style={{ marginTop: "0.25rem", color: MUTED, fontSize: "0.9rem" }}>
-              Version: {version}
+                Version: {version}
             </div>
+            )}
           </div>
 
           <div style={{ alignSelf: "center" }}>
@@ -131,36 +139,59 @@ const version = serverVersion || currentVersion || "v1";
 
           <div style={{ marginTop: "1rem", padding: "0.75rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
             {loading ? (
-              <div style={{ color: MUTED }}>Loading…</div>
+                <div style={{ color: MUTED }}>Loading…</div>
+            ) : !required ? (
+                <>
+                <div style={{ color: MUTED }}>
+                    No privacy notice acceptance is required at this time.
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => navigate("/account", { replace: true })}
+                    style={{
+                    marginTop: "0.75rem",
+                    padding: "0.45rem 0.9rem",
+                    borderRadius: "0.6rem",
+                    border: "1px solid #111827",
+                    background: "#111827",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    }}
+                >
+                    Continue
+                </button>
+                </>
             ) : (
-              <>
+                <>
                 <label style={{ display: "flex", gap: "0.6rem", cursor: accepted ? "default" : "pointer" }}>
-                  <input
+                    <input
                     type="checkbox"
                     checked={checked}
                     disabled={accepted}
                     onChange={(e) => setChecked(e.target.checked)}
                     style={{ marginTop: "0.25rem" }}
-                  />
-                  <span>
+                    />
+                    <span>
                     I have read and understood the Privacy & Collection Notice (version {version}) and will use the
                     system in a way that protects participant privacy.
-                  </span>
+                    </span>
                 </label>
 
                 {accepted && (
-                  <div style={{ marginTop: "0.5rem", color: "#047857", fontSize: "0.9rem" }}>
+                    <div style={{ marginTop: "0.5rem", color: "#047857", fontSize: "0.9rem" }}>
                     Already accepted.
-                  </div>
+                    </div>
                 )}
 
                 {err && <div style={{ marginTop: "0.5rem", color: "#b91c1c", fontSize: "0.9rem" }}>{err}</div>}
 
                 <button
-                  type="button"
-                  disabled={accepted || !checked || submitting}
-                  onClick={accept}
-                  style={{
+                    type="button"
+                    disabled={accepted || !checked || submitting}
+                    onClick={accept}
+                    style={{
                     marginTop: "0.75rem",
                     padding: "0.45rem 0.9rem",
                     borderRadius: "0.6rem",
@@ -169,13 +200,13 @@ const version = serverVersion || currentVersion || "v1";
                     color: accepted || !checked || submitting ? "#6b7280" : "#ffffff",
                     cursor: accepted || !checked || submitting ? "not-allowed" : "pointer",
                     fontWeight: 600,
-                  }}
+                    }}
                 >
-                  {accepted ? "Accepted" : submitting ? "Saving…" : "Accept and continue"}
+                    {accepted ? "Accepted" : submitting ? "Saving…" : "Accept and continue"}
                 </button>
-              </>
+                </>
             )}
-          </div>
+            </div>
         </div>
       </div>
     </div>

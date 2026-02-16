@@ -329,14 +329,19 @@ const exportBodySchema = z.object({
   dateFrom: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
   dateTo: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
 
-  // accept the UI values
-  includeArchived: z.union([z.literal("all"), z.literal("true"), z.literal("false"), z.boolean()])
+  // ✅ match /notes/search: boolean | "all"
+  archived: z.union([z.literal("all"), z.boolean(), z.literal("true"), z.literal("false")])
     .optional()
     .default("all"),
 
   includeDeleted: z.boolean().optional().default(false),
   format: z.enum(["csv", "json"]).optional().default("csv"),
-});
+}).transform((v) => ({
+  ...v,
+  // normalise legacy string booleans if they sneak in
+  archived: v.archived === "true" ? true : v.archived === "false" ? false : v.archived,
+}));
+
 
 
 function clip(s, max = 1500) {
@@ -1406,7 +1411,11 @@ try {
 
     return res.json({ note: fullNote, id: newId });
   } catch (error) {
-    console.error(`[${req.id}] Error generating note:`, error);
+    console.error(`[${req.id}] Error generating note:`, {
+      message: error?.message,
+      code: error?.code,
+      status: error?.response?.status,
+    });
     return sendErr(res, req, 500, "Failed to generate note");
   }
 });
@@ -2017,7 +2026,7 @@ router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (re
       return sendErr(res, req, 400, msg || "Invalid export body");
     }
 
-    const { participant, dateFrom, dateTo, includeArchived, includeDeleted, format } = parsed.data;
+    const { participant, dateFrom, dateTo, archived, includeDeleted, format } = parsed.data;
 
     // Validate range sanity
     const df = parseYyyyMmDd(dateFrom);
@@ -2028,75 +2037,72 @@ router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (re
     const canIncludeDeleted = includeDeleted === true; // ADMIN only already
 
     let sql = `
-      SELECT
-        id,
-        participant_name AS "participantName",
-        worker_name AS "workerName",
-        date,
-        start_time AS "startTime",
-        end_time AS "endTime",
-        location,
-        incident_flag AS "incidentFlag",
-        reviewed_flag AS "reviewedFlag",
-        reviewed_at AS "reviewedAt",
-        reviewed_by AS "reviewedBy",
-        finalised_at AS "finalisedAt",
-        finalised_by AS "finalisedBy",
-        archived_flag AS "archivedFlag",
-        archived_at AS "archivedAt",
-        archived_by AS "archivedBy",
-        deleted_at AS "deletedAt",
-        deleted_by AS "deletedBy",
-        deleted_reason AS "deletedReason",
-        created_at AS "createdAt",
-        purged_at AS "purgedAt",
-        COALESCE(NULLIF(final_note_text,''), note_text) AS "noteBody"
-      FROM progress_notes
-      WHERE organisation_id = $1
-        AND (date::date) BETWEEN $2::date AND $3::date
-    `;
-    const params = [req.user.organisationId, dateFrom, dateTo];
-    let idx = 4;
+  SELECT
+    id,
+    participant_name AS "participantName",
+    worker_name AS "workerName",
+    date,
+    start_time AS "startTime",
+    end_time AS "endTime",
+    location,
+    incident_flag AS "incidentFlag",
+    reviewed_flag AS "reviewedFlag",
+    reviewed_at AS "reviewedAt",
+    reviewed_by AS "reviewedBy",
+    finalised_at AS "finalisedAt",
+    finalised_by AS "finalisedBy",
+    archived_flag AS "archivedFlag",
+    archived_at AS "archivedAt",
+    archived_by AS "archivedBy",
+    deleted_at AS "deletedAt",
+    deleted_by AS "deletedBy",
+    deleted_reason AS "deletedReason",
+    created_at AS "createdAt",
+    purged_at AS "purgedAt",
+    COALESCE(NULLIF(final_note_text,''), note_text) AS "noteBody"
+  FROM progress_notes
+  WHERE organisation_id = $1
+    AND (date::date) BETWEEN $2::date AND $3::date
+`;
+const params = [req.user.organisationId, dateFrom, dateTo];
+let idx = 4;
 
-    if (participant && participant.trim()) {
-      sql += ` AND participant_name ILIKE $${idx++}`;
-      params.push(`%${participant.trim()}%`);
-    }
+if (participant && participant.trim()) {
+  sql += ` AND participant_name ILIKE $${idx++}`;
+  params.push(`%${participant.trim()}%`);
+}
 
     // includeArchived can be: "all" | "true" | "false" | boolean
     // Meaning:
     // - "false"/false => exclude archived
     // - "true"/true/"all" => include archived + non-archived (no filter)
-    const excludeArchived = includeArchived === "false" || includeArchived === false;
+    if (archived === true) sql += ` AND archived_flag = TRUE`;
+else if (archived === false) sql += ` AND archived_flag = FALSE`;
 
-    if (excludeArchived) {
-      sql += ` AND archived_flag = FALSE`;
-    }
-    // else: no filter (include both)
-        if (!canIncludeDeleted) {
-          sql += ` AND deleted_at IS NULL`;
-    }
+    if (!canIncludeDeleted) {
+  sql += ` AND deleted_at IS NULL`;
+}
 
     sql += ` ORDER BY date DESC, created_at DESC, id DESC LIMIT 5000`;
 
     const { rows } = await query(sql, params);
 
-    await audit(req, "NOTES_EXPORTED", {
-      targetType: "progress_note",
-      targetId: null,
-      meta: {
-        filters: {
-          participantProvided: !!(participant && participant.trim()),
-          participantHash: participant && participant.trim() ? sha256Hex(participant.trim()) : null,
-          dateFrom,
-          dateTo,
-          includeArchived,
-          includeDeleted: canIncludeDeleted,
-        },
-        count: rows.length,
-        format,
-      },
-    });
+await audit(req, "NOTES_EXPORTED", {
+  targetType: "progress_note",
+  targetId: null,
+  meta: {
+    filters: {
+      participantProvided: !!(participant && participant.trim()),
+      participantHash: participant && participant.trim() ? sha256Hex(participant.trim()) : null,
+      dateFrom,
+      dateTo,
+      archived, // ✅ fixed
+      includeDeleted: canIncludeDeleted,
+    },
+    count: rows.length,
+    format,
+  },
+});
 
 
     if (format === "json") {

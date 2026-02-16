@@ -37,7 +37,7 @@ function LoginPage({ onLoginSuccess }) {
       const data = await apiFetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password}),
       });
 
       onLoginSuccess(data); // keep your existing flow
@@ -177,18 +177,23 @@ function LoginPage({ onLoginSuccess }) {
         </div>
 
         <button
-          type="submit"
-          disabled={loading}
-          style={{
-            marginTop: "0.5rem",
-            width: "100%",
-            justifyContent: "center",
-            // ✅ Mobile: better tap target while keeping same look
-            minHeight: isMobile ? 44 : undefined,
-          }}
-        >
-          {loading ? "Logging in..." : "Login"}
-        </button>
+  type="submit"
+  disabled={loading}
+  style={{
+    marginTop: "0.5rem",
+    width: "100%",
+    padding: "0.6rem 0.9rem",
+    borderRadius: "999px",
+    border: "none",
+    background: loading ? "#e5e7eb" : "#111827",
+    color: loading ? "#6b7280" : "#ffffff",
+    cursor: loading ? "wait" : "pointer",
+    fontWeight: 700,
+    minHeight: isMobile ? 44 : undefined,
+  }}
+>
+  {loading ? "Logging in..." : "Login"}
+</button>
       </form>
     </div>
   );

@@ -12,8 +12,11 @@ function normRole(v) {
 function roleFromToken(token) {
   if (!token) return "";
   try {
+    const padB64 = (s) => s + "===".slice((s.length + 3) % 4);
+
     const payload = token.split(".")[1];
-    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const b64 = padB64(payload.replace(/-/g, "+").replace(/_/g, "/"));
+
     const json = decodeURIComponent(
       atob(b64)
         .split("")

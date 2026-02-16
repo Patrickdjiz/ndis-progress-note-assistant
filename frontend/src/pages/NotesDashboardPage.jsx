@@ -105,6 +105,14 @@ const ymdOnly = (v) => {
   return m ? m[0] : "date";
 };
 
+const safePath = (p) => {
+  if (!p) return "";
+  const s = String(p);
+  // remove query + fragment defensively
+  return s.split("?")[0].split("#")[0];
+};
+
+
 function NotesDashboardPage({ token, user }) {
   const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(false);
@@ -188,7 +196,7 @@ function NotesDashboardPage({ token, user }) {
 
 
   const actingName = user?.fullName || "Unknown user";
-  const isAdmin = user?.role === "ADMIN";
+  const canManage = user?.role === "ADMIN" || user?.role === "OWNER";
 
   // Debounce participant filter to avoid spamming requests while typing
   useEffect(() => {
@@ -430,10 +438,6 @@ function NotesDashboardPage({ token, user }) {
       setErrorMsg("");
       if (!selectedNote) return;
 
-      const reason = window.prompt("Delete reason (optional):", "manual_delete") || "";
-      const ok = window.confirm("Soft delete this note? It can be restored until retention purge runs.");
-      if (!ok) return;
-
       setActing(true);
       const data = await apiFetch(`/api/notes/${selectedNote.id}/delete`, {
         method: "POST",
@@ -597,8 +601,19 @@ function NotesDashboardPage({ token, user }) {
 
   // -------------------- EXPORT --------------------
   // put these helpers inside NotesDashboardPage (above runExport) or outside component
-const todayYmd = () => new Date().toISOString().slice(0, 10);
-const daysAgoYmd = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+// local date helpers (see section 3)
+const localYmd = (d = new Date()) => {
+  const tzOffsetMs = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - tzOffsetMs).toISOString().slice(0, 10);
+};
+const daysAgoLocalYmd = (n) => localYmd(new Date(Date.now() - n * 864e5));
+
+const shortHash = async (s) => {
+  const enc = new TextEncoder().encode(String(s || ""));
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return hex.slice(0, 8);
+};
 
 const runExport = async () => {
   try {
@@ -606,20 +621,29 @@ const runExport = async () => {
     setErrorMsg("");
     setExporting(true);
 
-    // default to last 30 days if blank
-    const dateFrom = exportFrom || daysAgoYmd(30);
-    const dateTo = exportTo || todayYmd();
+    const dateFrom = exportFrom || daysAgoLocalYmd(30);
+    const dateTo = exportTo || localYmd();
+
+    if (dateFrom > dateTo) {
+      setExportMsg("Date from must be on/before date to.");
+      return;
+    }
 
     const participant = exportParticipant.trim();
+    const archived =
+      exportIncludeArchived === "all" ? "all" : exportIncludeArchived === "true";
 
     const payload = {
-      participant: exportParticipant.trim() || undefined,
+      participant: participant || undefined,
       dateFrom,
       dateTo,
-      includeArchived: exportIncludeArchived, // "all" | "true" | "false"
+      archived,
       includeDeleted: !!exportIncludeDeleted,
       format: exportFormat,
     };
+
+    const scope = participant ? `p_${await shortHash(participant)}` : "all";
+    const filteredFlag = participant ? "filtered" : "all";
 
     if (payload.format === "csv") {
       const blob = await apiFetchBlob("/api/notes/export", {
@@ -628,7 +652,7 @@ const runExport = async () => {
         body: JSON.stringify(payload),
       });
 
-      const fname = `notes_export_${participant ? participant.replace(/\s+/g, "_") + "_" : ""}${dateFrom}_${dateTo}.csv`;
+      const fname = `notes_export_${filteredFlag}_${scope}_${dateFrom}_${dateTo}.csv`;
       downloadBlob(blob, fname);
       setExportMsg("Export downloaded.");
       setExportOpen(false);
@@ -645,7 +669,7 @@ const runExport = async () => {
       type: "application/json",
     });
 
-    const fname = `notes_export_${participant ? participant.replace(/\s+/g, "_") + "_" : ""}${dateFrom}_${dateTo}.json`;
+    const fname = `notes_export_${filteredFlag}_${scope}_${dateFrom}_${dateTo}.json`;
     downloadBlob(jsonBlob, fname);
 
     setExportMsg("Export downloaded.");
@@ -656,6 +680,7 @@ const runExport = async () => {
     setExporting(false);
   }
 };
+
 
 
   // -------------------- RETENTION SETTINGS --------------------
@@ -796,7 +821,7 @@ useEffect(() => {
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          {isAdmin && (
+          {canManage && (
             <>
               <button
                 type="button"
@@ -888,7 +913,7 @@ useEffect(() => {
         </div>
 
         {/* ✅ NEW includeDeleted toggle */}
-        {isAdmin && (
+        {canManage && (
           <label
             style={{
               display: "inline-flex",
@@ -1208,7 +1233,11 @@ useEffect(() => {
                         </div>
                         <div style={{ color: "#374151", marginTop: 2 }}>
                           <span style={{ color: "#6b7280" }}>Role:</span> {ev.actorRole || "—"}
-                          {ev.path ? <> · <span style={{ color: "#6b7280" }}>Path:</span> {ev.path}</> : null}
+                          {ev.path ? (
+                            <>
+                              {" "}· <span style={{ color: "#6b7280" }}>Path:</span> {safePath(ev.path)}
+                            </>
+                          ) : null}
                         </div>
                       </div>
                     ))
@@ -1231,7 +1260,7 @@ useEffect(() => {
 
 
               {/* Admin-only compliance actions */}
-              {isAdmin && (
+              {canManage && (
                 <div
                   style={{
                     marginBottom: 10,
@@ -1365,7 +1394,7 @@ useEffect(() => {
                   {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
                 </button>
 
-                {isAdmin && (
+                {canManage && (
   <button
     type="button"
     onClick={handleToggleArchive}
@@ -1384,7 +1413,7 @@ useEffect(() => {
 )}
 
 
-                {isAdmin && (
+                {canManage && (
   <label
     style={{
       display: "inline-flex",

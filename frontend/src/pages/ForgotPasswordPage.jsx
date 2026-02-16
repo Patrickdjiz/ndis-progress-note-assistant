@@ -1,5 +1,5 @@
 // src/pages/ForgotPasswordPage.jsx
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
 
@@ -26,7 +26,7 @@ export default function ForgotPasswordPage() {
       const data = await apiFetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
 
       // In DEV you can return a resetLink to speed testing
