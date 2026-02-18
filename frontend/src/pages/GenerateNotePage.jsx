@@ -240,11 +240,6 @@ useEffect(() => {
 
   // --- handlers (unchanged except for formatting) ---
   const handleGenerate = async () => {
-  // Admin must pick worker BEFORE we set loading
-  if (canSelectWorker && !selectedWorkerId) {
-    setErrorMsg("Admins must select a worker before generating.");
-    return;
-  }
 
   const fields = {
     participantName,

@@ -442,7 +442,7 @@ function NotesDashboardPage({ token, user }) {
       const data = await apiFetch(`/api/notes/${selectedNote.id}/delete`, {
         method: "POST",
         headers: jsonHeaders,
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ }),
       });
 
       setSelectedNote(prev => prev ? ({
@@ -1307,7 +1307,7 @@ useEffect(() => {
                     <button
                       type="button"
                       onClick={handleSoftDelete}
-                      disabled={acting || !!selectedNote.purgedAt}
+                      disabled={acting || !!selectedNote.purgedAt || !!selectedNote.legalHold}
                       style={pillBtn({
                         border: "1px solid #fecaca",
                         background: "#fef2f2",
