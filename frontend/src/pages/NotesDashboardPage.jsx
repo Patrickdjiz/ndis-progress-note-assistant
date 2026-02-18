@@ -299,7 +299,7 @@ function NotesDashboardPage({ token, user }) {
 
       // ✅ if viewing deleted notes, request includeDeleted (backend may use this)
       const url = includeDeleted ? `/api/notes/${id}?includeDeleted=true` : `/api/notes/${id}`;
-      const data = await apiFetch(url, { headers: jsonHeaders });
+      const data = await apiFetch(url);
 
       setSelectedNote(data.note);
       setFinalNoteEditText(
@@ -382,7 +382,7 @@ function NotesDashboardPage({ token, user }) {
       if (!selectedNote) return setErrorMsg("No note selected.");
 
       setDownloadingPdf(true);
-      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, { headers: jsonHeaders });
+      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`);
       const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}.pdf`;
       downloadBlob(blob, filename);
     } catch (e) {
@@ -690,7 +690,7 @@ const runExport = async () => {
     try {
       setSettingsMsg("");
       setSettingsLoading(true);
-      const data = await apiFetch("/api/org/settings", { headers: jsonHeaders });
+      const data = await apiFetch("/api/org/settings");
       const s = data.settings || data;
       setOrgSettings({
         retentionDays: Number(s.retentionDays ?? 30),
