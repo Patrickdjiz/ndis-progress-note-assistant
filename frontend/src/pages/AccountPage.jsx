@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
 import { sessionStore } from "../lib/sessionStore";
-import { useEffect } from "react";
 
 const PRIMARY = "#111827";
 
