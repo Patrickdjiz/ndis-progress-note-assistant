@@ -186,13 +186,7 @@ function NotesDashboardPage({ token, user }) {
   // ✅ UI-only: responsive helper
   const isMobile = useIsMobile(760);
 
-    const authHeaders = useMemo(() => {
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }, [token]);
-
-  const jsonHeaders = useMemo(() => {
-    return { "Content-Type": "application/json", ...authHeaders };
-  }, [authHeaders]);
+  const jsonHeaders = { "Content-Type": "application/json" };
 
 
   const actingName = user?.fullName || "Unknown user";
@@ -305,7 +299,7 @@ function NotesDashboardPage({ token, user }) {
 
       // ✅ if viewing deleted notes, request includeDeleted (backend may use this)
       const url = includeDeleted ? `/api/notes/${id}?includeDeleted=true` : `/api/notes/${id}`;
-      const data = await apiFetch(url, { headers: authHeaders });
+      const data = await apiFetch(url, { headers: jsonHeaders });
 
       setSelectedNote(data.note);
       setFinalNoteEditText(
@@ -388,7 +382,7 @@ function NotesDashboardPage({ token, user }) {
       if (!selectedNote) return setErrorMsg("No note selected.");
 
       setDownloadingPdf(true);
-      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, { headers: authHeaders });
+      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`, { headers: jsonHeaders });
       const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}.pdf`;
       downloadBlob(blob, filename);
     } catch (e) {
@@ -642,8 +636,16 @@ const runExport = async () => {
       format: exportFormat,
     };
 
-    const scope = participant ? `p_${await shortHash(participant)}` : "all";
+    let scope = "all";
+    if (participant) {
+      try {
+        scope = `p_${await shortHash(participant)}`;
+      } catch {
+        scope = "p_filtered";
+      }
+    }
     const filteredFlag = participant ? "filtered" : "all";
+
 
     if (payload.format === "csv") {
       const blob = await apiFetchBlob("/api/notes/export", {
@@ -688,7 +690,7 @@ const runExport = async () => {
     try {
       setSettingsMsg("");
       setSettingsLoading(true);
-      const data = await apiFetch("/api/org/settings", { headers: authHeaders });
+      const data = await apiFetch("/api/org/settings", { headers: jsonHeaders });
       const s = data.settings || data;
       setOrgSettings({
         retentionDays: Number(s.retentionDays ?? 30),
