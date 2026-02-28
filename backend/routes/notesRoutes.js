@@ -1931,6 +1931,7 @@ router.post("/notes/:id/metadata", notesWriteIpLimiter, notesWriteUserLimiter, a
     if (patch.date !== undefined) {
       const d = parseYyyyMmDd(after.date);
       if (!d) return sendErr(res, req, 400, "Invalid date format");
+      const today = new Date();
       const todayYmd = todayYmdInTz();
 
 // patch.date is YYYY-MM-DD; compare in provider timezone.
@@ -1938,6 +1939,7 @@ if (String(patch.date) > todayYmd) {
   return sendErr(res, req, 400, "Date of support cannot be in the future.");
 }
 
+    }
 
     // Time sanity if touched
     if (patch.startTime !== undefined || patch.endTime !== undefined) {
