@@ -1481,6 +1481,8 @@ router.get("/notes/:id/pdf", notesPdfIpLimiter, notesPdfUserLimiter, async (req,
       sql += " AND pn.deleted_at IS NULL";
     }
 
+    sql += " AND pn.purged_at IS NULL";
+
     sql += ` LIMIT 1`;
 
     const { rows } = await query(sql, params);
@@ -2063,6 +2065,7 @@ router.post("/notes/export", notesReadIpLimiter, notesReadUserLimiter, async (re
   FROM progress_notes
   WHERE organisation_id = $1
     AND (date::date) BETWEEN $2::date AND $3::date
+    AND purged_at IS NULL
 `;
 const params = [req.user.organisationId, dateFrom, dateTo];
 let idx = 4;

@@ -415,7 +415,7 @@ const fetchNotes = async ({ append = false, cursor = undefined } = {}) => {
                 <button
                   type="button"
                   onClick={handleDownloadPdf}
-                  disabled={downloadingPdf || !selectedNote}
+                  disabled={downloadingPdf || !selectedNote || !!selectedNote.purgedAt}
                   style={pillBtn({
                     padding: "0.45rem 0.95rem",
                     border: "1px solid #e5e7eb",
@@ -426,7 +426,7 @@ const fetchNotes = async ({ append = false, cursor = undefined } = {}) => {
                     cursor: downloadingPdf ? "wait" : "pointer",
                   })}
                 >
-                  {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
+                  {selectedNote?.purgedAt ? "PDF unavailable (purged)" : downloadingPdf ? "Preparing PDF…" : "Download PDF"}
                 </button>
 
                 {finalSaveMsg && <span style={{ fontSize: "0.8rem", color: "#047857" }}>{finalSaveMsg}</span>}

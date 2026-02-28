@@ -2,6 +2,7 @@
 const { pool } = require("./pgClient");
 
 const LOCK_KEY = 91345217;
+const APP_TZ = process.env.APP_TZ || "Australia/Sydney";
 
 // Configurable batch sizes (safe defaults)
 const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), hi);
@@ -27,7 +28,9 @@ async function runOnceForOrg(client, orgId) {
   // 1) Soft delete
   const softDeleteSql = `
     WITH org AS (
-      SELECT id, retention_days, auto_purge_enabled
+      SELECT id,
+             COALESCE(retention_days, 30) AS retention_days,
+             auto_purge_enabled
       FROM organisations
       WHERE id = $1
       LIMIT 1
@@ -39,9 +42,10 @@ async function runOnceForOrg(client, orgId) {
       WHERE pn.organisation_id = $1
         AND o.auto_purge_enabled = TRUE
         AND pn.deleted_at IS NULL
+        AND pn.purged_at IS NULL
         AND COALESCE(pn.legal_hold, FALSE) = FALSE
-        AND pn.date < (CURRENT_DATE - (o.retention_days || ' days')::interval)
-      ORDER BY pn.date ASC, pn.id ASC
+        AND (pn.date::date) < ((now() AT TIME ZONE $3)::date - o.retention_days)
+      ORDER BY pn.date::date ASC, pn.id ASC
       LIMIT $2
     ),
     updated AS (
@@ -60,19 +64,21 @@ async function runOnceForOrg(client, orgId) {
     SELECT
       now(), $1, NULL, 'SYSTEM',
       'NOTE_DELETED_RETENTION', 'progress_note', u.id::text,
-      jsonb_build_object('reason','retention_expired'),
+      jsonb_build_object('reason','retention_expired','tz',$3),
       NULL, NULL, 'SYSTEM', '/jobs/retention'
     FROM updated u
     RETURNING 1
   `;
 
-  const soft = await q(client, softDeleteSql, [orgId, SOFT_DELETE_BATCH]);
+  const soft = await q(client, softDeleteSql, [orgId, SOFT_DELETE_BATCH, APP_TZ]);
   const softCount = soft.rowCount || 0;
 
   // 2) Purge
   const purgeSql = `
     WITH org AS (
-      SELECT id, delete_grace_days, auto_purge_enabled
+      SELECT id,
+             COALESCE(delete_grace_days, 7) AS delete_grace_days,
+             auto_purge_enabled
       FROM organisations
       WHERE id = $1
       LIMIT 1
@@ -86,7 +92,7 @@ async function runOnceForOrg(client, orgId) {
         AND pn.deleted_at IS NOT NULL
         AND pn.purged_at IS NULL
         AND COALESCE(pn.legal_hold, FALSE) = FALSE
-        AND pn.deleted_at < (now() - (o.delete_grace_days || ' days')::interval)
+        AND pn.deleted_at < (now() - make_interval(days => o.delete_grace_days))
       ORDER BY pn.deleted_at ASC, pn.id ASC
       LIMIT $2
     ),
@@ -100,17 +106,12 @@ async function runOnceForOrg(client, orgId) {
       SET purged_at = now(),
           note_text = '',
           final_note_text = NULL,
-
-          -- wipe key PII
           participant_name = '[PURGED]',
           worker_name = '[PURGED]',
           location = '[PURGED]',
-
-          -- optional: wipe name fields that can be PII (audit table still preserves actions)
           finalised_by = NULL,
           reviewed_by = NULL,
           archived_by = NULL,
-
           updated_at = now()
       WHERE pn.id IN (SELECT id FROM candidates)
       RETURNING pn.id
@@ -122,20 +123,20 @@ async function runOnceForOrg(client, orgId) {
     SELECT
       now(), $1, NULL, 'SYSTEM',
       'NOTE_PURGED', 'progress_note', p.id::text,
-      jsonb_build_object('mode','tombstone'),
+      jsonb_build_object('mode','tombstone','tz',$3),
       NULL, NULL, 'SYSTEM', '/jobs/retention'
     FROM purged p
     RETURNING 1
   `;
 
-  const pur = await q(client, purgeSql, [orgId, PURGE_BATCH]);
+  const pur = await q(client, purgeSql, [orgId, PURGE_BATCH, APP_TZ]);
   const purgeCount = pur.rowCount || 0;
 
   return { softCount, purgeCount };
 }
 
 async function runRetentionPurgeJob() {
-  const client = await pool.connect(); // ✅ single connection for lock + all queries
+  const client = await pool.connect();
 
   try {
     const locked = await tryLock(client);
@@ -159,9 +160,9 @@ async function runRetentionPurgeJob() {
         }
       }
 
-      return { ok: true, totalSoft, totalPurge, softBatch: SOFT_DELETE_BATCH, purgeBatch: PURGE_BATCH };
+      return { ok: true, totalSoft, totalPurge, softBatch: SOFT_DELETE_BATCH, purgeBatch: PURGE_BATCH, tz: APP_TZ };
     } finally {
-      await unlock(client); // ✅ unlock on same connection
+      await unlock(client);
     }
   } finally {
     client.release();

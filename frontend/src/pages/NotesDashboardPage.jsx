@@ -1383,7 +1383,7 @@ useEffect(() => {
                 <button
                   type="button"
                   onClick={handleDownloadPdf}
-                  disabled={downloadingPdf || !selectedNote}
+                  disabled={downloadingPdf || !selectedNote || !!selectedNote.purgedAt}
                   style={pillBtn({
                     border: "1px solid #e5e7eb",
                     background: "#ffffff",
@@ -1393,7 +1393,7 @@ useEffect(() => {
                     cursor: downloadingPdf ? "wait" : "pointer",
                   })}
                 >
-                  {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
+                  {selectedNote?.purgedAt ? "PDF unavailable (purged)" : downloadingPdf ? "Preparing PDF…" : "Download PDF"}
                 </button>
 
                 {canManage && (
