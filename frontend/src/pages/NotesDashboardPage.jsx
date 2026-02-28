@@ -52,8 +52,10 @@ function Modal({ open, title, onClose, children, footer }) {
             type="button"
             onClick={onClose}
             style={{
-              border: "1px solid #e5e7eb",
-              background: "#fff",
+              border: "1px solid #d1d5db",
+              background: "#ffffff",
+              color: "#111827",
+              fontWeight: 700,
               borderRadius: 10,
               padding: "6px 10px",
               cursor: "pointer",
@@ -265,14 +267,16 @@ function NotesDashboardPage({ token, user }) {
       setNotes((prev) => (append ? [...prev, ...incoming] : incoming));
       setNextCursor(data.nextCursor || null);
 
-      if (!append && selectedNote) {
-        const stillVisible = incoming.some((n) => n.id === selectedNote.id);
-        if (!stillVisible) {
-          setSelectedNote(null);
-          setFinalNoteEditText("");
-          setFinalSaveMsg("");
-        }
+      // ✅ Keep selection for deleted/purged notes so admins can restore / audit / export without needing list filters
+    if (!append && selectedNote && !selectedNote.deletedAt && !selectedNote.purgedAt) {
+      const stillVisible = incoming.some((n) => n.id === selectedNote.id);
+      if (!stillVisible) {
+        setSelectedNote(null);
+        setFinalNoteEditText("");
+        setFinalSaveMsg("");
       }
+    }
+
     } catch (err) {
       setNotesError(err?.message || "Failed to load notes");
     } finally {
@@ -376,21 +380,30 @@ function NotesDashboardPage({ token, user }) {
   };
 
   // -------------------- PDF --------------------
-  const handleDownloadPdf = async () => {
-    try {
-      setErrorMsg("");
-      if (!selectedNote) return setErrorMsg("No note selected.");
+const handleDownloadPdf = async () => {
+  try {
+    setErrorMsg("");
+    if (!selectedNote) return setErrorMsg("No note selected.");
 
-      setDownloadingPdf(true);
-      const blob = await apiFetchBlob(`/api/notes/${selectedNote.id}/pdf`);
-      const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}.pdf`;
-      downloadBlob(blob, filename);
-    } catch (e) {
-      setErrorMsg(e?.message || "Failed to download PDF.");
-    } finally {
-      setDownloadingPdf(false);
-    }
-  };
+    setDownloadingPdf(true);
+
+    // ✅ allow ADMINs to download PDFs for soft-deleted notes
+    const isAdmin = user?.role === "ADMIN";
+    const pdfUrl =
+      isAdmin && selectedNote.deletedAt
+        ? `/api/notes/${selectedNote.id}/pdf?includeDeleted=true`
+        : `/api/notes/${selectedNote.id}/pdf`;
+
+    const blob = await apiFetchBlob(pdfUrl);
+    const filename = `NDIS_Note_${selectedNote.id}_${ymdOnly(selectedNote.date)}.pdf`;
+    downloadBlob(blob, filename);
+  } catch (e) {
+    setErrorMsg(e?.message || "Failed to download PDF.");
+  } finally {
+    setDownloadingPdf(false);
+  }
+};
+
 
   // -------------------- Archive --------------------
   const handleToggleArchive = async () => {
@@ -1493,7 +1506,7 @@ useEffect(() => {
         }
       >
         <p style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b7280", lineHeight: 1.45 }}>
-          Use this for **corrections** (participant requests / provider fixes). All changes are recorded in the audit log.
+          Use this for <strong>corrections</strong>(participant requests / provider fixes). All changes are recorded in the audit log.
         </p>
 
         {metaMsg && <p style={{ color: metaMsg === "Saved." ? "#047857" : "#b91c1c" }}>{metaMsg}</p>}
@@ -1673,7 +1686,7 @@ useEffect(() => {
       {/* -------------------- Retention Settings Modal -------------------- */}
       <Modal
         open={settingsOpen}
-        title="Retention settings (per provider)"
+        title="Retention & AI settings"
         onClose={() => setSettingsOpen(false)}
         footer={
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
@@ -1695,68 +1708,101 @@ useEffect(() => {
           </div>
         }
       >
-        <p style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b7280", lineHeight: 1.45 }}>
-          These settings control **retention + purge automation** for this provider organisation.
-          Notes with **legal hold** are always excluded from purge.
-        </p>
+        <div style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b7280", lineHeight: 1.5 }}>
+          These settings control how long notes are kept in NDIS Notes for this provider organisation.
+          Notes on <strong>legal hold</strong> are excluded from automatic deletion and purge.
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontWeight: 700, color: "#111827", marginBottom: 4 }}>How automatic purge works</div>
+            <div style={{ fontSize: "0.82rem", color: "#6b7280", lineHeight: 1.45 }}>
+              1) After the note&apos;s <strong>shift date</strong> is older than <strong>Retention days</strong>, the note is <strong>soft-deleted</strong>.<br />
+              2) After <strong>Delete grace days</strong>, the note is <strong>purged</strong> (content is wiped and cannot be restored).
+            </div>
+          </div>
+        </div>
 
-        {settingsMsg && <p style={{ color: settingsMsg === "Saved." ? "#047857" : "#b91c1c" }}>{settingsMsg}</p>}
+        {settingsMsg && (
+          <p style={{ color: settingsMsg === "Saved." ? "#047857" : "#b91c1c", marginTop: 10 }}>
+            {settingsMsg}
+          </p>
+        )}
+
         {settingsLoading ? (
-          <p style={{ color: "#6b7280" }}>Loading…</p>
+          <p style={{ color: "#6b7280", marginTop: 10 }}>Loading…</p>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={{ display: "block", fontSize: "0.8rem", color: "#374151", fontWeight: 700, marginBottom: 4 }}>
-                Retention days
-              </label>
-              <input
-                type="number"
-                min={30}
-                value={orgSettings.retentionDays}
-                onChange={(e) => setOrgSettings((p) => ({ ...p, retentionDays: e.target.value }))}
-                style={inputBase}
-              />
-              <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#6b7280" }}>
-                Minimum 30 days.
+          <>
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.8rem", color: "#374151", fontWeight: 700, marginBottom: 4 }}>
+                  Retention days
+                </label>
+                <input
+                  type="number"
+                  min={30}
+                  value={orgSettings.retentionDays}
+                  onChange={(e) => setOrgSettings((p) => ({ ...p, retentionDays: e.target.value }))}
+                  style={inputBase}
+                />
+                <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#6b7280" }}>
+                  Minimum 30 days.
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.8rem", color: "#374151", fontWeight: 700, marginBottom: 4 }}>
+                  Delete grace days
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={orgSettings.deleteGraceDays}
+                  onChange={(e) => setOrgSettings((p) => ({ ...p, deleteGraceDays: e.target.value }))}
+                  style={inputBase}
+                />
+                <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#6b7280" }}>
+                  Time between soft-delete and purge.
+                </div>
               </div>
             </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: "0.8rem", color: "#374151", fontWeight: 700, marginBottom: 4 }}>
-                Delete grace days
-              </label>
-              <input
-                type="number"
-                min={1}
-                value={orgSettings.deleteGraceDays}
-                onChange={(e) => setOrgSettings((p) => ({ ...p, deleteGraceDays: e.target.value }))}
-                style={inputBase}
-              />
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, background: "#f9fafb" }}>
+                <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!orgSettings.autoPurgeEnabled}
+                    onChange={(e) => setOrgSettings((p) => ({ ...p, autoPurgeEnabled: e.target.checked }))}
+                    style={{ marginTop: 3 }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#111827" }}>Automatic purge</div>
+                    <div style={{ marginTop: 4, fontSize: "0.8rem", color: "#6b7280", lineHeight: 1.45 }}>
+                      When enabled, the system will soft-delete notes after retention expires, then purge them after the grace period.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, background: "#f9fafb" }}>
+                <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!orgSettings.aiEnabled}
+                    onChange={(e) => setOrgSettings((p) => ({ ...p, aiEnabled: e.target.checked }))}
+                    style={{ marginTop: 3 }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#111827" }}>AI note generation</div>
+                    <div style={{ marginTop: 4, fontSize: "0.8rem", color: "#6b7280", lineHeight: 1.45 }}>
+                      If disabled, workers cannot generate new notes and will be told to contact the provider admin.
+                    </div>
+                  </div>
+                </label>
+              </div>
             </div>
-
-            <label style={{ display: "inline-flex", gap: 8, alignItems: "center", fontSize: "0.9rem", color: "#111827", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={!!orgSettings.autoPurgeEnabled}
-                onChange={(e) => setOrgSettings((p) => ({ ...p, autoPurgeEnabled: e.target.checked }))}
-              />
-              Enable automatic purge (recommended once configured)
-            </label>
-            <label style={{ display: "inline-flex", gap: 8, alignItems: "center", fontSize: "0.9rem", color: "#111827", cursor: "pointer" }}>
-  <input
-    type="checkbox"
-    checked={!!orgSettings.aiEnabled}
-    onChange={(e) => setOrgSettings((p) => ({ ...p, aiEnabled: e.target.checked }))}
-  />
-  Enable AI note generation (recommended)
-</label>
-
-<div style={{ marginTop: 6, fontSize: "0.8rem", color: "#6b7280" }}>
-  If disabled, workers cannot generate notes and will be told to contact the provider admin.
-</div>
-          </div>
+          </>
         )}
       </Modal>
+
     </section>
   );
 }
