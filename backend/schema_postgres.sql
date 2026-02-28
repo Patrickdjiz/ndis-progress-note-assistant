@@ -60,16 +60,27 @@ CREATE TABLE IF NOT EXISTS users (
 -- Privacy notice acceptances (per-user, per-version)
 CREATE TABLE IF NOT EXISTS privacy_acceptances (
   id BIGSERIAL PRIMARY KEY,
+
+  organisation_id INTEGER NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
   policy_version TEXT NOT NULL,
   accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
   ip INET,
   user_agent TEXT,
+
   UNIQUE (user_id, policy_version)
 );
 
 CREATE INDEX IF NOT EXISTS idx_privacy_acceptances_user
   ON privacy_acceptances (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_privacy_accept_org_time
+  ON privacy_acceptances (organisation_id, accepted_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_privacy_accept_user_time
+  ON privacy_acceptances (user_id, accepted_at DESC);
 
 
 -- Progress notes

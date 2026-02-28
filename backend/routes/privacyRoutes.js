@@ -94,19 +94,25 @@ router.post("/accept", async (req, res) => {
       });
     }
 
+        const orgId = Number(req.user.organisationId);
+    if (!Number.isInteger(orgId) || orgId <= 0) {
+      return res.status(400).json({ error: "Missing organisationId", requestId: req.id });
+    }
+
     const ip = getClientIp(req);
-    const ua = (req.get("user-agent") || "").slice(0, 512) || null;
+    const ua = req.get("user-agent") || null;
 
     const ins = await query(
       `
-      INSERT INTO privacy_acceptances (user_id, policy_version, ip, user_agent)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO privacy_acceptances (organisation_id, user_id, policy_version, ip, user_agent)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (user_id, policy_version)
-      DO NOTHING
+      DO UPDATE SET accepted_at = now(), ip = EXCLUDED.ip, user_agent = EXCLUDED.user_agent
       RETURNING accepted_at
       `,
-      [req.user.id, version, ip, ua]
+      [orgId, req.user.id, version, ip, ua]
     );
+
 
     const alreadyAccepted = !ins.rows[0];
     const acceptedAt = alreadyAccepted
@@ -209,19 +215,25 @@ router.post("/consent", async (req, res) => {
       });
     }
 
+        const orgId = Number(req.user.organisationId);
+    if (!Number.isInteger(orgId) || orgId <= 0) {
+      return res.status(400).json({ error: "Missing organisationId", requestId: req.id });
+    }
+
     const ip = getClientIp(req);
-    const ua = (req.get("user-agent") || "").slice(0, 512) || null;
+    const ua = req.get("user-agent") || null;
 
     const ins = await query(
       `
-      INSERT INTO privacy_acceptances (user_id, policy_version, ip, user_agent)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO privacy_acceptances (organisation_id, user_id, policy_version, ip, user_agent)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (user_id, policy_version)
-      DO NOTHING
+      DO UPDATE SET accepted_at = now(), ip = EXCLUDED.ip, user_agent = EXCLUDED.user_agent
       RETURNING accepted_at
       `,
-      [req.user.id, version, ip, ua]
+      [orgId, req.user.id, version, ip, ua]
     );
+
 
     const alreadyAccepted = !ins.rows[0];
     const acceptedAt = alreadyAccepted
