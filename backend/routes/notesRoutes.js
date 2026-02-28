@@ -61,6 +61,19 @@ function safeAuditReason(reason) {
   return clip(redactPII(reason), 200);
 }
 
+// ---- Timezone-safe "today" (used to reject future shift dates)
+const APP_TZ = process.env.APP_TZ || "Australia/Sydney";
+
+function todayYmdInTz(tz = APP_TZ) {
+  // en-CA formats as YYYY-MM-DD
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 
 const router = express.Router();
 
@@ -1104,13 +1117,13 @@ router.post("/generate-note", notesGenIpLimiter, notesGenUserBurstLimiter, notes
     if (!shiftDate) {
       return sendErr(res, req, 400, "Invalid date format.");
     }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    shiftDate.setHours(0, 0, 0, 0);
+    const todayYmd = todayYmdInTz();
 
-    if (shiftDate > today) {
-      return sendErr(res, req, 400, "Date of support cannot be in the future.");
-    }
+// date is YYYY-MM-DD (from <input type="date">). Compare in provider timezone.
+if (String(date) > todayYmd) {
+  return sendErr(res, req, 400, "Date of support cannot be in the future.");
+}
+
 
     // 3. Time sanity
     const startMins = timeToMinutes(startTime);
@@ -1918,11 +1931,13 @@ router.post("/notes/:id/metadata", notesWriteIpLimiter, notesWriteUserLimiter, a
     if (patch.date !== undefined) {
       const d = parseYyyyMmDd(after.date);
       if (!d) return sendErr(res, req, 400, "Invalid date format");
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      d.setHours(0, 0, 0, 0);
-      if (d > today) return sendErr(res, req, 400, "Date of support cannot be in the future.");
-    }
+      const todayYmd = todayYmdInTz();
+
+// patch.date is YYYY-MM-DD; compare in provider timezone.
+if (String(patch.date) > todayYmd) {
+  return sendErr(res, req, 400, "Date of support cannot be in the future.");
+}
+
 
     // Time sanity if touched
     if (patch.startTime !== undefined || patch.endTime !== undefined) {

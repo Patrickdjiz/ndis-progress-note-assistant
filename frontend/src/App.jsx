@@ -285,7 +285,7 @@ useEffect(() => {
           padding: "1rem",
         }}
       >
-        <div style={{ width: "100%", maxWidth: isLegal ? 900 : 420 }}>
+        <div style={{ width: "100%", maxWidth: isLegal ? 900 : 380 }}>
           {logoutMsg && !isLegal && (
             <div
               style={{
