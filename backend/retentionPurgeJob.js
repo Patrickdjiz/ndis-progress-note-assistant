@@ -44,7 +44,7 @@ async function runOnceForOrg(client, orgId) {
         AND pn.deleted_at IS NULL
         AND pn.purged_at IS NULL
         AND COALESCE(pn.legal_hold, FALSE) = FALSE
-        AND (pn.date::date) < ((now() AT TIME ZONE $3)::date - o.retention_days)
+        AND (pn.date::date) < ((now() AT TIME ZONE ($3::text))::date - o.retention_days)
       ORDER BY pn.date::date ASC, pn.id ASC
       LIMIT $2
     ),
@@ -64,7 +64,7 @@ async function runOnceForOrg(client, orgId) {
     SELECT
       now(), $1, NULL, 'SYSTEM',
       'NOTE_DELETED_RETENTION', 'progress_note', u.id::text,
-      jsonb_build_object('reason','retention_expired','tz',$3),
+      jsonb_build_object('reason','retention_expired','tz',($3::text)),
       NULL, NULL, 'SYSTEM', '/jobs/retention'
     FROM updated u
     RETURNING 1
@@ -123,7 +123,7 @@ async function runOnceForOrg(client, orgId) {
     SELECT
       now(), $1, NULL, 'SYSTEM',
       'NOTE_PURGED', 'progress_note', p.id::text,
-      jsonb_build_object('mode','tombstone','tz',$3),
+      jsonb_build_object('mode','tombstone','tz',($3::text)),
       NULL, NULL, 'SYSTEM', '/jobs/retention'
     FROM purged p
     RETURNING 1
